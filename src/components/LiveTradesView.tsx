@@ -14,9 +14,10 @@ import {
   User,
   ArrowRightLeft,
   XCircle,
-  Sparkles
+  Sparkles,
+  ListTodo
 } from "lucide-react";
-import { LiveTrade, UserProfile } from "../types";
+import { LiveTrade, UserProfile, TradingRule } from "../types";
 import { formatCurrency } from "../utils/helpers";
 
 interface LiveTradesViewProps {
@@ -25,6 +26,7 @@ interface LiveTradesViewProps {
   username: string;
   roomCode: string;
   traders: UserProfile[];
+  rules: TradingRule[];
   onAddLiveTrade: (payload: {
     asset: string;
     direction: "long" | "short";
@@ -46,6 +48,7 @@ export default function LiveTradesView({
   username,
   roomCode,
   traders,
+  rules = [],
   onAddLiveTrade,
   onCloseLiveTrade,
   onUpdateTradePrice,
@@ -63,6 +66,7 @@ export default function LiveTradesView({
   const [tradeSL, setTradeSL] = useState("");
   const [tradeQuantity, setTradeQuantity] = useState("1");
   const [tradeNotes, setTradeNotes] = useState("");
+  const [checkedRules, setCheckedRules] = useState<Record<string, boolean>>({});
 
   const filteredTrades = useMemo(() => {
     return liveTrades.filter((t) => {
@@ -128,6 +132,15 @@ export default function LiveTradesView({
       return;
     }
 
+    // Mandatory rule checklist check
+    if (rules && rules.length > 0) {
+      const allChecked = rules.every((r) => !!checkedRules[r.id]);
+      if (!allChecked) {
+        alert("Action Blocked: You must check off all mandatory confirmation rules before entering a trade position!");
+        return;
+      }
+    }
+
     // Basic validity checks
     if (tradeDirection === "long") {
       if (tpVal <= entry) {
@@ -166,6 +179,7 @@ export default function LiveTradesView({
     setTradeSL("");
     setTradeQuantity("1");
     setTradeNotes("");
+    setCheckedRules({});
   };
 
   // Preset assets for quick entry
@@ -684,6 +698,41 @@ export default function LiveTradesView({
                   className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
                 />
               </div>
+
+              {/* Rules Checklist */}
+              {rules && rules.length > 0 && (
+                <div className="bg-[#121417]/80 border border-[#2A2D31] rounded-xl p-4 space-y-3">
+                  <span className="block text-xs font-extrabold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ListTodo className="w-4 h-4 text-indigo-400 shrink-0" /> Mandatory Confirmation Checklist
+                  </span>
+                  <p className="text-[10px] text-[#8E9297] leading-relaxed">
+                    Confirm you are following the desk rules before placing this trade.
+                  </p>
+                  <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-800">
+                    {rules.map((rule) => (
+                      <label
+                        key={rule.id}
+                        className="flex items-start gap-2.5 cursor-pointer text-xs font-semibold text-gray-300 hover:text-white select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!checkedRules[rule.id]}
+                          onChange={(e) => {
+                            setCheckedRules((prev) => ({
+                              ...prev,
+                              [rule.id]: e.target.checked
+                            }));
+                          }}
+                          className="mt-0.5 rounded border-[#2A2D31] text-[#5865F2] focus:ring-[#5865F2] bg-[#121417] cursor-pointer"
+                        />
+                        <span className={`break-words whitespace-normal leading-relaxed ${checkedRules[rule.id] ? "text-gray-500 line-through decoration-[#8E9297]/60" : ""}`}>
+                          {rule.text}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="pt-3 flex gap-3">
                 <button

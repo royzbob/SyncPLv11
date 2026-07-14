@@ -105,6 +105,19 @@
         "timestamp": { "type": "string" }
       },
       "required": ["userId", "username", "groupId", "asset", "direction", "entryPrice", "tp", "sl", "currentPrice", "status", "timestamp"]
+    },
+    "TradingRule": {
+      "title": "TradingRule",
+      "description": "Rule that must be checked before entering a trade",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "roomId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["id", "roomId", "text", "createdAt", "order"]
     }
   },
   "firestore": {
@@ -135,6 +148,10 @@
     "live_trades/{tradeId}": {
       "schema": "LiveTrade",
       "description": "Active/open and closed live trade tracking records"
+    },
+    "trading_rules/{ruleId}": {
+      "schema": "TradingRule",
+      "description": "Custom trading entry checklist rules per room"
     }
   }
 }

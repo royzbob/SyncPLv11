@@ -101,3 +101,12 @@ export interface LiveTrade {
   exitPrice?: number;
 }
 
+export interface TradingRule {
+  id: string;
+  roomId: string;
+  text: string;
+  createdAt: string;
+  order: number;
+}
+
+

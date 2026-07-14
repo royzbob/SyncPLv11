@@ -18,6 +18,7 @@ import {
   Plus,
   MessageSquare,
   Activity,
+  ListTodo,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 
@@ -155,6 +156,16 @@ export default function ActiveRoomSidebar({
           <div className="flex items-center space-x-2.5">
             <History className="w-4 h-4" />
             <span>Ledger Records</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => onSwitchTab("checklist")}
+          className={getNavBtnClass("checklist")}
+        >
+          <div className="flex items-center space-x-2.5">
+            <ListTodo className="w-4 h-4" />
+            <span>Trading Checklist</span>
           </div>
         </button>
 

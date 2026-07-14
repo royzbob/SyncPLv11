@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
-import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade } from "./types";
+import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule } from "./types";
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString } from "./utils/helpers";
 import { playJoinSound, playLeaveSound } from "./utils/audio";
 
@@ -101,6 +101,7 @@ import LeaderboardView from "./components/LeaderboardView";
 import LogsView from "./components/LogsView";
 import SettingsView from "./components/SettingsView";
 import LiveTradesView from "./components/LiveTradesView";
+import ChecklistView from "./components/ChecklistView";
 
 export default function App() {
   // Authentication & Profile States
@@ -123,6 +124,7 @@ export default function App() {
 
   const [pnlLogs, setPnlLogs] = useState<PnlLog[]>([]);
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([]);
+  const [tradingRules, setTradingRules] = useState<TradingRule[]>([]);
 
   const prevVoiceUsersRef = useRef<VoiceUser[] | null>(null);
 
@@ -593,6 +595,7 @@ export default function App() {
       setVoiceUsers([]);
       setPnlLogs([]);
       setLiveTrades([]);
+      setTradingRules([]);
       setTraders([]);
       return;
     }
@@ -705,6 +708,23 @@ export default function App() {
       console.error("Live trades onSnapshot error:", error);
     });
     unsubscribers.push(unsubLiveTrades);
+
+    // Observe Trading Entry Checklist Rules
+    const rulesQuery = query(collection(db, "trading_rules"));
+    const unsubRules = onSnapshot(rulesQuery, (snapshot) => {
+      const list: TradingRule[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        if (data.roomId === activeRoom.id) {
+          list.push({ id: d.id, ...data } as TradingRule);
+        }
+      });
+      const sorted = list.sort((a, b) => a.order - b.order);
+      setTradingRules(sorted);
+    }, (error) => {
+      console.error("Rules onSnapshot error:", error);
+    });
+    unsubscribers.push(unsubRules);
 
     // Simplify traders list: collect distinct traders names from pnl logs and active room participants
     const derivedTraders: UserProfile[] = [];
@@ -1086,6 +1106,99 @@ export default function App() {
         }
       }
     );
+  };
+
+  // Checklist Rule Actions
+  const handleAddRule = async (text: string) => {
+    if (!activeRoom) return;
+    const trimmed = text.trim();
+    const isDuplicate = tradingRules.some(r => r.text.trim().toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      triggerToast("Duplicate Rule Blocked", "This rule protocol already exists in your checklist.", "error");
+      return;
+    }
+    try {
+      const rulesCol = collection(db, "trading_rules");
+      const nextOrder = tradingRules.length > 0 ? Math.max(...tradingRules.map(r => r.order)) + 1 : 0;
+      await addDoc(rulesCol, {
+        roomId: activeRoom.id,
+        text: trimmed,
+        order: nextOrder,
+        createdAt: new Date().toISOString()
+      });
+      triggerToast("Rule Protocol Added", "The new protocol requirement is now active.", "success");
+    } catch (err: any) {
+      console.error("Failed to add rule:", err);
+      triggerToast("Failed to Add Rule", err.message || "Error communicating with database.", "error");
+    }
+  };
+
+  const handleUpdateRule = async (id: string, text: string) => {
+    const trimmed = text.trim();
+    const isDuplicate = tradingRules.some(r => r.id !== id && r.text.trim().toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      triggerToast("Duplicate Rule Blocked", "Another rule with this identical text already exists.", "error");
+      return;
+    }
+    try {
+      const ruleRef = doc(db, "trading_rules", id);
+      await updateDoc(ruleRef, { text: trimmed });
+      triggerToast("Rule Protocol Updated", "The protocol text has been saved.", "success");
+    } catch (err: any) {
+      console.error("Failed to update rule:", err);
+      triggerToast("Update Failed", err.message || "Could not save changes.", "error");
+    }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    try {
+      const ruleRef = doc(db, "trading_rules", id);
+      await deleteDoc(ruleRef);
+      triggerToast("Rule Protocol Removed", "Protocol removed from the active checklist.", "info");
+    } catch (err: any) {
+      console.error("Failed to delete rule:", err);
+      triggerToast("Delete Failed", err.message || "Could not remove rule.", "error");
+    }
+  };
+
+  const handleSeedDefaultRules = async () => {
+    if (!activeRoom) return;
+    try {
+      const rulesCol = collection(db, "trading_rules");
+      const presets = [
+        "Did I confirm the setup on the higher timeframe (trend alignment)?",
+        "Is the risk-to-reward ratio at least 1:2 on this technical setup?",
+        "Is my stop loss set at a clear technical support or resistance level?",
+        "Am I trading within my defined maximum daily loss and risk limits?",
+        "Am I emotionally calm, objective, and fully focused before opening this trade?"
+      ];
+
+      let addedCount = 0;
+      const currentTexts = new Set(tradingRules.map(r => r.text.trim().toLowerCase()));
+
+      for (let i = 0; i < presets.length; i++) {
+        const presetText = presets[i];
+        if (!currentTexts.has(presetText.trim().toLowerCase())) {
+          const nextOrder = tradingRules.length > 0 ? Math.max(...tradingRules.map(r => r.order)) + 1 + addedCount : addedCount;
+          await addDoc(rulesCol, {
+            roomId: activeRoom.id,
+            text: presetText,
+            order: nextOrder,
+            createdAt: new Date().toISOString()
+          });
+          addedCount++;
+        }
+      }
+
+      if (addedCount > 0) {
+        triggerToast("Standard Protocols Seeded", `Successfully loaded ${addedCount} professional rules to your checklist.`, "success");
+      } else {
+        triggerToast("All Presets Present", "All default standard protocols are already on your checklist.", "info");
+      }
+    } catch (err: any) {
+      console.error("Failed to seed default rules:", err);
+      triggerToast("Seed Failed", err.message || "Could not load standard checklist.", "error");
+    }
   };
 
   // Live Trades Handlers
@@ -1727,6 +1840,7 @@ export default function App() {
                       username={profile?.username || "Trader"}
                       roomCode={activeRoom.id}
                       traders={traders}
+                      rules={tradingRules}
                       onAddLiveTrade={handleAddLiveTrade}
                       onCloseLiveTrade={handleCloseLiveTrade}
                       onUpdateTradePrice={handleUpdateTradePrice}
@@ -1746,6 +1860,17 @@ export default function App() {
                       onOpenLogModal={() => setIsLogModalOpen(true)}
                       roomCode={activeRoom.id}
                       traders={traders}
+                    />
+                  )}
+
+                  {activeTab === "checklist" && (
+                    <ChecklistView
+                      rules={tradingRules}
+                      onAddRule={handleAddRule}
+                      onUpdateRule={handleUpdateRule}
+                      onDeleteRule={handleDeleteRule}
+                      onSeedDefaultRules={handleSeedDefaultRules}
+                      isCreatorOrMod={isCreatorOrMod}
                     />
                   )}
 

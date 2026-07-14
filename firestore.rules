@@ -49,5 +49,10 @@ service cloud.firestore {
     match /live_trades/{tradeId} {
       allow read, write: if isSignedIn();
     }
+
+    // Trading Rules
+    match /trading_rules/{ruleId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }
