@@ -228,17 +228,51 @@ export default function App() {
   }, [currentUser, activeVoiceChannel, isMuted]);
 
   // Stripe & Subscription state
+  const [customApiUrl, setCustomApiUrl] = useState<string>(() => {
+    return localStorage.getItem("syncpl_custom_api_url") || "";
+  });
+
+  const getApiUrl = (path: string): string => {
+    const isTauri = typeof window !== "undefined" && (
+      (window as any).__TAURI__ || 
+      window.location.protocol === "tauri:" || 
+      window.location.protocol === "asset:" ||
+      window.location.hostname === "tauri.localhost" ||
+      window.location.hostname === ""
+    );
+
+    if (isTauri) {
+      if (customApiUrl) {
+        return `${customApiUrl.replace(/\/$/, "")}${path}`;
+      }
+      return `https://ais-pre-xnvqqymkqsq3dfmi7u62th-361590815324.us-west2.run.app${path}`;
+    }
+    return path;
+  };
+
   const [stripeConfig, setStripeConfig] = useState<{ stripeConfigured: boolean; publishableKey: string }>({
     stripeConfigured: false,
     publishableKey: "",
   });
 
   useEffect(() => {
-    fetch("/api/payment/config")
-      .then((res) => res.json())
+    fetch(getApiUrl("/api/payment/config"))
+      .then((res) => {
+        if (!res.ok) throw new Error("HTTP error " + res.status);
+        return res.json();
+      })
       .then((data) => setStripeConfig(data))
       .catch((err) => console.warn("Failed to load Stripe configuration info:", err));
-  }, []);
+  }, [customApiUrl]);
+
+  const handleUpdateCustomApiUrl = (val: string) => {
+    setCustomApiUrl(val);
+    if (val) {
+      localStorage.setItem("syncpl_custom_api_url", val);
+    } else {
+      localStorage.removeItem("syncpl_custom_api_url");
+    }
+  };
 
   const subscriptionState = useMemo(() => {
     if (!profile) return { isPremium: true, daysRemaining: 30, isExpired: false, status: "none" };
@@ -267,7 +301,7 @@ export default function App() {
 
     if (success && sessionId && currentUser) {
       triggerToast("Activating...", "Verifying your checkout session with Stripe...", "info");
-      fetch("/api/payment/verify-checkout-session", {
+      fetch(getApiUrl("/api/payment/verify-checkout-session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, userId: currentUser.uid }),
@@ -1118,7 +1152,7 @@ export default function App() {
   const handleSubscribe = async () => {
     if (!currentUser) return;
     try {
-      const response = await fetch("/api/payment/create-checkout-session", {
+      const response = await fetch(getApiUrl("/api/payment/create-checkout-session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.uid, userEmail: currentUser.email }),
@@ -1142,7 +1176,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch("/api/payment/portal-session", {
+      const response = await fetch(getApiUrl("/api/payment/portal-session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -2115,6 +2149,8 @@ export default function App() {
                       onSubscribe={handleSubscribe}
                       onManageBilling={handleManageBilling}
                       onSimulatePremium={handleSimulatePremium}
+                      customApiUrl={customApiUrl}
+                      onUpdateCustomApiUrl={handleUpdateCustomApiUrl}
                     />
                   )}
                 </div>

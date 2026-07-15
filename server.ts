@@ -167,6 +167,17 @@ async function startServer() {
     res.json({ received: true });
   });
 
+  // 1.5. CORS Middleware for desktop clients (Tauri)
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // 2. Standard parsers for subsequent API routes
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
