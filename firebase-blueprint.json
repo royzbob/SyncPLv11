@@ -10,7 +10,12 @@
         "avatarType": { "type": "string" },
         "avatarVal": { "type": "string" },
         "groupIds": { "type": "array" },
-        "activeGroupId": { "type": "string" }
+        "activeGroupId": { "type": "string" },
+        "stripeCustomerId": { "type": "string" },
+        "stripeSubscriptionId": { "type": "string" },
+        "subscriptionStatus": { "type": "string" },
+        "subscriptionPeriodEnd": { "type": "string" },
+        "trialEndDate": { "type": "string" }
       },
       "required": ["username", "avatarColor", "avatarType", "avatarVal", "groupIds", "activeGroupId"]
     },

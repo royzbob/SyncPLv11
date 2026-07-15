@@ -13,6 +13,8 @@ import {
   Play,
   Square,
   Sparkles,
+  CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 import { Channel, Room, UserProfile } from "../types";
 
@@ -38,6 +40,19 @@ interface SettingsViewProps {
   setVoiceName: (val: string) => void;
   vocalPrompt: string;
   setVocalPrompt: (val: string) => void;
+  subscriptionState: {
+    isPremium: boolean;
+    daysRemaining: number;
+    isExpired: boolean;
+    status: string;
+  };
+  stripeConfig: {
+    stripeConfigured: boolean;
+    publishableKey: string;
+  };
+  onSubscribe: () => Promise<void>;
+  onManageBilling: () => Promise<void>;
+  onSimulatePremium: () => Promise<void>;
 }
 
 export default function SettingsView({
@@ -57,6 +72,11 @@ export default function SettingsView({
   setVoiceName,
   vocalPrompt,
   setVocalPrompt,
+  subscriptionState,
+  stripeConfig,
+  onSubscribe,
+  onManageBilling,
+  onSimulatePremium,
 }: SettingsViewProps) {
   // Profile settings state
   const [username, setUsername] = useState(profile?.username || "");
@@ -265,15 +285,28 @@ export default function SettingsView({
     };
   }, []);
 
+  const formatSubscriptionDate = (dateStr?: string) => {
+    if (!dateStr) return "N/A";
+    try {
+      return new Date(dateStr).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6 overflow-y-auto h-full text-[#DCDDDE]">
+    <div className="p-4 md:p-6 space-y-6 overflow-y-auto h-full text-[#DCDDDE] pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h3 className="font-black text-2xl text-white tracking-tight">
             Workspace Configuration Hub
           </h3>
           <p className="text-xs text-[#8E9297] mt-1">
-            Configure trade channels, custom profile tags, and test the vocal speech advisor.
+            Configure trade channels, custom profile tags, manage subscription billing plans, and test the vocal speech advisor.
           </p>
         </div>
       </div>
@@ -624,7 +657,7 @@ export default function SettingsView({
                 <option value="">Default Microphone</option>
                 {audioDevices.map((device) => (
                   <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Microphone (${device.deviceId.substring(0, 5)})`}
+                     {device.label || `Microphone (${device.deviceId.substring(0, 5)})`}
                   </option>
                 ))}
               </select>
@@ -728,6 +761,143 @@ export default function SettingsView({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Subscription & Premium Billing Panel */}
+      <div className="glass-panel p-6 rounded border border-[#2A2D31] space-y-6 shadow-xl relative overflow-hidden bg-gradient-to-r from-[#121417] to-[#1e2023]">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-48 h-48 bg-[#5865F2]/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-[#5865F2]/10 rounded-lg text-[#5865F2] border border-[#5865F2]/20">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-white text-base tracking-tight flex items-center gap-2">
+                  Subscription & Premium Billing
+                  {subscriptionState.isPremium && (
+                    <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold uppercase tracking-wider">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" /> Active Premium
+                    </span>
+                  )}
+                </h4>
+                <p className="text-xs text-[#8E9297] mt-0.5">
+                  Manage your institutional desk subscription, trial schedules, and safe Stripe invoice settlements.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0">
+            {subscriptionState.status === "active" ? (
+              <button
+                type="button"
+                onClick={onManageBilling}
+                className="bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-3 px-5 rounded-lg transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Settings className="w-4 h-4" />
+                Manage Customer Portal
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onSubscribe}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-3 px-5 rounded-lg transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  Subscribe with Stripe — $25/mo
+                </button>
+                {!stripeConfig.stripeConfigured && (
+                  <button
+                    type="button"
+                    onClick={onSimulatePremium}
+                    className="bg-[#1E2023] hover:bg-[#24272C] text-indigo-400 text-xs font-bold py-3 px-4 rounded-lg border border-[#2A2D31] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                    Simulate Premium
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-[#2A2D31] pt-5">
+          <div className="bg-[#121417] p-4 rounded-lg border border-[#2A2D31]/60">
+            <span className="text-[10px] font-bold text-[#8E9297] uppercase tracking-wider block">
+              Plan Tier Status
+            </span>
+            <div className="mt-1.5 flex items-center gap-2">
+              {subscriptionState.status === "active" ? (
+                <span className="text-sm font-black text-emerald-400 tracking-tight">
+                  Premium Enterprise
+                </span>
+              ) : subscriptionState.isExpired ? (
+                <span className="text-sm font-black text-rose-400 tracking-tight">
+                  Free Trial Expired
+                </span>
+              ) : (
+                <span className="text-sm font-black text-indigo-400 tracking-tight">
+                  30-Day Free Trial
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#8E9297] mt-1.5 leading-relaxed">
+              {subscriptionState.status === "active"
+                ? "Full unrestricted access to premium real-time charts, voice diagnostics, and trade log groups."
+                : subscriptionState.isExpired
+                ? "Your trial period has concluded. Link your Stripe account above to reactivate active rooms and chat logs."
+                : "Active free sandbox period. Fully functional access to risk diagnostic tools with no payment upfront."}
+            </p>
+          </div>
+
+          <div className="bg-[#121417] p-4 rounded-lg border border-[#2A2D31]/60">
+            <span className="text-[10px] font-bold text-[#8E9297] uppercase tracking-wider block">
+              Trial Expiration Schedule
+            </span>
+            <span className="text-sm font-black text-white tracking-tight block mt-1.5">
+              {profile?.trialEndDate ? formatSubscriptionDate(profile.trialEndDate) : "No Active Trial"}
+            </span>
+            <p className="text-[11px] text-[#8E9297] mt-1.5 leading-relaxed">
+              {!subscriptionState.isExpired && subscriptionState.status === "trialing" ? (
+                <span className="text-amber-400 font-semibold">
+                  ⏳ {subscriptionState.daysRemaining} days left in your free trial period.
+                </span>
+              ) : subscriptionState.status === "active" ? (
+                <span className="text-emerald-400 font-semibold">
+                  ✓ Succeeded with first month free. Standard recurring billed.
+                </span>
+              ) : (
+                <span className="text-rose-400 font-semibold">
+                  ✕ Trial period expired. Standard logs are read-only.
+                </span>
+              )}
+            </p>
+          </div>
+
+          <div className="bg-[#121417] p-4 rounded-lg border border-[#2A2D31]/60">
+            <span className="text-[10px] font-bold text-[#8E9297] uppercase tracking-wider block">
+              Billing Settlement Rate
+            </span>
+            <span className="text-sm font-black text-white tracking-tight block mt-1.5">
+              $25.00 <span className="text-xs text-[#8E9297] font-normal">USD / month</span>
+            </span>
+            <p className="text-[11px] text-[#8E9297] mt-1.5 leading-relaxed">
+              Billed monthly. First month (30 days) is fully free. Cancel anytime through your self-serve customer portal.
+            </p>
+          </div>
+        </div>
+
+        {!stripeConfig.stripeConfigured && (
+          <div className="bg-[#5865F2]/5 border border-[#5865F2]/20 rounded-lg p-3 flex items-center gap-2.5">
+            <span className="text-base shrink-0">⚙️</span>
+            <p className="text-[11px] text-indigo-300 leading-normal">
+              <strong>Developer Sandbox Active:</strong> Stripe keys are not yet provided in the `.env` settings. Click <strong>"Simulate Premium"</strong> above to instantly unlock premium subscription state toggles and explore the workflow!
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

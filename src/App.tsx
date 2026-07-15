@@ -36,6 +36,10 @@ import {
   ChevronRight,
   MessageSquare,
   ArrowLeft,
+  CreditCard,
+  ShieldCheck,
+  Clock,
+  Settings,
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
@@ -223,6 +227,78 @@ export default function App() {
     };
   }, [currentUser, activeVoiceChannel, isMuted]);
 
+  // Stripe & Subscription state
+  const [stripeConfig, setStripeConfig] = useState<{ stripeConfigured: boolean; publishableKey: string }>({
+    stripeConfigured: false,
+    publishableKey: "",
+  });
+
+  useEffect(() => {
+    fetch("/api/payment/config")
+      .then((res) => res.json())
+      .then((data) => setStripeConfig(data))
+      .catch((err) => console.warn("Failed to load Stripe configuration info:", err));
+  }, []);
+
+  const subscriptionState = useMemo(() => {
+    if (!profile) return { isPremium: true, daysRemaining: 30, isExpired: false, status: "none" };
+
+    if (profile.subscriptionStatus === "active") {
+      return { isPremium: true, daysRemaining: 0, isExpired: false, status: "active" };
+    }
+
+    const trialEnd = profile.trialEndDate ? new Date(profile.trialEndDate).getTime() : 0;
+    const now = Date.now();
+    const isExpired = now >= trialEnd;
+    const daysRemaining = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
+
+    return {
+      isPremium: !isExpired && profile.subscriptionStatus === "trialing",
+      daysRemaining,
+      isExpired,
+      status: profile.subscriptionStatus || "none",
+    };
+  }, [profile]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get("success") === "true";
+    const sessionId = params.get("session_id");
+
+    if (success && sessionId && currentUser) {
+      triggerToast("Activating...", "Verifying your checkout session with Stripe...", "info");
+      fetch("/api/payment/verify-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, userId: currentUser.uid }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("Verification failed");
+          return res.json();
+        })
+        .then((data) => {
+          if (data.success) {
+            triggerToast("Subscription Activated", "Welcome to SyncPL Premium! Enjoy full workspace tools.", "success");
+          } else {
+            triggerToast("Activation Issue", "Subscription verification returned an unresolved status.", "info");
+          }
+        })
+        .catch((err) => {
+          console.error("Error verifying subscription session:", err);
+          triggerToast("Activation Failed", "Could not verify subscription automatically. Please contact desk support.", "error");
+        })
+        .finally(() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    } else if (success && !sessionId) {
+      triggerToast("Subscription Activated", "Welcome to SyncPL Premium! Enjoy full workspace tools.", "success");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (params.get("canceled") === "true") {
+      triggerToast("Checkout Canceled", "Subscription setup was canceled. You remain on the Free Trial tier.", "info");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [currentUser]);
+
   // Navigation tab & Tickers
   const [activeTab, setActiveTab] = useState("dashboard");
   const [tickers, setTickers] = useState<TickerInfo[]>(initialTickers);
@@ -230,6 +306,7 @@ export default function App() {
   // Modals status
   const [isJoinCreateOpen, setIsJoinCreateOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [isMockPortalOpen, setIsMockPortalOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [renameNewName, setRenameNewName] = useState("");
@@ -502,9 +579,28 @@ export default function App() {
 
       if (snap.exists()) {
         currentProfile = snap.data() as UserProfile;
+        let needsUpdate = false;
+        if (!currentProfile.createdAt) {
+          currentProfile.createdAt = new Date().toISOString();
+          needsUpdate = true;
+        }
+        if (!currentProfile.trialEndDate) {
+          const createdTime = currentProfile.createdAt ? new Date(currentProfile.createdAt).getTime() : Date.now();
+          currentProfile.trialEndDate = new Date(createdTime + 30 * 24 * 60 * 60 * 1000).toISOString();
+          needsUpdate = true;
+        }
+        if (!currentProfile.subscriptionStatus) {
+          currentProfile.subscriptionStatus = "trialing";
+          needsUpdate = true;
+        }
+        if (needsUpdate) {
+          await setDoc(profileRef, currentProfile, { merge: true });
+        }
       } else {
         // Create initial default profile
         const randomName = `Trader_${user.uid.substring(0, 5)}`;
+        const now = new Date();
+        const trialEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         currentProfile = {
           username: randomName,
           avatarColor: "indigo",
@@ -512,6 +608,9 @@ export default function App() {
           avatarVal: "🐂",
           groupIds: [],
           activeGroupId: "",
+          createdAt: now.toISOString(),
+          trialEndDate: trialEnd.toISOString(),
+          subscriptionStatus: "trialing",
         };
         await setDoc(profileRef, currentProfile);
       }
@@ -1015,6 +1114,105 @@ export default function App() {
     triggerToast("Channel Renamed", `Updated to #${formatted}`, "success");
   };
 
+  // Stripe & Billing actions
+  const handleSubscribe = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch("/api/payment/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser.uid, userEmail: currentUser.email }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || "Failed to start checkout session.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Checkout Failed", err.message || "Ensure your backend is running and configured.", "error");
+    }
+  };
+
+  const handleManageBilling = async () => {
+    if (!profile?.stripeCustomerId || !stripeConfig.stripeConfigured) {
+      setIsMockPortalOpen(true);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/payment/portal-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          stripeCustomerId: profile?.stripeCustomerId || "", 
+          userId: currentUser?.uid, 
+          userEmail: currentUser?.email 
+        }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || "Failed to launch billing portal.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.message && (err.message.includes("Customer ID") || err.message.includes("not found"))) {
+        setIsMockPortalOpen(true);
+      } else {
+        triggerToast("Portal Failed", err.message || "Failed to load billing portal.", "error");
+      }
+    }
+  };
+
+  const handleMockCancelSubscription = async () => {
+    if (!currentUser) return;
+    try {
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        subscriptionStatus: "canceled",
+        subscriptionPeriodEnd: new Date(Date.now() - 1000).toISOString(),
+        trialEndDate: new Date(Date.now() - 1000).toISOString(), // expire trial too
+      });
+      triggerToast("Plan Terminated", "Simulated premium subscription canceled and expired immediately.", "info");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Error", "Failed to cancel simulated subscription.", "error");
+    }
+  };
+
+  const handleMockRenewSubscription = async () => {
+    if (!currentUser) return;
+    try {
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        subscriptionStatus: "active",
+        subscriptionPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      triggerToast("Plan Renewed", "Simulated premium plan renewed for 30 days!", "success");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Error", "Failed to renew simulated subscription.", "error");
+    }
+  };
+
+  const handleSimulatePremium = async () => {
+    if (!currentUser) return;
+    try {
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        subscriptionStatus: "active",
+        subscriptionPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      triggerToast("Sandbox Activated", "Your account has been simulated to Premium successfully!", "success");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Sandbox Failed", err.message || "Failed to update subscription locally.", "error");
+    }
+  };
+
   // Profile configuration updates
   const handleUpdateProfile = async (
     newName: string,
@@ -1037,6 +1235,12 @@ export default function App() {
   const handleLogTradeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !activeRoom) return;
+
+    if (subscriptionState.isExpired) {
+      triggerToast("Premium Required", "Your free trial period has ended. Please subscribe to continue logging trades.", "error");
+      setIsLogModalOpen(false);
+      return;
+    }
 
     const parsedAmount = Math.abs(parseFloat(logAmount));
     if (isNaN(parsedAmount)) return;
@@ -1111,6 +1315,12 @@ export default function App() {
   // Checklist Rule Actions
   const handleAddRule = async (text: string) => {
     if (!activeRoom) return;
+
+    if (subscriptionState.isExpired) {
+      triggerToast("Premium Required", "Your free trial period has ended. Please subscribe to continue editing your checklist.", "error");
+      return;
+    }
+
     const trimmed = text.trim();
     const isDuplicate = tradingRules.some(r => r.text.trim().toLowerCase() === trimmed.toLowerCase());
     if (isDuplicate) {
@@ -1212,6 +1422,11 @@ export default function App() {
     notes: string;
   }) => {
     if (!currentUser || !activeRoom) return;
+
+    if (subscriptionState.isExpired) {
+      triggerToast("Premium Required", "Your free trial period has ended. Please subscribe to continue deploying positions.", "error");
+      return;
+    }
 
     const tradePayload = {
       userId: currentUser.uid,
@@ -1895,6 +2110,11 @@ export default function App() {
                       setVoiceName={setVoiceName}
                       vocalPrompt={vocalPrompt}
                       setVocalPrompt={setVocalPrompt}
+                      subscriptionState={subscriptionState}
+                      stripeConfig={stripeConfig}
+                      onSubscribe={handleSubscribe}
+                      onManageBilling={handleManageBilling}
+                      onSimulatePremium={handleSimulatePremium}
                     />
                   )}
                 </div>
@@ -2253,6 +2473,139 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Simulated Stripe Billing Portal Modal */}
+          {isMockPortalOpen && (
+            <div className="fixed inset-0 z-50 bg-[#0F1113]/95 flex items-center justify-center p-4 backdrop-blur-md">
+              <div className="bg-[#121417] border border-[#2A2D31] rounded-xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
+                
+                {/* Header (Stripe Billing Portal Style) */}
+                <div className="p-6 bg-[#1E2023] border-b border-[#2A2D31] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-[#5865F2]/10 rounded-lg text-[#5865F2] border border-[#5865F2]/20">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-gray-100 text-sm tracking-wide uppercase">Stripe Billing Portal</h3>
+                      <p className="text-[10px] text-[#5865F2] font-extrabold tracking-wider uppercase">Sandbox Environment</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsMockPortalOpen(false)} 
+                    className="text-gray-400 hover:text-white transition p-1 hover:bg-[#2A2D31] rounded cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+                  
+                  {/* Explanatory Banner */}
+                  <div className="bg-[#5865F2]/5 border border-[#5865F2]/20 rounded-lg p-4 flex gap-3">
+                    <Info className="w-5 h-5 text-[#5865F2] shrink-0" />
+                    <p className="text-xs text-gray-300 leading-relaxed">
+                      You are viewing the <strong className="text-white">Simulated Stripe Customer Portal</strong>. Since this is an isolated sandbox workspace, real invoices and Stripe Customer IDs are bypassed. Use this controller to inspect active subscriptions and toggle trialing/expired constraints.
+                    </p>
+                  </div>
+
+                  {/* Customer Information Card */}
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-black uppercase text-[#8E9297] tracking-wider">Account Information</h4>
+                    <div className="bg-[#1E2023] border border-[#2A2D31] rounded-lg p-4 space-y-3 font-mono text-xs">
+                      <div className="flex justify-between border-b border-[#2A2D31]/50 pb-2">
+                        <span className="text-[#8E9297]">Customer Email:</span>
+                        <span className="text-white font-medium">{currentUser?.email || "1NathanDrew6@gmail.com"}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-[#2A2D31]/50 pb-2">
+                        <span className="text-[#8E9297]">Billing ID:</span>
+                        <span className="text-[#5865F2] font-semibold">cus_sandbox_SyncPL_{currentUser?.uid.substring(0, 8)}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-[#2A2D31]/50 pb-2">
+                        <span className="text-[#8E9297]">Payment Method:</span>
+                        <span className="text-white flex items-center gap-1">💳 Visa ending in 4242</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#8E9297]">Active Tier:</span>
+                        <span className="text-emerald-400 font-bold uppercase flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5" /> SyncPL Pro
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Current Plan Details */}
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-black uppercase text-[#8E9297] tracking-wider">Subscription & Status</h4>
+                    <div className="bg-[#1E2023] border border-[#2A2D31] rounded-lg p-4 flex items-center justify-between">
+                      <div className="space-y-1">
+                        <span className="text-xs font-bold text-white block">SyncPL Institutional License</span>
+                        <div className="flex items-center gap-1.5 text-xs text-[#8E9297]">
+                          <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>
+                            {subscriptionState.isExpired 
+                              ? "Expired / Suspended" 
+                              : `Renews on ${profile?.subscriptionPeriodEnd ? new Date(profile.subscriptionPeriodEnd).toLocaleDateString() : "N/A"}`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-black text-white block">$25.00</span>
+                        <span className="text-[10px] font-bold text-[#8E9297] uppercase">Per Month</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Simulated Action Area */}
+                  <div className="space-y-2 pt-2 border-t border-[#2A2D31]">
+                    <span className="block text-[10px] font-black uppercase text-[#8E9297] tracking-wider mb-2">Sandbox Simulators</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      
+                      {subscriptionState.isExpired ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleMockRenewSubscription();
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          Renew / Restore Plan
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleMockCancelSubscription();
+                          }}
+                          className="bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 font-bold text-xs py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        >
+                          <AlertTriangle className="w-4 h-4" />
+                          Simulate Plan Cancellation
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setIsMockPortalOpen(false)}
+                        className="bg-[#2A2D31] hover:bg-[#32363b] text-gray-200 font-bold text-xs py-3 px-4 rounded-lg transition flex items-center justify-center cursor-pointer shadow-sm"
+                      >
+                        Return to SyncPL
+                      </button>
+
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Footer */}
+                <div className="bg-[#1E2023] p-4 border-t border-[#2A2D31] flex justify-between items-center text-[10px] text-[#8E9297]">
+                  <span>🔒 Secure Sandbox SSL Link Established</span>
+                  <span className="font-mono">SyncPL Dev 2026</span>
+                </div>
+
               </div>
             </div>
           )}

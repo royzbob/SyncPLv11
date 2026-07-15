@@ -15,6 +15,11 @@ export interface UserProfile {
   groupIds: string[];
   activeGroupId: string;
   createdAt?: string;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  subscriptionStatus?: "trialing" | "active" | "canceled" | "past_due" | "unpaid" | "none";
+  subscriptionPeriodEnd?: string;
+  trialEndDate?: string;
 }
 
 export interface PnlLog {

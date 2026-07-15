@@ -8,7 +8,7 @@ service cloud.firestore {
 
     // Profiles
     match /users/{userId}/profile/info {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
     // Users (base collection query/read)
