@@ -228,10 +228,6 @@ export default function App() {
   }, [currentUser, activeVoiceChannel, isMuted]);
 
   // Stripe & Subscription state
-  const [customApiUrl, setCustomApiUrl] = useState<string>(() => {
-    return localStorage.getItem("syncpl_custom_api_url") || "";
-  });
-
   const getApiUrl = (path: string): string => {
     const isTauri = typeof window !== "undefined" && (
       (window as any).__TAURI__ || 
@@ -242,10 +238,8 @@ export default function App() {
     );
 
     if (isTauri) {
-      if (customApiUrl) {
-        return `${customApiUrl.replace(/\/$/, "")}${path}`;
-      }
-      return `https://ais-pre-xnvqqymkqsq3dfmi7u62th-361590815324.us-west2.run.app${path}`;
+      const baseUrl = ((import.meta as any).env.VITE_API_URL || "https://ais-pre-xnvqqymkqsq3dfmi7u62th-361590815324.us-west2.run.app").replace(/\/$/, "");
+      return `${baseUrl}${path}`;
     }
     return path;
   };
@@ -263,16 +257,7 @@ export default function App() {
       })
       .then((data) => setStripeConfig(data))
       .catch((err) => console.warn("Failed to load Stripe configuration info:", err));
-  }, [customApiUrl]);
-
-  const handleUpdateCustomApiUrl = (val: string) => {
-    setCustomApiUrl(val);
-    if (val) {
-      localStorage.setItem("syncpl_custom_api_url", val);
-    } else {
-      localStorage.removeItem("syncpl_custom_api_url");
-    }
-  };
+  }, []);
 
   const subscriptionState = useMemo(() => {
     if (!profile) return { isPremium: true, daysRemaining: 30, isExpired: false, status: "none" };
@@ -340,7 +325,6 @@ export default function App() {
   // Modals status
   const [isJoinCreateOpen, setIsJoinCreateOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [isMockPortalOpen, setIsMockPortalOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [renameNewName, setRenameNewName] = useState("");
@@ -1170,8 +1154,12 @@ export default function App() {
   };
 
   const handleManageBilling = async () => {
-    if (!profile?.stripeCustomerId || !stripeConfig.stripeConfigured) {
-      setIsMockPortalOpen(true);
+    if (!stripeConfig.stripeConfigured) {
+      triggerToast("Billing Error", "Stripe configuration is missing on the server.", "error");
+      return;
+    }
+    if (!profile?.stripeCustomerId) {
+      triggerToast("No Active Plan", "We couldn't locate an active Stripe Customer ID for your account. Please complete checkout first.", "info");
       return;
     }
 
@@ -1193,57 +1181,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      if (err.message && (err.message.includes("Customer ID") || err.message.includes("not found"))) {
-        setIsMockPortalOpen(true);
-      } else {
-        triggerToast("Portal Failed", err.message || "Failed to load billing portal.", "error");
-      }
-    }
-  };
-
-  const handleMockCancelSubscription = async () => {
-    if (!currentUser) return;
-    try {
-      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
-      await updateDoc(profileRef, {
-        subscriptionStatus: "canceled",
-        subscriptionPeriodEnd: new Date(Date.now() - 1000).toISOString(),
-        trialEndDate: new Date(Date.now() - 1000).toISOString(), // expire trial too
-      });
-      triggerToast("Plan Terminated", "Simulated premium subscription canceled and expired immediately.", "info");
-    } catch (err: any) {
-      console.error(err);
-      triggerToast("Error", "Failed to cancel simulated subscription.", "error");
-    }
-  };
-
-  const handleMockRenewSubscription = async () => {
-    if (!currentUser) return;
-    try {
-      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
-      await updateDoc(profileRef, {
-        subscriptionStatus: "active",
-        subscriptionPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      });
-      triggerToast("Plan Renewed", "Simulated premium plan renewed for 30 days!", "success");
-    } catch (err: any) {
-      console.error(err);
-      triggerToast("Error", "Failed to renew simulated subscription.", "error");
-    }
-  };
-
-  const handleSimulatePremium = async () => {
-    if (!currentUser) return;
-    try {
-      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
-      await updateDoc(profileRef, {
-        subscriptionStatus: "active",
-        subscriptionPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      });
-      triggerToast("Sandbox Activated", "Your account has been simulated to Premium successfully!", "success");
-    } catch (err: any) {
-      console.error(err);
-      triggerToast("Sandbox Failed", err.message || "Failed to update subscription locally.", "error");
+      triggerToast("Portal Failed", err.message || "Failed to load billing portal.", "error");
     }
   };
 
@@ -2148,9 +2086,6 @@ export default function App() {
                       stripeConfig={stripeConfig}
                       onSubscribe={handleSubscribe}
                       onManageBilling={handleManageBilling}
-                      onSimulatePremium={handleSimulatePremium}
-                      customApiUrl={customApiUrl}
-                      onUpdateCustomApiUrl={handleUpdateCustomApiUrl}
                     />
                   )}
                 </div>
@@ -2509,139 +2444,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Simulated Stripe Billing Portal Modal */}
-          {isMockPortalOpen && (
-            <div className="fixed inset-0 z-50 bg-[#0F1113]/95 flex items-center justify-center p-4 backdrop-blur-md">
-              <div className="bg-[#121417] border border-[#2A2D31] rounded-xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col">
-                
-                {/* Header (Stripe Billing Portal Style) */}
-                <div className="p-6 bg-[#1E2023] border-b border-[#2A2D31] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#5865F2]/10 rounded-lg text-[#5865F2] border border-[#5865F2]/20">
-                      <CreditCard className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-black text-gray-100 text-sm tracking-wide uppercase">Stripe Billing Portal</h3>
-                      <p className="text-[10px] text-[#5865F2] font-extrabold tracking-wider uppercase">Sandbox Environment</p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setIsMockPortalOpen(false)} 
-                    className="text-gray-400 hover:text-white transition p-1 hover:bg-[#2A2D31] rounded cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-                  
-                  {/* Explanatory Banner */}
-                  <div className="bg-[#5865F2]/5 border border-[#5865F2]/20 rounded-lg p-4 flex gap-3">
-                    <Info className="w-5 h-5 text-[#5865F2] shrink-0" />
-                    <p className="text-xs text-gray-300 leading-relaxed">
-                      You are viewing the <strong className="text-white">Simulated Stripe Customer Portal</strong>. Since this is an isolated sandbox workspace, real invoices and Stripe Customer IDs are bypassed. Use this controller to inspect active subscriptions and toggle trialing/expired constraints.
-                    </p>
-                  </div>
-
-                  {/* Customer Information Card */}
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-black uppercase text-[#8E9297] tracking-wider">Account Information</h4>
-                    <div className="bg-[#1E2023] border border-[#2A2D31] rounded-lg p-4 space-y-3 font-mono text-xs">
-                      <div className="flex justify-between border-b border-[#2A2D31]/50 pb-2">
-                        <span className="text-[#8E9297]">Customer Email:</span>
-                        <span className="text-white font-medium">{currentUser?.email || "1NathanDrew6@gmail.com"}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#2A2D31]/50 pb-2">
-                        <span className="text-[#8E9297]">Billing ID:</span>
-                        <span className="text-[#5865F2] font-semibold">cus_sandbox_SyncPL_{currentUser?.uid.substring(0, 8)}</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#2A2D31]/50 pb-2">
-                        <span className="text-[#8E9297]">Payment Method:</span>
-                        <span className="text-white flex items-center gap-1">💳 Visa ending in 4242</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#8E9297]">Active Tier:</span>
-                        <span className="text-emerald-400 font-bold uppercase flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5" /> SyncPL Pro
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Current Plan Details */}
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-black uppercase text-[#8E9297] tracking-wider">Subscription & Status</h4>
-                    <div className="bg-[#1E2023] border border-[#2A2D31] rounded-lg p-4 flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-xs font-bold text-white block">SyncPL Institutional License</span>
-                        <div className="flex items-center gap-1.5 text-xs text-[#8E9297]">
-                          <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>
-                            {subscriptionState.isExpired 
-                              ? "Expired / Suspended" 
-                              : `Renews on ${profile?.subscriptionPeriodEnd ? new Date(profile.subscriptionPeriodEnd).toLocaleDateString() : "N/A"}`}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm font-black text-white block">$25.00</span>
-                        <span className="text-[10px] font-bold text-[#8E9297] uppercase">Per Month</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Simulated Action Area */}
-                  <div className="space-y-2 pt-2 border-t border-[#2A2D31]">
-                    <span className="block text-[10px] font-black uppercase text-[#8E9297] tracking-wider mb-2">Sandbox Simulators</span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      
-                      {subscriptionState.isExpired ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleMockRenewSubscription();
-                          }}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          Renew / Restore Plan
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleMockCancelSubscription();
-                          }}
-                          className="bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 font-bold text-xs py-3 px-4 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                        >
-                          <AlertTriangle className="w-4 h-4" />
-                          Simulate Plan Cancellation
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => setIsMockPortalOpen(false)}
-                        className="bg-[#2A2D31] hover:bg-[#32363b] text-gray-200 font-bold text-xs py-3 px-4 rounded-lg transition flex items-center justify-center cursor-pointer shadow-sm"
-                      >
-                        Return to SyncPL
-                      </button>
-
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Footer */}
-                <div className="bg-[#1E2023] p-4 border-t border-[#2A2D31] flex justify-between items-center text-[10px] text-[#8E9297]">
-                  <span>🔒 Secure Sandbox SSL Link Established</span>
-                  <span className="font-mono">SyncPL Dev 2026</span>
-                </div>
-
               </div>
             </div>
           )}

@@ -52,9 +52,6 @@ interface SettingsViewProps {
   };
   onSubscribe: () => Promise<void>;
   onManageBilling: () => Promise<void>;
-  onSimulatePremium: () => Promise<void>;
-  customApiUrl: string;
-  onUpdateCustomApiUrl: (val: string) => void;
 }
 
 export default function SettingsView({
@@ -78,9 +75,6 @@ export default function SettingsView({
   stripeConfig,
   onSubscribe,
   onManageBilling,
-  onSimulatePremium,
-  customApiUrl,
-  onUpdateCustomApiUrl,
 }: SettingsViewProps) {
   // Profile settings state
   const [username, setUsername] = useState(profile?.username || "");
@@ -804,26 +798,14 @@ export default function SettingsView({
                 Manage Customer Portal
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onSubscribe}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-3 px-5 rounded-lg transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  Subscribe with Stripe — $25/mo
-                </button>
-                {!stripeConfig.stripeConfigured && (
-                  <button
-                    type="button"
-                    onClick={onSimulatePremium}
-                    className="bg-[#1E2023] hover:bg-[#24272C] text-indigo-400 text-xs font-bold py-3 px-4 rounded-lg border border-[#2A2D31] transition flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-indigo-400" />
-                    Simulate Premium
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={onSubscribe}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold py-3 px-5 rounded-lg transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <CreditCard className="w-4 h-4" />
+                Subscribe with Stripe — $25/mo
+              </button>
             )}
           </div>
         </div>
@@ -898,40 +880,10 @@ export default function SettingsView({
           <div className="bg-[#5865F2]/5 border border-[#5865F2]/20 rounded-lg p-3 flex items-center gap-2.5">
             <span className="text-base shrink-0">⚙️</span>
             <p className="text-[11px] text-indigo-300 leading-normal">
-              <strong>Developer Sandbox Active:</strong> Stripe keys are not yet provided in the `.env` settings. Click <strong>"Simulate Premium"</strong> above to instantly unlock premium subscription state toggles and explore the workflow!
+              <strong>Stripe Key Configuration Required:</strong> To activate direct checkout sessions, please ensure your Stripe Publishable and Secret Keys are correctly configured in your server's .env file.
             </p>
           </div>
         )}
-
-        <div className="border-t border-[#2A2D31] pt-5 space-y-3">
-          <div>
-            <label className="block text-[10px] font-bold text-[#8E9297] uppercase mb-1.5 tracking-wider">
-              Tauri Desktop API Endpoint
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={customApiUrl}
-                onChange={(e) => onUpdateCustomApiUrl(e.target.value)}
-                placeholder="https://ais-pre-xnvqqymkqsq3dfmi7u62th-361590815324.us-west2.run.app"
-                className="flex-1 bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2] font-mono placeholder-[#4F545C]"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  onUpdateCustomApiUrl("");
-                  alert("Reset to default cloud service URL!");
-                }}
-                className="bg-[#1E2023] hover:bg-[#24272C] text-[#8E9297] hover:text-white text-xs px-3 rounded border border-[#2A2D31] transition whitespace-nowrap"
-              >
-                Reset Default
-              </button>
-            </div>
-            <p className="text-[10px] text-[#8E9297] mt-1.5 leading-relaxed">
-              When compiled into a Windows native app, relative API routes resolve locally. Use this field to map client-side checkout and invoicing nodes to your hosted cloud server. (Default: <code>https://ais-pre-xnvqqymkqsq3dfmi7u62th-361590815324.us-west2.run.app</code>)
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
