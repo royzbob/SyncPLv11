@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -8,6 +8,8 @@ import {
   Percent,
   TrendingUp as ProfitIcon,
   BarChart2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -71,11 +73,44 @@ export default function DashboardView({ pnlLogs, userId }: DashboardViewProps) {
     };
   }, [userLogs]);
 
-  // 2. Compute Heatmap Calendar Grid for Current Month
+  // 2. Compute Heatmap Calendar Grid for Selected Month
+  const [calDate, setCalDate] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+
+  const handlePrevMonth = () => {
+    setCalDate((prev) => {
+      let m = prev.month - 1;
+      let y = prev.year;
+      if (m < 0) {
+        m = 11;
+        y -= 1;
+      }
+      return { year: y, month: m };
+    });
+  };
+
+  const handleNextMonth = () => {
+    setCalDate((prev) => {
+      let m = prev.month + 1;
+      let y = prev.year;
+      if (m > 11) {
+        m = 0;
+        y += 1;
+      }
+      return { year: y, month: m };
+    });
+  };
+
+  const handleCurrentMonth = () => {
+    const now = new Date();
+    setCalDate({ year: now.getFullYear(), month: now.getMonth() });
+  };
+
   const heatmapDays = useMemo(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth(); // 0-indexed
+    const year = calDate.year;
+    const month = calDate.month; // 0-indexed
 
     const firstDay = new Date(year, month, 1);
     // getDay returns 0 for Sunday, we map Monday to index 0, Sunday to 6
@@ -99,15 +134,17 @@ export default function DashboardView({ pnlLogs, userId }: DashboardViewProps) {
       }
     });
 
+    const tempDate = new Date(year, month, 1);
+
     return {
       startDayIndex,
       totalDays,
       dailyPnLMap,
-      monthName: today.toLocaleString("default", { month: "long" }),
+      monthName: tempDate.toLocaleString("default", { month: "long" }),
       year,
       month,
     };
-  }, [pnlLogs]);
+  }, [pnlLogs, calDate]);
 
   // 3. Strategy aggregates table
   const strategyStats = useMemo(() => {
@@ -313,15 +350,42 @@ export default function DashboardView({ pnlLogs, userId }: DashboardViewProps) {
 
       {/* Monthly Heatmap Calendar */}
       <div className="glass-panel p-6 rounded relative overflow-hidden">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div>
-            <h3 className="font-bold text-gray-100 text-lg flex items-center gap-2">
-              <Calendar className="text-indigo-400 w-5 h-5" />
-              Consistency Calendar ({heatmapDays.monthName} {heatmapDays.year})
-            </h3>
-            <p className="text-xs text-[#8E9297] mt-1">
-              Visualizing win/loss habit chains of all traders in this room. Profit is green, loss is red,flat is grey.
-            </p>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div>
+              <h3 className="font-bold text-gray-100 text-lg flex items-center gap-2">
+                <Calendar className="text-indigo-400 w-5 h-5" />
+                Consistency Calendar ({heatmapDays.monthName} {heatmapDays.year})
+              </h3>
+              <p className="text-xs text-[#8E9297] mt-1">
+                Visualizing win/loss habit chains of all traders in this room. Profit is green, loss is red, flat is grey.
+              </p>
+            </div>
+
+            {/* Navigation buttons */}
+            <div className="flex items-center gap-1 bg-[#08090A]/80 border border-[#2A2D31] rounded-lg p-1">
+              <button
+                onClick={handlePrevMonth}
+                className="p-1 hover:bg-[#2A2D31] text-gray-400 hover:text-white rounded transition"
+                title="Previous Month"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleCurrentMonth}
+                className="px-2.5 py-0.5 text-[10px] font-bold text-indigo-400 hover:bg-[#2A2D31] rounded transition uppercase"
+                title="Reset to current month"
+              >
+                Today
+              </button>
+              <button
+                onClick={handleNextMonth}
+                className="p-1 hover:bg-[#2A2D31] text-gray-400 hover:text-white rounded transition"
+                title="Next Month"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="flex items-center space-x-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-[#08090A]/80 px-3 py-1.5 rounded border border-[#2A2D31]">
             <div className="flex items-center gap-1.5">
@@ -376,15 +440,17 @@ export default function DashboardView({ pnlLogs, userId }: DashboardViewProps) {
                 }
               }
 
+              const now = new Date();
               const isToday =
-                new Date().getDate() === dayNum &&
-                new Date().getMonth() === heatmapDays.month;
+                now.getDate() === dayNum &&
+                now.getMonth() === heatmapDays.month &&
+                now.getFullYear() === heatmapDays.year;
 
               return (
                 <div
                   key={`day-${dayNum}`}
                   className={`h-11 rounded flex flex-col justify-center items-center select-none transition cursor-help ${cellClass} ${
-                    isToday ? "ring-2 ring-indigo-500" : ""
+                    isToday ? "ring-2 ring-inset ring-indigo-500" : ""
                   }`}
                   title={
                     dayPnL !== undefined

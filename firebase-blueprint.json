@@ -15,7 +15,9 @@
         "stripeSubscriptionId": { "type": "string" },
         "subscriptionStatus": { "type": "string" },
         "subscriptionPeriodEnd": { "type": "string" },
-        "trialEndDate": { "type": "string" }
+        "trialEndDate": { "type": "string" },
+        "subscriptionTier": { "type": "string", "enum": ["free", "pro", "elite", "premium"] },
+        "earningsMRR": { "type": "number" }
       },
       "required": ["username", "avatarColor", "avatarType", "avatarVal", "groupIds", "activeGroupId"]
     },
@@ -28,7 +30,11 @@
         "creatorId": { "type": "string" },
         "creatorName": { "type": "string" },
         "moderators": { "type": "array" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string" },
+        "name": { "type": "string" },
+        "isPaid": { "type": "boolean" },
+        "monthlyPrice": { "type": "number" },
+        "subscribers": { "type": "array" }
       },
       "required": ["id", "creatorId", "creatorName", "moderators", "createdAt"]
     },
@@ -42,7 +48,8 @@
         "type": { "type": "string" },
         "groupId": { "type": "string" },
         "creatorId": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string" },
+        "pin": { "type": "string" }
       },
       "required": ["id", "name", "type", "groupId", "creatorId", "createdAt"]
     },
@@ -123,6 +130,25 @@
         "order": { "type": "number" }
       },
       "required": ["id", "roomId", "text", "createdAt", "order"]
+    },
+    "Friendship": {
+      "title": "Friendship",
+      "description": "Friend connection or pending request between two traders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderAvatarColor": { "type": "string" },
+        "senderAvatarVal": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "receiverName": { "type": "string" },
+        "receiverAvatarColor": { "type": "string" },
+        "receiverAvatarVal": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "receiverId", "receiverName", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -157,6 +183,10 @@
     "trading_rules/{ruleId}": {
       "schema": "TradingRule",
       "description": "Custom trading entry checklist rules per room"
+    },
+    "friendships/{friendshipId}": {
+      "schema": "Friendship",
+      "description": "Real-time user friendship records and requests"
     }
   }
 }

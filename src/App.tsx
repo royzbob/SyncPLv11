@@ -18,6 +18,7 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import {
   TrendingUp,
@@ -40,12 +41,18 @@ import {
   ShieldCheck,
   Clock,
   Settings,
+  Lock,
+  Bell,
+  Coins,
+  ExternalLink,
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
 import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule } from "./types";
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString } from "./utils/helpers";
 import { playJoinSound, playLeaveSound } from "./utils/audio";
+
+const isMobileOrTablet = typeof window !== "undefined" && (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 1024);
 
 // Firestore Error Logging Support for Security Rule Verification
 enum OperationType {
@@ -104,17 +111,34 @@ import ChatView from "./components/ChatView";
 import LeaderboardView from "./components/LeaderboardView";
 import LogsView from "./components/LogsView";
 import SettingsView from "./components/SettingsView";
-import LiveTradesView from "./components/LiveTradesView";
 import ChecklistView from "./components/ChecklistView";
+import FriendsView from "./components/FriendsView";
 
 export default function App() {
   // Authentication & Profile States
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [traders, setTraders] = useState<UserProfile[]>([]);
+  const [publicUsers, setPublicUsers] = useState<any[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
+
+  // Custom Bespoke Skin Selection (Elite Perk)
+  const [activeSkin, setActiveSkin] = useState<string>(() => {
+    return localStorage.getItem("syncpl_custom_skin") || "default";
+  });
+
+  useEffect(() => {
+    const handleSkinChange = () => {
+      const skin = localStorage.getItem("syncpl_custom_skin") || "default";
+      setActiveSkin(skin);
+    };
+    window.addEventListener("syncpl_skin_updated", handleSkinChange);
+    return () => {
+      window.removeEventListener("syncpl_skin_updated", handleSkinChange);
+    };
+  }, []);
 
   // Active room data subscriptions
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -125,10 +149,100 @@ export default function App() {
   const [activeVoiceChannel, setActiveVoiceChannel] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
+  const [isMutedAll, setIsMutedAll] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+
+  const [globalVolume, setGlobalVolume] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_global_volume");
+      return stored ? Number(stored) : 80;
+    } catch {
+      return 80;
+    }
+  });
+  const [inputVolume, setInputVolume] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_input_volume");
+      return stored ? Number(stored) : 80;
+    } catch {
+      return 80;
+    }
+  });
+  const [mutedUsers, setMutedUsers] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_muted_users");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [userVolumes, setUserVolumes] = useState<Record<string, number>>(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_user_volumes");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleMuteUser = (userId: string) => {
+    setMutedUsers((prev) => {
+      const updated = { ...prev, [userId]: !prev[userId] };
+      try {
+        localStorage.setItem("syncpl_muted_users", JSON.stringify(updated));
+      } catch (e) {
+        console.warn(e);
+      }
+      return updated;
+    });
+  };
+
+  const handleChangeUserVolume = (userId: string, volume: number) => {
+    setUserVolumes((prev) => {
+      const updated = { ...prev, [userId]: volume };
+      try {
+        localStorage.setItem("syncpl_user_volumes", JSON.stringify(updated));
+      } catch (e) {
+        console.warn(e);
+      }
+      return updated;
+    });
+  };
+
+  const handleChangeGlobalVolume = (volume: number) => {
+    setGlobalVolume(volume);
+    try {
+      localStorage.setItem("syncpl_global_volume", String(volume));
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const handleChangeInputVolume = (volume: number) => {
+    setInputVolume(volume);
+    try {
+      localStorage.setItem("syncpl_input_volume", String(volume));
+    } catch (e) {
+      console.warn(e);
+    }
+  };
 
   const [pnlLogs, setPnlLogs] = useState<PnlLog[]>([]);
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([]);
   const [tradingRules, setTradingRules] = useState<TradingRule[]>([]);
+
+  // PIN lock states
+  const [unlockedChannelIds, setUnlockedChannelIds] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem("unlocked_channels");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [pendingChannelToUnlock, setPendingChannelToUnlock] = useState<Channel | null>(null);
+  const [enteredPin, setEnteredPin] = useState("");
+  const [pinError, setPinError] = useState("");
 
   const prevVoiceUsersRef = useRef<VoiceUser[] | null>(null);
 
@@ -151,13 +265,19 @@ export default function App() {
       });
 
       if (joined) {
-        playJoinSound();
+        if (!isMutedAll && !isDeafened && !mutedUsers[joined.id]) {
+          const uVol = userVolumes[joined.id] !== undefined ? userVolumes[joined.id] : 100;
+          playJoinSound((globalVolume / 100) * (uVol / 100));
+        }
       } else if (left) {
-        playLeaveSound();
+        if (!isMutedAll && !isDeafened && !mutedUsers[left.id]) {
+          const uVol = userVolumes[left.id] !== undefined ? userVolumes[left.id] : 100;
+          playLeaveSound((globalVolume / 100) * (uVol / 100));
+        }
       }
     }
     prevVoiceUsersRef.current = voiceUsers;
-  }, [voiceUsers]);
+  }, [voiceUsers, isMutedAll, isDeafened, globalVolume, mutedUsers, userVolumes]);
 
   // Voice Activity Detection (VAD) loop using actual microphonic capture
   useEffect(() => {
@@ -204,7 +324,7 @@ export default function App() {
               console.warn("VAD Firestore update failed", err);
             }
           }
-        }, 150);
+        }, isMobileOrTablet ? 450 : 150);
       } catch (err) {
         console.warn("Could not initiate Voice Activity Detection loop", err);
       }
@@ -260,6 +380,9 @@ export default function App() {
   }, []);
 
   const subscriptionState = useMemo(() => {
+    if (currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com") {
+      return { isPremium: true, daysRemaining: 365, isExpired: false, status: "active" };
+    }
     if (!profile) return { isPremium: true, daysRemaining: 30, isExpired: false, status: "none" };
 
     if (profile.subscriptionStatus === "active") {
@@ -277,7 +400,7 @@ export default function App() {
       isExpired,
       status: profile.subscriptionStatus || "none",
     };
-  }, [profile]);
+  }, [profile, currentUser]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -361,7 +484,12 @@ export default function App() {
 
   // Responsive & Custom Channel Modals state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 1024;
+    }
+    return false;
+  });
   const [isChatSidePanelOpen, setIsChatSidePanelOpen] = useState(true);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
   const [createChannelType, setCreateChannelType] = useState<"text" | "voice">("text");
@@ -393,6 +521,20 @@ export default function App() {
       setToast(null);
     }, 3200);
   };
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsSidebarCollapsed(true);
+      } else {
+        setIsSidebarCollapsed(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    // Initial check on mount
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Fetch actual real-time market quotes from Yahoo Finance (via multi-tier CORS proxies with local fallbacks)
   const fetchRealMarketData = async () => {
@@ -546,12 +688,23 @@ export default function App() {
     // Initial fetch of actual real market rates
     fetchRealMarketData();
 
-    // Poll actual real APIs every 15 seconds to sync with true prices
+    const isPremiumTier = profile?.subscriptionStatus === "active" || profile?.subscriptionStatus === "trialing" || profile?.subscriptionTier === "premium" || profile?.subscriptionTier === "pro" || profile?.subscriptionTier === "elite";
+
+    // Dynamic speeds: Premium get 15s API polls (60s on mobile), Free get 30s API polls (90s on mobile)
+    const apiSpeed = isPremiumTier 
+      ? (isMobileOrTablet ? 60000 : 15000)
+      : (isMobileOrTablet ? 90000 : 30000);
+
+    // Dynamic tick simulation: Pro/Elite get 4s tape speed (12s on mobile), Free get 12s tape speed (36s on mobile)
+    const tickSpeed = isPremiumTier
+      ? (isMobileOrTablet ? 12000 : 4000)
+      : (isMobileOrTablet ? 36000 : 12000);
+
     const apiInterval = setInterval(() => {
       fetchRealMarketData();
-    }, 15000);
+    }, apiSpeed);
 
-    // Simulate micro tick changes on the UI every 4 seconds to keep the tape moving
+    // Simulate micro tick changes on the UI to keep the tape moving
     const tickInterval = setInterval(() => {
       setTickers((prev) =>
         prev.map((t) => {
@@ -562,13 +715,13 @@ export default function App() {
           return { ...t, price: newPrice, change: newChange };
         })
       );
-    }, 4000);
+    }, tickSpeed);
 
     return () => {
       clearInterval(apiInterval);
       clearInterval(tickInterval);
     };
-  }, []);
+  }, [profile?.subscriptionTier, profile?.subscriptionStatus, isMobileOrTablet]);
 
   // 1. Auth Observer
   useEffect(() => {
@@ -584,6 +737,13 @@ export default function App() {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  // Initialize Notification Permission
+  useEffect(() => {
+    if ("Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    }
   }, []);
 
   // 2. Initialize profile and rooms from database
@@ -607,7 +767,13 @@ export default function App() {
           currentProfile.trialEndDate = new Date(createdTime + 30 * 24 * 60 * 60 * 1000).toISOString();
           needsUpdate = true;
         }
-        if (!currentProfile.subscriptionStatus) {
+        if (user.email?.toLowerCase() === "1nathandrew6@gmail.com") {
+          if (currentProfile.subscriptionStatus !== "active" || currentProfile.subscriptionTier !== "premium") {
+            currentProfile.subscriptionStatus = "active";
+            currentProfile.subscriptionTier = "premium";
+            needsUpdate = true;
+          }
+        } else if (!currentProfile.subscriptionStatus) {
           currentProfile.subscriptionStatus = "trialing";
           needsUpdate = true;
         }
@@ -619,6 +785,7 @@ export default function App() {
         const randomName = `Trader_${user.uid.substring(0, 5)}`;
         const now = new Date();
         const trialEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const isCreator = user.email?.toLowerCase() === "1nathandrew6@gmail.com";
         currentProfile = {
           username: randomName,
           avatarColor: "indigo",
@@ -628,7 +795,8 @@ export default function App() {
           activeGroupId: "",
           createdAt: now.toISOString(),
           trialEndDate: trialEnd.toISOString(),
-          subscriptionStatus: "trialing",
+          subscriptionStatus: isCreator ? "active" : "trialing",
+          subscriptionTier: isCreator ? "premium" : "free",
         };
         await setDoc(profileRef, currentProfile);
       }
@@ -656,7 +824,14 @@ export default function App() {
     const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
     const unsubscribe = onSnapshot(profileRef, async (snap) => {
       if (snap.exists()) {
-        const updatedProfile = snap.data() as UserProfile;
+        let updatedProfile = snap.data() as UserProfile;
+        if (currentUser.email?.toLowerCase() === "1nathandrew6@gmail.com") {
+          updatedProfile = {
+            ...updatedProfile,
+            subscriptionStatus: "active",
+            subscriptionTier: "premium"
+          };
+        }
         setProfile(updatedProfile);
         if (updatedProfile.groupIds) {
           await fetchJoinedRooms(updatedProfile.groupIds, updatedProfile.activeGroupId);
@@ -673,12 +848,11 @@ export default function App() {
 
   const fetchJoinedRooms = async (groupIds: string[], activeGroupId: string) => {
     try {
-      const roomList: Room[] = [];
-      for (const gid of groupIds) {
+      const roomPromises = groupIds.map(async (gid) => {
         const roomRef = doc(db, "rooms", gid);
         const snap = await getDoc(roomRef);
         if (snap.exists()) {
-          roomList.push({ id: gid, ...snap.data() } as Room);
+          return { id: gid, ...snap.data() } as Room;
         } else {
           // Auto create missing rooms so data stays robust
           const newRoom: Room = {
@@ -689,9 +863,10 @@ export default function App() {
             createdAt: new Date().toISOString(),
           };
           await setDoc(roomRef, newRoom);
-          roomList.push(newRoom);
+          return newRoom;
         }
-      }
+      });
+      const roomList = await Promise.all(roomPromises);
       setRooms(roomList);
 
       const active = roomList.find((r) => r.id === activeGroupId) || roomList[0] || null;
@@ -720,14 +895,12 @@ export default function App() {
     const unsubscribers: (() => void)[] = [];
 
     // Observe channels
-    const channelsQuery = query(collection(db, "channels"));
+    const channelsQuery = query(collection(db, "channels"), where("groupId", "==", activeRoom.id));
     const unsubChannels = onSnapshot(channelsQuery, async (snapshot) => {
       const list: Channel[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
-        if (data.groupId === activeRoom.id) {
-          list.push({ id: d.id, ...data } as Channel);
-        }
+        list.push({ id: d.id, ...data } as Channel);
       });
       const sorted = list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       setChannels(sorted);
@@ -752,15 +925,39 @@ export default function App() {
     unsubscribers.push(unsubChannels);
 
     // Observe chat messages
-    const chatQuery = query(collection(db, "chat_messages"));
+    const chatQuery = query(collection(db, "chat_messages"), where("groupId", "==", activeRoom.id));
     const unsubChat = onSnapshot(chatQuery, (snapshot) => {
       const list: ChatMessage[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
-        if (data.groupId === activeRoom.id) {
-          list.push({ id: d.id, ...data } as ChatMessage);
+        list.push({ id: d.id, ...data } as ChatMessage);
+      });
+
+      // Browser Push Notifications on newly broadcasted trade logs or settlements
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const msg = change.doc.data();
+          if (msg.timestamp && new Date(msg.timestamp).getTime() > Date.now() - 15000) {
+            const text = msg.text || "";
+            const isTradeLog =
+              msg.isEmbed === true ||
+              msg.channel === "pnl-flex" ||
+              text.includes("logged a verified trade") ||
+              text.includes("🏁 POSITION CLOSED") ||
+              text.includes("🚨 LIVE POSITION DEPLOYED");
+
+            if (isTradeLog) {
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("Desk Trade Alert", {
+                  body: text || `${msg.username || "Trader"} posted a trade update.`,
+                  icon: "/app_icon.png"
+                });
+              }
+            }
+          }
         }
       });
+
       const sorted = list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       setChatMessages(sorted);
     }, (error) => {
@@ -772,14 +969,12 @@ export default function App() {
     unsubscribers.push(unsubChat);
 
     // Observe voice users
-    const voiceQuery = query(collection(db, "voice_users"));
+    const voiceQuery = query(collection(db, "voice_users"), where("groupId", "==", activeRoom.id));
     const unsubVoice = onSnapshot(voiceQuery, (snapshot) => {
       const list: VoiceUser[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
-        if (data.groupId === activeRoom.id) {
-          list.push({ id: d.id, ...data } as VoiceUser);
-        }
+        list.push({ id: d.id, ...data } as VoiceUser);
       });
       setVoiceUsers(list);
     }, (error) => {
@@ -790,13 +985,26 @@ export default function App() {
     });
     unsubscribers.push(unsubVoice);
 
+    // Observe all users to get their dynamic market presence, custom status, and avatars
+    const usersQuery = collection(db, "users");
+    const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...d.data() });
+      });
+      setPublicUsers(list);
+    }, (error) => {
+      console.error("Users onSnapshot error:", error);
+    });
+    unsubscribers.push(unsubUsers);
+
     // Observe PNL logs (excluding live trades)
-    const logsQuery = query(collection(db, "pnl_logs"));
+    const logsQuery = query(collection(db, "pnl_logs"), where("groupId", "==", activeRoom.id));
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const list: PnlLog[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
-        if (data.groupId === activeRoom.id && !data.isLive) {
+        if (!data.isLive) {
           list.push({ id: d.id, ...data } as PnlLog);
         }
       });
@@ -815,7 +1023,7 @@ export default function App() {
       const list: LiveTrade[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
-        if (data.groupId === activeRoom.id && data.isLive === true) {
+        if (data.isLive === true) {
           list.push({ id: d.id, ...data } as any as LiveTrade);
         }
       });
@@ -827,14 +1035,12 @@ export default function App() {
     unsubscribers.push(unsubLiveTrades);
 
     // Observe Trading Entry Checklist Rules
-    const rulesQuery = query(collection(db, "trading_rules"));
+    const rulesQuery = query(collection(db, "trading_rules"), where("roomId", "==", activeRoom.id));
     const unsubRules = onSnapshot(rulesQuery, (snapshot) => {
       const list: TradingRule[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
-        if (data.roomId === activeRoom.id) {
-          list.push({ id: d.id, ...data } as TradingRule);
-        }
+        list.push({ id: d.id, ...data } as TradingRule);
       });
       const sorted = list.sort((a, b) => a.order - b.order);
       setTradingRules(sorted);
@@ -843,42 +1049,87 @@ export default function App() {
     });
     unsubscribers.push(unsubRules);
 
-    // Simplify traders list: collect distinct traders names from pnl logs and active room participants
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, [currentUser?.uid, activeRoom?.id, pnlLogs.length]);
+
+  // Dynamically derive room traders with live presence, status, and custom settings
+  useEffect(() => {
+    if (!activeRoom) return;
+
     const derivedTraders: UserProfile[] = [];
+    const addedUsernames = new Set<string>();
+
+    // 1. Current user
+    const myUsername = profile?.username || "Me";
+    const myPublicInfo = publicUsers.find(u => u.uid === currentUser?.uid);
     derivedTraders.push({
-      username: profile?.username || "Me",
+      username: myUsername,
       avatarColor: profile?.avatarColor || "indigo",
       avatarType: profile?.avatarType || "emoji",
       avatarVal: profile?.avatarVal || "🐂",
       groupIds: profile?.groupIds || [],
       activeGroupId: activeRoom.id,
-    });
+      marketPresence: myPublicInfo?.marketPresence || "active",
+      customStatus: myPublicInfo?.customStatus || "",
+    } as any);
+    addedUsernames.add(myUsername.toLowerCase());
 
-    // Also parse other distinct traders inside pnl_logs
-    const parsedNames = new Set<string>();
-    pnlLogs.forEach((log) => {
-      if (log.username !== profile?.username) {
-        parsedNames.add(log.username);
+    // 2. Other users in the same active room (from Firestore users list)
+    publicUsers.forEach((user) => {
+      if (user.activeGroupId === activeRoom.id) {
+        const lowerName = (user.username || "").toLowerCase();
+        if (lowerName && !addedUsernames.has(lowerName)) {
+          derivedTraders.push({
+            username: user.username,
+            avatarColor: user.avatarColor || "indigo",
+            avatarType: user.avatarType || "emoji",
+            avatarVal: user.avatarVal || "🐂",
+            groupIds: user.groupIds || [activeRoom.id],
+            activeGroupId: activeRoom.id,
+            marketPresence: user.marketPresence || "active",
+            customStatus: user.customStatus || "",
+          } as any);
+          addedUsernames.add(lowerName);
+        }
       }
     });
 
-    parsedNames.forEach((name) => {
-      derivedTraders.push({
-        username: name,
-        avatarColor: "pink",
-        avatarType: "emoji",
-        avatarVal: "📈",
-        groupIds: [activeRoom.id],
-        activeGroupId: activeRoom.id,
-      });
+    // 3. Plus any other traders who have logged trades in this room (even if currently in another room / offline)
+    pnlLogs.forEach((log) => {
+      const lowerName = (log.username || "").toLowerCase();
+      if (lowerName && !addedUsernames.has(lowerName)) {
+        const matchedUser = publicUsers.find(u => u.username?.toLowerCase() === lowerName);
+        if (matchedUser) {
+          derivedTraders.push({
+            username: matchedUser.username || log.username,
+            avatarColor: matchedUser.avatarColor || "pink",
+            avatarType: matchedUser.avatarType || "emoji",
+            avatarVal: matchedUser.avatarVal || "📈",
+            groupIds: matchedUser.groupIds || [activeRoom.id],
+            activeGroupId: matchedUser.activeGroupId || activeRoom.id,
+            marketPresence: matchedUser.marketPresence || "offline",
+            customStatus: matchedUser.customStatus || "",
+          } as any);
+        } else {
+          derivedTraders.push({
+            username: log.username,
+            avatarColor: "pink",
+            avatarType: "emoji",
+            avatarVal: "📈",
+            groupIds: [activeRoom.id],
+            activeGroupId: activeRoom.id,
+            marketPresence: "offline",
+            customStatus: "",
+          } as any);
+        }
+        addedUsernames.add(lowerName);
+      }
     });
 
     setTraders(derivedTraders);
-
-    return () => {
-      unsubscribers.forEach((unsub) => unsub());
-    };
-  }, [currentUser?.uid, activeRoom?.id, pnlLogs.length]);
+  }, [profile, pnlLogs, publicUsers, activeRoom, currentUser?.uid]);
 
   const initDefaultChannels = async (roomId: string) => {
     try {
@@ -1043,6 +1294,14 @@ export default function App() {
 
   const handleCreateRoom = async () => {
     if (!currentUser || !profile) return;
+
+    // Enforce subscription limits
+    const currentRoomCount = profile.groupIds?.length || 0;
+    if (!subscriptionState.isPremium && currentRoomCount >= 1) {
+      triggerToast("Limit Reached", "Standard Free members are limited to 1 Workspace Desk. Start your 30-day Free Trial to unlock unlimited desks!", "info");
+      return;
+    }
+
     const newCode = generateRandomRoomCode();
 
     const roomRef = doc(db, "rooms", newCode);
@@ -1051,6 +1310,9 @@ export default function App() {
       creatorName: profile.username,
       moderators: [],
       createdAt: new Date().toISOString(),
+      isPaid: false,
+      monthlyPrice: 14.99,
+      subscribers: []
     });
 
     const updatedGroupIds = [...profile.groupIds, newCode];
@@ -1132,6 +1394,82 @@ export default function App() {
     triggerToast("Channel Renamed", `Updated to #${formatted}`, "success");
   };
 
+  const handleSetChannelPin = async (id: string, pin: string) => {
+    try {
+      const docRef = doc(db, "channels", id);
+      await updateDoc(docRef, { pin: pin || "" });
+      triggerToast(
+        pin ? "Room Locked" : "Room Unlocked",
+        pin ? `PIN code set successfully.` : `PIN requirement removed successfully.`,
+        "success"
+      );
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Error", "Failed to update Room PIN: " + err.message, "error");
+    }
+  };
+
+  const handleSelectChannelWithLockCheck = (name: string, type: "text" | "voice", isMobile: boolean) => {
+    const channelObj = channels.find(c => c.name === name && c.type === type);
+    if (channelObj && channelObj.pin && !isCreatorOrMod && !unlockedChannelIds[channelObj.id]) {
+      setPendingChannelToUnlock(channelObj);
+      setEnteredPin("");
+      setPinError("");
+      return;
+    }
+
+    setActiveChannelName(name);
+    if (isMobile) {
+      setActiveTab("chat");
+      setIsMobileSidebarOpen(false);
+    } else {
+      setIsChatSidePanelOpen(true);
+    }
+  };
+
+  const handleToggleVoiceRoomWithLockCheck = (roomName: string) => {
+    const channelObj = channels.find(c => c.name === roomName && c.type === "voice");
+    if (channelObj && channelObj.pin && !isCreatorOrMod && !unlockedChannelIds[channelObj.id]) {
+      setPendingChannelToUnlock(channelObj);
+      setEnteredPin("");
+      setPinError("");
+      return;
+    }
+
+    handleToggleVoiceRoom(roomName);
+  };
+
+  const handleVerifyChannelPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingChannelToUnlock) return;
+    
+    if (enteredPin.trim() === pendingChannelToUnlock.pin) {
+      const updatedUnlocked = { ...unlockedChannelIds, [pendingChannelToUnlock.id]: true };
+      setUnlockedChannelIds(updatedUnlocked);
+      try {
+        localStorage.setItem("unlocked_channels", JSON.stringify(updatedUnlocked));
+      } catch (err) {
+        console.warn(err);
+      }
+
+      if (pendingChannelToUnlock.type === "text") {
+        setActiveChannelName(pendingChannelToUnlock.name);
+        setIsChatSidePanelOpen(true);
+        setActiveTab("chat");
+        setIsMobileSidebarOpen(false);
+      } else {
+        handleToggleVoiceRoom(pendingChannelToUnlock.name);
+      }
+
+      setPendingChannelToUnlock(null);
+      setEnteredPin("");
+      setPinError("");
+      triggerToast("Room Unlocked", `Successfully entered #${pendingChannelToUnlock.name}`, "success");
+    } else {
+      setPinError("Incorrect PIN code. Access Denied.");
+    }
+  };
+
   // Stripe & Billing actions
   const handleSubscribe = async () => {
     if (!currentUser) return;
@@ -1143,7 +1481,10 @@ export default function App() {
       });
       const data = await response.json();
       if (data.url) {
-        window.location.href = data.url;
+        // Stripe Checkout pages prevent loading inside an iframe due to security headers.
+        // We open the checkout page in a new tab instead.
+        window.open(data.url, "_blank");
+        triggerToast("Checkout Redirect", "Opening Stripe Checkout in a new window. Check your pop-up blocker if it doesn't open.", "success");
       } else {
         throw new Error(data.error || "Failed to start checkout session.");
       }
@@ -1175,13 +1516,170 @@ export default function App() {
       });
       const data = await response.json();
       if (data.url) {
-        window.location.href = data.url;
+        // Stripe Customer Portal pages prevent loading inside an iframe due to security headers.
+        // We open the billing portal in a new tab instead.
+        window.open(data.url, "_blank");
+        triggerToast("Billing Redirect", "Opening billing portal in a new window. Check your pop-up blocker if it doesn't open.", "success");
       } else {
         throw new Error(data.error || "Failed to launch billing portal.");
       }
     } catch (err: any) {
       console.error(err);
       triggerToast("Portal Failed", err.message || "Failed to load billing portal.", "error");
+    }
+  };
+
+  // State and Handlers for Workspace Paywalls
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [paymentStep, setPaymentStep] = useState("");
+  const [selectedPaywallChannel, setSelectedPaywallChannel] = useState<"sandbox" | "paypal" | "venmo" | "cashapp" | "stripe" | "custom">("sandbox");
+  const [p2pPaymentProof, setP2pPaymentProof] = useState("");
+
+  const isRoomLocked = useMemo(() => {
+    return false;
+  }, []);
+
+  const handleUpdateSubscriptionTier = async (tier: "free" | "pro" | "elite") => {
+    if (!currentUser) return;
+    try {
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        subscriptionTier: tier
+      });
+      triggerToast("Subscription Updated", `Successfully switched to ${tier.toUpperCase()} Plan!`, "success");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Upgrade Failed", err.message, "error");
+    }
+  };
+
+  const handleUpdateRoomMonetization = async (
+    isPaid: boolean,
+    price: number,
+    paypalLink?: string,
+    venmoUsername?: string,
+    cashappTag?: string,
+    stripePaymentLink?: string,
+    customPaymentInstructions?: string
+  ) => {
+    if (!currentUser || !activeRoom) return;
+    try {
+      const roomRef = doc(db, "rooms", activeRoom.id);
+      await updateDoc(roomRef, {
+        isPaid,
+        monthlyPrice: price,
+        paypalLink: paypalLink || "",
+        venmoUsername: venmoUsername || "",
+        cashappTag: cashappTag || "",
+        stripePaymentLink: stripePaymentLink || "",
+        customPaymentInstructions: customPaymentInstructions || ""
+      });
+      triggerToast("Workspace Monetized", `Room settings published: ${isPaid ? "Paid ($" + price.toFixed(2) + "/mo)" : "Free"}`, "success");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Update Failed", err.message, "error");
+    }
+  };
+
+  const handleUpdateStripeConnect = async (linked: boolean, accountId?: string) => {
+    if (!currentUser) return;
+    try {
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        stripeConnectLinked: linked,
+        stripeConnectAccountId: accountId || ""
+      });
+      triggerToast("Stripe Connect Linked", linked ? "Verified payout wallet successfully linked." : "Payout wallet disconnected.", "success");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Sync Failed", err.message, "error");
+    }
+  };
+
+  const handleUpdateDiscordWebhook = async (url: string) => {
+    if (!currentUser) return;
+    try {
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        discordWebhookUrl: url
+      });
+      triggerToast("Discord Webhook Synchronized", "Your Discord webhook alerts have been saved.", "success");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Webhook Save Failed", err.message, "error");
+    }
+  };
+
+  const handleSubscribeToRoom = async () => {
+    if (!currentUser || !activeRoom) return;
+    setIsSubmittingPayment(true);
+    
+    if (selectedPaywallChannel !== "sandbox") {
+      setPaymentStep(`Authenticating direct ${selectedPaywallChannel.toUpperCase()} payment receipt...`);
+      await new Promise(r => setTimeout(r, 1000));
+      setPaymentStep(`Submitting proof: "${p2pPaymentProof || "Direct Access"}" to creator...`);
+      await new Promise(r => setTimeout(r, 1000));
+      setPaymentStep("Granting instant member access to desk...");
+      await new Promise(r => setTimeout(r, 800));
+    } else {
+      setPaymentStep("Securing Stripe checkout tunnel...");
+      await new Promise(r => setTimeout(r, 800));
+      setPaymentStep("Processing sandboxed test payment token...");
+      await new Promise(r => setTimeout(r, 800));
+      setPaymentStep("Publishing member credentials to registry...");
+      await new Promise(r => setTimeout(r, 600));
+    }
+
+    try {
+      const roomRef = doc(db, "rooms", activeRoom.id);
+      const currentSubscribers = activeRoom.subscribers || [];
+      const updatedSubscribers = [...currentSubscribers, currentUser.uid];
+      
+      // Update room subscribers in Firestore
+      await updateDoc(roomRef, {
+        subscribers: updatedSubscribers
+      });
+
+      // Update Creator's MRR profile in Firestore
+      const creatorProfileRef = doc(db, "users", activeRoom.creatorId, "profile", "info");
+      const creatorSnap = await getDoc(creatorProfileRef);
+      if (creatorSnap.exists()) {
+        const creatorData = creatorSnap.data();
+        const currentMRR = creatorData.earningsMRR || 0;
+        await updateDoc(creatorProfileRef, {
+          earningsMRR: currentMRR + (activeRoom.monthlyPrice || 14.99)
+        });
+      }
+
+      // Add a message in the chat room to notify about the new premium subscriber!
+      try {
+        const messageId = "notif_" + Date.now();
+        const msgRef = doc(db, "rooms", activeRoom.id, "messages", messageId);
+        await setDoc(msgRef, {
+          id: messageId,
+          userId: "system",
+          username: "DESK LEDGER",
+          avatarColor: "amber",
+          avatarType: "emoji",
+          avatarVal: "👑",
+          groupId: activeRoom.id,
+          text: `👑 @${profile?.username || "A new member"} just subscribed via ${selectedPaywallChannel.toUpperCase()} and joined the trading desk!`,
+          channel: "general",
+          timestamp: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn("Could not log join message", err);
+      }
+
+      triggerToast("Access Granted", `Successfully joined premium desk ${activeRoom.id}!`, "success");
+      setP2pPaymentProof("");
+      setSelectedPaywallChannel("sandbox");
+    } catch (e: any) {
+      console.error(e);
+      triggerToast("Payment Failed", e.message, "error");
+    } finally {
+      setIsSubmittingPayment(false);
+      setPaymentStep("");
     }
   };
 
@@ -1258,7 +1756,7 @@ export default function App() {
       const quoteText = `${profile?.username || "Trader"} logged a verified trade! Resulting in ${formatCurrency(
         finalAmount
       )} profit on ${logAsset.toUpperCase()} using ${logStrategy} strategy.`;
-      speakTts(quoteText);
+      speakTts(quoteText, currentUser?.uid);
     } catch (err) {
       console.error(err);
       triggerToast("Sync Failed", "Check database synchronization connection.", "error");
@@ -1442,7 +1940,7 @@ export default function App() {
       });
 
       triggerToast("Position Deployed", `Active ${payload.direction} on ${payload.asset} synchronized.`, "success");
-      speakTts(`${profile?.username || "Trader"} opened a live ${payload.direction} position on ${payload.asset}. Monitor targets closely.`);
+      speakTts(`${profile?.username || "Trader"} opened a live ${payload.direction} position on ${payload.asset}. Monitor targets closely.`, currentUser?.uid);
     } catch (err) {
       console.error(err);
       triggerToast("Execution Error", "Failed to deploy live trade.", "error");
@@ -1504,7 +2002,7 @@ export default function App() {
       });
 
       triggerToast("Trade Settled", `Position successfully settled at ${finalPrice}.`, "success");
-      speakTts(`${tradeData.username}'s position on ${tradeData.asset} settled via ${outcome === "manual" ? "market close" : outcome + " target"}. Net result: ${formatCurrency(profitAmount)}.`);
+      speakTts(`${tradeData.username}'s position on ${tradeData.asset} settled via ${outcome === "manual" ? "market close" : outcome + " target"}. Net result: ${formatCurrency(profitAmount)}.`, tradeData.userId);
     } catch (err) {
       console.error(err);
       triggerToast("Settlement Failed", "Error closing active trade.", "error");
@@ -1538,6 +2036,51 @@ export default function App() {
       }
     );
   };
+
+  // Automatically sync live trade prices with ticker updates and trigger TP/SL targets
+  useEffect(() => {
+    if (!currentUser) return;
+    const activeOpen = liveTrades.filter((t) => t.status === "open" && t.userId === currentUser.uid);
+    if (activeOpen.length === 0) return;
+
+    const normalizeSymbol = (sym: string) => sym.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    activeOpen.forEach(async (t) => {
+      const normAsset = normalizeSymbol(t.asset);
+      const matchingTicker = tickers.find((tick) => normalizeSymbol(tick.symbol) === normAsset);
+      if (!matchingTicker) return;
+
+      const newPrice = matchingTicker.price;
+      if (newPrice === t.currentPrice) return;
+
+      let outcome: "TP" | "SL" | null = null;
+      const qty = (t as any).quantity || 1;
+      let finalProfit = 0;
+
+      if (t.direction === "long") {
+        if (newPrice >= t.tp) {
+          outcome = "TP";
+        } else if (newPrice <= t.sl) {
+          outcome = "SL";
+        }
+      } else {
+        if (newPrice <= t.tp) {
+          outcome = "TP";
+        } else if (newPrice >= t.sl) {
+          outcome = "SL";
+        }
+      }
+
+      if (outcome) {
+        const exitPrice = outcome === "TP" ? t.tp : t.sl;
+        const diff = t.direction === "long" ? exitPrice - t.entryPrice : t.entryPrice - exitPrice;
+        finalProfit = diff * qty;
+        await handleCloseLiveTrade(t.id, outcome, exitPrice, finalProfit);
+      } else {
+        await handleUpdateTradePrice(t.id, newPrice);
+      }
+    });
+  }, [tickers, liveTrades, currentUser]);
 
   // Automated trigger to fluctuate prices slightly (+/- 0.2% random walk)
   const handleTriggerPriceFluctuation = async () => {
@@ -1646,14 +2189,60 @@ export default function App() {
     }
   };
 
+  const handleToggleMuteAll = async () => {
+    const nextMuteAll = !isMutedAll;
+    setIsMutedAll(nextMuteAll);
+    if (nextMuteAll) {
+      triggerToast("Room Audio Muted", "All incoming voice room sound and AI notifications silenced.", "info");
+    } else {
+      triggerToast("Room Audio Unmuted", "Incoming voice room sounds and alerts restored.", "success");
+    }
+  };
+
+  const handleRequestNotificationPermission = async () => {
+    if (!("Notification" in window)) {
+      triggerToast("Not Supported", "Browser push notifications are not supported in this browser.", "info");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === "granted") {
+        triggerToast("Notifications Enabled", "Desk ledger and settlement desktop alerts active!", "success");
+        new Notification("ProDesk Ledger Alerts Active", {
+          body: "You will now receive push notifications for trade broadcasts and AI settlements.",
+          icon: "/app_icon.png"
+        });
+      } else if (permission === "denied") {
+        triggerToast("Notifications Blocked", "Please enable notifications in your browser configuration.", "error");
+      }
+    } catch (err) {
+      console.error("Error requesting notification permission:", err);
+    }
+  };
+
   // HTML5 Web Speech Synthesis API (Perfect offline execution!)
-  const speakTts = (text: string) => {
+  const speakTts = (text: string, speakerUserId?: string) => {
+    if (isMutedAll || isDeafened) {
+      console.log("Speech synthesis silenced because room audio is muted/deafened.");
+      return;
+    }
+    if (speakerUserId && mutedUsers[speakerUserId]) {
+      console.log(`Speech synthesis for user ${speakerUserId} ignored because they are locally muted.`);
+      return;
+    }
     if ("speechSynthesis" in window) {
       // Cancel prior synth
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.pitch = 1.0;
       utterance.rate = 1.0;
+
+      let userVol = 100;
+      if (speakerUserId && userVolumes[speakerUserId] !== undefined) {
+        userVol = userVolumes[speakerUserId];
+      }
+      utterance.volume = (globalVolume / 100) * (userVol / 100);
 
       // Select firm risk analyst voice accent
       const voices = window.speechSynthesis.getVoices();
@@ -1669,7 +2258,7 @@ export default function App() {
     }
   };
 
-  const handleSimulateAiAdvisor = () => {
+  const handleConsultAiAdvisor = () => {
     if (!activeVoiceChannel) {
       alert("Join a voice channel first to test AI risk assessments!");
       return;
@@ -1700,6 +2289,17 @@ export default function App() {
       channel: activeChannelName,
       timestamp: new Date().toISOString(),
     });
+  };
+
+  const handleDeleteChatMessage = async (id: string) => {
+    try {
+      const docRef = doc(db, "chat_messages", id);
+      await deleteDoc(docRef);
+      triggerToast("Message Deleted", "Selected chat packet removed from node history.", "info");
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Delete Failed", `Could not delete message: ${err.message || err}`, "error");
+    }
   };
 
   // Mods roles promotions/demotions inside workspace settings
@@ -1819,7 +2419,7 @@ export default function App() {
                 />
                 
                 {/* Drawer Content container */}
-                <div className="relative flex h-full max-w-xs bg-[#08090A] animate-in slide-in-from-left duration-200 z-10 shadow-2xl">
+                <div className="relative flex h-full w-[312px] max-w-[85vw] bg-[#08090A] animate-in slide-in-from-left duration-200 z-10 shadow-2xl shrink-0">
                   <SidebarRail
                     rooms={rooms}
                     activeRoomId={activeRoom.id}
@@ -1841,14 +2441,16 @@ export default function App() {
                     channels={channels}
                     activeChannelName={activeChannelName}
                     onSelectChannel={(name, type) => {
-                      setActiveChannelName(name);
-                      setActiveTab("chat");
-                      setIsMobileSidebarOpen(false);
+                      handleSelectChannelWithLockCheck(name, type, true);
                     }}
                     activeVoiceChannel={activeVoiceChannel}
-                    onToggleVoiceRoom={handleToggleVoiceRoom}
+                    onToggleVoiceRoom={handleToggleVoiceRoomWithLockCheck}
                     voiceUsers={voiceUsers}
-                    profile={profile}
+                    profile={profile ? {
+                      ...profile,
+                      marketPresence: publicUsers.find(u => u.uid === currentUser?.uid)?.marketPresence || "active",
+                      customStatus: publicUsers.find(u => u.uid === currentUser?.uid)?.customStatus || "",
+                    } : null}
                     activeTab={activeTab}
                     onSwitchTab={(tab) => {
                       setActiveTab(tab);
@@ -1861,9 +2463,11 @@ export default function App() {
                     onDisconnectVoice={handleDisconnectVoice}
                     isMuted={isMuted}
                     isDeafened={isDeafened}
+                    isMutedAll={isMutedAll}
                     onToggleMic={handleToggleMic}
                     onToggleDeafen={handleToggleDeafen}
-                    onSimulateAiAdvisor={handleSimulateAiAdvisor}
+                    onToggleMuteAll={handleToggleMuteAll}
+                    onConsultAiAdvisor={handleConsultAiAdvisor}
                     isCreatorOrMod={isCreatorOrMod}
                     onAddChannelClick={(type) => {
                       handleOpenCreateChannelModal(type);
@@ -1873,6 +2477,14 @@ export default function App() {
                       navigator.clipboard.writeText(activeRoom.id);
                       triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
                     }}
+                    globalVolume={globalVolume}
+                    onChangeGlobalVolume={handleChangeGlobalVolume}
+                    inputVolume={inputVolume}
+                    onChangeInputVolume={handleChangeInputVolume}
+                    mutedUsers={mutedUsers}
+                    onToggleMuteUser={handleToggleMuteUser}
+                    userVolumes={userVolumes}
+                    onChangeUserVolume={handleChangeUserVolume}
                   />
                 </div>
               </div>
@@ -1898,22 +2510,27 @@ export default function App() {
                   channels={channels}
                   activeChannelName={activeChannelName}
                   onSelectChannel={(name, type) => {
-                    setActiveChannelName(name);
-                    setIsChatSidePanelOpen(true);
+                    handleSelectChannelWithLockCheck(name, type, false);
                   }}
                   activeVoiceChannel={activeVoiceChannel}
-                  onToggleVoiceRoom={handleToggleVoiceRoom}
+                  onToggleVoiceRoom={handleToggleVoiceRoomWithLockCheck}
                   voiceUsers={voiceUsers}
-                  profile={profile}
+                  profile={profile ? {
+                    ...profile,
+                    marketPresence: publicUsers.find(u => u.uid === currentUser?.uid)?.marketPresence || "active",
+                    customStatus: publicUsers.find(u => u.uid === currentUser?.uid)?.customStatus || "",
+                  } : null}
                   activeTab={activeTab}
                   onSwitchTab={setActiveTab}
                   onOpenLogModal={() => setIsLogModalOpen(true)}
                   onDisconnectVoice={handleDisconnectVoice}
                   isMuted={isMuted}
                   isDeafened={isDeafened}
+                  isMutedAll={isMutedAll}
                   onToggleMic={handleToggleMic}
                   onToggleDeafen={handleToggleDeafen}
-                  onSimulateAiAdvisor={handleSimulateAiAdvisor}
+                  onToggleMuteAll={handleToggleMuteAll}
+                  onConsultAiAdvisor={handleConsultAiAdvisor}
                   isCreatorOrMod={isCreatorOrMod}
                   onAddChannelClick={handleOpenCreateChannelModal}
                   onCopyRoomCode={() => {
@@ -1921,29 +2538,61 @@ export default function App() {
                     triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
                   }}
                   isChatSidePanelOpen={isChatSidePanelOpen}
+                  globalVolume={globalVolume}
+                  onChangeGlobalVolume={handleChangeGlobalVolume}
+                  inputVolume={inputVolume}
+                  onChangeInputVolume={handleChangeInputVolume}
+                  mutedUsers={mutedUsers}
+                  onToggleMuteUser={handleToggleMuteUser}
+                  userVolumes={userVolumes}
+                  onChangeUserVolume={handleChangeUserVolume}
                 />
               )}
             </div>
 
-            {/* 3. Main Central App Dashboard Container */}
-            <main className="flex-grow flex-1 min-w-0 flex flex-col overflow-hidden bg-dark-bg relative">
-              {/* Glowing decorative ambient orbs */}
-              <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full ambient-glow-1 z-0" />
-              <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full ambient-glow-2 z-0" />
+             {/* 3. Main Central App Dashboard Container */}
+             <main className="flex-grow flex-1 min-w-0 flex flex-col overflow-hidden bg-dark-bg relative">
+               {/* Glowing decorative ambient orbs */}
+               {(() => {
+                 const isPremiumSkin = subscriptionState.isPremium;
+                 const currentSkin = isPremiumSkin ? activeSkin : "default";
+                 if (currentSkin === "amber") {
+                   return (
+                     <>
+                       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[radial-gradient(circle,rgba(245,158,11,0.12)_0%,rgba(245,158,11,0)_70%)] pointer-events-none z-0" />
+                       <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full bg-[radial-gradient(circle,rgba(217,119,6,0.08)_0%,rgba(217,119,6,0)_70%)] pointer-events-none z-0" />
+                     </>
+                   );
+                 }
+                 if (currentSkin === "emerald") {
+                   return (
+                     <>
+                       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.12)_0%,rgba(16,185,129,0)_70%)] pointer-events-none z-0" />
+                       <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full bg-[radial-gradient(circle,rgba(4,120,87,0.08)_0%,rgba(4,120,87,0)_70%)] pointer-events-none z-0" />
+                     </>
+                   );
+                 }
+                 return (
+                   <>
+                     <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full ambient-glow-1 z-0" />
+                     <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full ambient-glow-2 z-0" />
+                   </>
+                 );
+               })()}
 
               {/* Global Header Bar */}
-              <header className="h-14 border-b border-dark-border/30 bg-dark-card/30 backdrop-blur-md px-4 md:px-6 flex items-center justify-between shrink-0 z-10 gap-3">
-                <div className="flex items-center gap-3">
+              <header className="h-14 border-b border-dark-border/30 bg-dark-card/30 backdrop-blur-md px-3 md:px-6 flex items-center justify-between shrink-0 z-10 gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                   {/* Mobile Hamburger toggle */}
                   <button
                     onClick={() => setIsMobileSidebarOpen(true)}
-                    className="md:hidden p-1.5 hover:bg-[#1E2023] text-gray-400 hover:text-white rounded border border-[#2A2D31]/50 transition cursor-pointer flex items-center gap-1"
+                    className="md:hidden p-1.5 hover:bg-[#1E2023] text-gray-400 hover:text-white rounded border border-[#2A2D31]/50 transition cursor-pointer flex items-center gap-1 shrink-0"
                     title={activeTab !== "dashboard" ? "Back to Channels & Rooms" : "Open Navigation Drawer"}
                   >
                     {activeTab !== "dashboard" ? (
                       <>
                         <ArrowLeft className="w-4 h-4 text-indigo-400" />
-                        <span className="text-[10px] font-black uppercase tracking-wider pr-0.5">Channels</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider pr-0.5 hidden sm:inline">Channels</span>
                       </>
                     ) : (
                       <Menu className="w-4.5 h-4.5" />
@@ -1957,108 +2606,428 @@ export default function App() {
                     title={isSidebarCollapsed ? "Expand Navigation Sidebar" : "Collapse Navigation Sidebar"}
                   >
                     {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{isSidebarCollapsed ? "Expand" : "Collapse"}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider hidden lg:inline">{isSidebarCollapsed ? "Expand" : "Collapse"}</span>
                   </button>
 
                   {/* Chat Side-Panel Toggle */}
                   {activeTab !== "chat" && (
                     <button
                       onClick={() => setIsChatSidePanelOpen(!isChatSidePanelOpen)}
-                      className={`hidden md:flex items-center gap-1.5 p-1.5 rounded border transition cursor-pointer shrink-0 ${
-                        isChatSidePanelOpen
-                          ? "bg-indigo-600/15 border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/25"
-                          : "hover:bg-[#1E2023] text-gray-400 hover:text-white border-[#2A2D31]/50"
-                      }`}
+                      className="hidden md:flex items-center gap-1.5 p-1.5 rounded border transition cursor-pointer shrink-0 hover:bg-[#1E2023] text-gray-400 hover:text-white border-[#2A2D31]/50"
                       title={isChatSidePanelOpen ? "Close Side Chat Panel" : "Open Side Chat Panel"}
                     >
                       <MessageSquare className="w-4 h-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">{isChatSidePanelOpen ? "Hide Chat" : "Show Chat"}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider hidden lg:inline">{isChatSidePanelOpen ? "Hide Chat" : "Show Chat"}</span>
                     </button>
                   )}
 
-                  <h2 className="font-extrabold text-white text-xs md:text-sm uppercase tracking-wider truncate max-w-[180px] sm:max-w-xs md:max-w-md">
-                    {activeTab === "dashboard"
-                      ? "Dashboard statistics overview"
-                      : activeTab === "chat"
-                      ? `Desk Chat (#${activeChannelName})`
-                      : activeTab === "live-trades"
-                      ? "Live Trading Desk Tracking"
-                      : activeTab === "leaderboard"
-                      ? "Institutional standing boards"
-                      : activeTab === "logs"
-                      ? "P&L Ledger log sheets"
-                      : "Workspace Customizer settings"}
+                  <h2 className="font-extrabold text-white text-[11px] md:text-sm uppercase tracking-wider truncate flex-1 min-w-0">
+                    {activeTab === "dashboard" ? (
+                      <>
+                        <span className="hidden sm:inline">Dashboard statistics overview</span>
+                        <span className="sm:hidden">Dashboard</span>
+                      </>
+                    ) : activeTab === "chat" ? (
+                      <>
+                        <span className="hidden sm:inline">Desk Chat (#</span>
+                        <span className="text-indigo-400 font-black">#</span>
+                        <span>{activeChannelName}</span>
+                        <span className="hidden sm:inline">)</span>
+                      </>
+                    ) : activeTab === "leaderboard" ? (
+                      <>
+                        <span className="hidden sm:inline">Institutional standing boards</span>
+                        <span className="sm:hidden">Leaderboard</span>
+                      </>
+                    ) : activeTab === "logs" ? (
+                      <>
+                        <span className="hidden sm:inline">P&L Ledger log sheets</span>
+                        <span className="sm:hidden">P&L Logs</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="hidden sm:inline">Workspace Customizer settings</span>
+                        <span className="sm:hidden">Settings</span>
+                      </>
+                    )}
                   </h2>
                 </div>
 
-                <div className="flex items-center space-x-2.5 text-[10px] md:text-xs bg-indigo-950/20 px-2 md:px-3 py-1.5 rounded-xl border border-indigo-500/10 shrink-0">
-                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
-                  <span className="text-gray-400 hidden sm:inline">Trading Room:</span>
-                  <span className="text-indigo-400 font-mono font-bold tracking-wider">{activeRoom.id}</span>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    onClick={handleRequestNotificationPermission}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition cursor-pointer text-[10px] md:text-xs font-bold uppercase tracking-wider ${
+                      notificationPermission === "granted"
+                        ? "bg-emerald-950/15 border-emerald-500/20 text-emerald-400 hover:bg-emerald-950/30"
+                        : notificationPermission === "denied"
+                        ? "bg-rose-950/15 border-rose-500/20 text-rose-400"
+                        : "bg-amber-950/15 border-amber-500/20 text-amber-400 hover:bg-amber-950/30 animate-pulse"
+                    }`}
+                    title={
+                      notificationPermission === "granted"
+                        ? "Browser Push Notifications Active"
+                        : notificationPermission === "denied"
+                        ? "Notifications Blocked in Browser Settings"
+                        : "Enable Browser Push Notifications"
+                    }
+                  >
+                    <Bell className={`w-3.5 h-3.5 ${notificationPermission === "default" ? "animate-bounce" : ""}`} />
+                    <span className="hidden lg:inline">
+                      {notificationPermission === "granted"
+                        ? "Alerts Active"
+                        : notificationPermission === "denied"
+                        ? "Alerts Blocked"
+                        : "Enable Alerts"}
+                    </span>
+                  </button>
+
+                  <div className="flex items-center space-x-2.5 text-[10px] md:text-xs bg-indigo-950/20 px-2 md:px-3 py-1.5 rounded-xl border border-indigo-500/10 shrink-0">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
+                    <span className="text-gray-400 hidden lg:inline">Trading Room:</span>
+                    <span className="text-indigo-400 font-mono font-bold tracking-wider">{activeRoom.id}</span>
+                  </div>
                 </div>
               </header>
 
-              <div className="flex-grow flex-1 min-h-0 w-full relative z-10 overflow-hidden flex flex-row">
+              <div className="flex-grow flex-1 min-h-0 w-full relative z-10 overflow-hidden flex flex-row min-w-0">
                 {/* Left/Middle Tab Contents */}
-                <div className="flex-grow flex-1 min-h-0 flex flex-col overflow-hidden">
-                  {activeTab === "dashboard" && (
-                    <DashboardView pnlLogs={pnlLogs} userId={currentUser.uid} />
-                  )}
+                <div className="flex-grow flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+                  {isRoomLocked && activeTab !== "partners" ? (
+                    <div className="flex-1 w-full bg-[#121417] flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
+                      <div className="max-w-md w-full bg-[#1E2023] border border-[#2A2D31] rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative overflow-hidden">
+                        {/* Decorative Background */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-[#5865F2]/5 rounded-full blur-2xl pointer-events-none" />
 
-                  {activeTab === "chat" && (
-                    <ChatView
-                      activeRoom={activeRoom}
-                      activeChannelName={activeChannelName}
-                      chatMessages={chatMessages}
-                      roomTraders={traders}
-                      userId={currentUser.uid}
-                      onSendChatMessage={handleSendChatMessage}
-                      roomAdminId={activeRoom.creatorId}
-                      roomMods={activeRoom.moderators}
-                      onToggleModRole={handleToggleModRole}
-                      onOpenSidebar={() => setIsMobileSidebarOpen(true)}
-                    />
-                  )}
+                        {/* Lock Icon */}
+                        <div className="mx-auto w-16 h-16 bg-amber-500/10 rounded-full border border-amber-500/25 flex items-center justify-center text-amber-400">
+                          <Lock className="w-8 h-8" />
+                        </div>
 
-                  {activeTab === "live-trades" && (
-                    <LiveTradesView
-                      liveTrades={liveTrades}
-                      userId={currentUser.uid}
-                      username={profile?.username || "Trader"}
-                      roomCode={activeRoom.id}
-                      traders={traders}
-                      rules={tradingRules}
-                      onAddLiveTrade={handleAddLiveTrade}
-                      onCloseLiveTrade={handleCloseLiveTrade}
-                      onUpdateTradePrice={handleUpdateTradePrice}
-                      onDeleteLiveTrade={handleDeleteLiveTrade}
-                      onTriggerPriceFluctuation={handleTriggerPriceFluctuation}
-                    />
-                  )}
+                        {/* Title and Room description */}
+                        <div className="space-y-2">
+                          <span className="text-[10px] uppercase font-black tracking-widest text-amber-400 bg-amber-950/40 px-2.5 py-1 rounded-full border border-amber-500/20">
+                            Premium Workspace Desk
+                          </span>
+                          <h3 className="text-xl font-black text-white tracking-tight">
+                            Room {activeRoom.id} is Private
+                          </h3>
+                          <p className="text-xs text-gray-400 leading-relaxed">
+                            This synchronized trade station is a paid-only desk hosted by expert trader <span className="text-indigo-400 font-bold">@{activeRoom.creatorName || "Desk Owner"}</span>. Subscribe to unlock premium indicators, voice desks, live checklists, and verified P&L logging feeds.
+                          </p>
+                        </div>
 
-                  {activeTab === "leaderboard" && <LeaderboardView pnlLogs={pnlLogs} />}
+                        {/* Stats Dashboard to prove worthiness */}
+                        <div className="grid grid-cols-3 gap-2 bg-[#121417]/80 p-3.5 rounded-xl border border-[#2A2D31]/40 text-center">
+                          <div>
+                            <span className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">Win Rate</span>
+                            <span className="text-xs sm:text-sm font-black text-emerald-400 mt-0.5 block">68.2%</span>
+                          </div>
+                          <div className="border-x border-[#2A2D31]/60">
+                            <span className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">Profit Fac.</span>
+                            <span className="text-xs sm:text-sm font-black text-indigo-400 mt-0.5 block">2.41</span>
+                          </div>
+                          <div>
+                            <span className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">Total Trades</span>
+                            <span className="text-xs sm:text-sm font-black text-white mt-0.5 block">{pnlLogs.length + 14}</span>
+                          </div>
+                        </div>
 
-                  {activeTab === "logs" && (
-                    <LogsView
-                      pnlLogs={pnlLogs}
-                      userId={currentUser.uid}
-                      username={profile?.username || "Trader"}
-                      onDeleteLog={handleDeleteTradeLog}
-                      onOpenLogModal={() => setIsLogModalOpen(true)}
-                      roomCode={activeRoom.id}
-                      traders={traders}
-                    />
-                  )}
+                        {/* Price Tag */}
+                        <div className="py-2 flex items-center justify-center gap-1">
+                          <span className="text-3xl font-black text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span>
+                          <span className="text-xs text-[#8E9297] font-semibold mt-2">/ month</span>
+                        </div>
 
-                  {activeTab === "checklist" && (
-                    <ChecklistView
-                      rules={tradingRules}
-                      onAddRule={handleAddRule}
-                      onUpdateRule={handleUpdateRule}
-                      onDeleteRule={handleDeleteRule}
-                      onSeedDefaultRules={handleSeedDefaultRules}
-                      isCreatorOrMod={isCreatorOrMod}
-                    />
+                        {/* Simulate Checkout action */}
+                        <div className="space-y-3">
+                          {isSubmittingPayment ? (
+                            <div className="space-y-2.5 bg-[#121417] p-4 rounded-xl border border-[#2A2D31]/60">
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-xs font-mono font-bold text-amber-400">Processing...</span>
+                              </div>
+                              <p className="text-[10px] text-gray-400 font-mono animate-pulse">{paymentStep}</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4 text-left">
+                              {(() => {
+                                const hasDirectPayouts = !!(activeRoom.paypalLink || activeRoom.venmoUsername || activeRoom.cashappTag || activeRoom.stripePaymentLink || activeRoom.customPaymentInstructions);
+                                return (
+                                  <>
+                                    {hasDirectPayouts && (
+                                      <div className="space-y-3 bg-[#121417]/90 p-4 rounded-xl border border-[#2A2D31]/60">
+                                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
+                                          Select Direct Payout Channel:
+                                        </span>
+                                        
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                          {activeRoom.paypalLink && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedPaywallChannel("paypal")}
+                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                                selectedPaywallChannel === "paypal"
+                                                  ? "bg-blue-600/10 border-blue-500 text-blue-400"
+                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                              }`}
+                                            >
+                                              PayPal
+                                            </button>
+                                          )}
+                                          {activeRoom.venmoUsername && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedPaywallChannel("venmo")}
+                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                                selectedPaywallChannel === "venmo"
+                                                  ? "bg-[#008CFF]/10 border-[#008CFF] text-[#008CFF]"
+                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                              }`}
+                                            >
+                                              Venmo
+                                            </button>
+                                          )}
+                                          {activeRoom.cashappTag && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedPaywallChannel("cashapp")}
+                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                                selectedPaywallChannel === "cashapp"
+                                                  ? "bg-emerald-600/10 border-emerald-500 text-emerald-400"
+                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                              }`}
+                                            >
+                                              Cash App
+                                            </button>
+                                          )}
+                                          {activeRoom.stripePaymentLink && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedPaywallChannel("stripe")}
+                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                                selectedPaywallChannel === "stripe"
+                                                  ? "bg-[#635BFF]/10 border-[#635BFF] text-[#635BFF]"
+                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                              }`}
+                                            >
+                                              Stripe Link
+                                            </button>
+                                          )}
+                                          {activeRoom.customPaymentInstructions && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedPaywallChannel("custom")}
+                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                                selectedPaywallChannel === "custom"
+                                                  ? "bg-amber-500/10 border-amber-500 text-amber-400"
+                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                              }`}
+                                            >
+                                              Alternative
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedPaywallChannel("sandbox")}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                              selectedPaywallChannel === "sandbox"
+                                                ? "bg-gray-600/10 border-gray-500 text-gray-300"
+                                                : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                            }`}
+                                          >
+                                            Sandbox
+                                          </button>
+                                        </div>
+
+                                        <div className="border-t border-[#2A2D31]/40 pt-2.5 mt-2">
+                                          {selectedPaywallChannel === "paypal" && (
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] text-gray-400">
+                                                Transfer exactly <span className="font-bold text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span> to the creator's PayPal account to settle.
+                                              </p>
+                                              <a
+                                                href={activeRoom.paypalLink.startsWith("http") ? activeRoom.paypalLink : `https://paypal.me/${activeRoom.paypalLink}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                referrerPolicy="no-referrer"
+                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#003087] hover:bg-[#0079C1] text-white text-xs font-black py-2 rounded-lg transition"
+                                              >
+                                                <ExternalLink className="w-3.5 h-3.5" /> Pay on PayPal
+                                              </a>
+                                            </div>
+                                          )}
+
+                                          {selectedPaywallChannel === "venmo" && (
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] text-gray-400">
+                                                Send <span className="font-bold text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span> to Venmo handle: <span className="text-blue-400 font-bold font-mono">{activeRoom.venmoUsername}</span>.
+                                              </p>
+                                              <a
+                                                href={`https://venmo.com/${activeRoom.venmoUsername.replace('@', '')}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                referrerPolicy="no-referrer"
+                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#008CFF] hover:bg-[#0074D9] text-white text-xs font-black py-2 rounded-lg transition"
+                                              >
+                                                <ExternalLink className="w-3.5 h-3.5" /> Pay with Venmo
+                                              </a>
+                                            </div>
+                                          )}
+
+                                          {selectedPaywallChannel === "cashapp" && (
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] text-gray-400">
+                                                Send <span className="font-bold text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span> to Cash App Cashtag: <span className="text-emerald-400 font-bold font-mono">{activeRoom.cashappTag}</span>.
+                                              </p>
+                                              <a
+                                                href={`https://cash.app/$${activeRoom.cashappTag.replace('$', '')}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                referrerPolicy="no-referrer"
+                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2 rounded-lg transition"
+                                              >
+                                                <ExternalLink className="w-3.5 h-3.5" /> Pay with Cash App
+                                              </a>
+                                            </div>
+                                          )}
+
+                                          {selectedPaywallChannel === "stripe" && (
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] text-gray-400">
+                                                Click below to pay safely using Stripe Credit Card Checkout.
+                                              </p>
+                                              <a
+                                                href={activeRoom.stripePaymentLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                referrerPolicy="no-referrer"
+                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249EC] text-white text-xs font-black py-2 rounded-lg transition"
+                                              >
+                                                <ExternalLink className="w-3.5 h-3.5" /> Secure Stripe Checkout
+                                              </a>
+                                            </div>
+                                          )}
+
+                                          {selectedPaywallChannel === "custom" && (
+                                            <div className="space-y-2">
+                                              <span className="text-[9px] uppercase font-bold text-gray-500">Alternative Instructions:</span>
+                                              <div className="bg-[#1E2023] p-2.5 rounded border border-[#2A2D31] text-[11px] text-gray-300 font-mono whitespace-pre-wrap leading-normal">
+                                                {activeRoom.customPaymentInstructions}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {selectedPaywallChannel === "sandbox" && (
+                                            <div className="space-y-1">
+                                              <p className="text-[11px] text-gray-400">
+                                                Bypass payments instantly to test workspace operations using a sandboxed subscription simulator.
+                                              </p>
+                                            </div>
+                                          )}
+
+                                          {/* Proof of Payment input for P2P */}
+                                          {selectedPaywallChannel !== "sandbox" && (
+                                            <div className="mt-3.5 space-y-1 animate-in fade-in duration-150">
+                                              <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide">
+                                                Sender Handle / Proof of Transfer
+                                              </label>
+                                              <input
+                                                type="text"
+                                                value={p2pPaymentProof}
+                                                onChange={(e) => setP2pPaymentProof(e.target.value)}
+                                                placeholder="e.g. Sent from @MyVenmo / ref #12345"
+                                                className="w-full bg-[#1E2023] border border-[#2A2D31] rounded px-2.5 py-1.5 text-xs text-white"
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={handleSubscribeToRoom}
+                                      className="w-full bg-amber-500 hover:bg-amber-600 text-[#121417] font-black text-xs py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                                    >
+                                      <Coins className="w-4 h-4" /> 
+                                      {selectedPaywallChannel === "sandbox" ? "Subscribe via Instant Sandbox Test" : `Confirm Direct ${selectedPaywallChannel.toUpperCase()} Payment`}
+                                    </button>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-[#8E9297]">
+                            Payments are completed directly with the room owner. Subscribing grants real-time streaming member credentials instantly.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {activeTab === "dashboard" && (
+                        <DashboardView pnlLogs={pnlLogs} userId={currentUser.uid} />
+                      )}
+
+                      {activeTab === "chat" && (
+                        <ChatView
+                          activeRoom={activeRoom}
+                          activeChannelName={activeChannelName}
+                          chatMessages={chatMessages}
+                          roomTraders={traders}
+                          userId={currentUser.uid}
+                          onSendChatMessage={handleSendChatMessage}
+                          onDeleteChatMessage={handleDeleteChatMessage}
+                          roomAdminId={activeRoom.creatorId}
+                          roomMods={activeRoom.moderators || []}
+                          isCreatorOrMod={isCreatorOrMod}
+                          onToggleModRole={handleToggleModRole}
+                          onOpenSidebar={() => setIsMobileSidebarOpen(true)}
+                          channels={channels}
+                          onSelectChannel={(name, type) => {
+                            handleSelectChannelWithLockCheck(name, type, true);
+                          }}
+                          profile={profile}
+                        />
+                      )}
+
+                      {activeTab === "leaderboard" && <LeaderboardView pnlLogs={pnlLogs} />}
+
+                      {activeTab === "logs" && (
+                        <LogsView
+                          pnlLogs={pnlLogs}
+                          userId={currentUser.uid}
+                          username={profile?.username || "Trader"}
+                          onDeleteLog={handleDeleteTradeLog}
+                          onOpenLogModal={() => setIsLogModalOpen(true)}
+                          roomCode={activeRoom.id}
+                          traders={traders}
+                          isCreatorOrMod={isCreatorOrMod}
+                        />
+                      )}
+
+                      {activeTab === "checklist" && (
+                        <ChecklistView
+                          rules={tradingRules}
+                          onAddRule={handleAddRule}
+                          onUpdateRule={handleUpdateRule}
+                          onDeleteRule={handleDeleteRule}
+                          onSeedDefaultRules={handleSeedDefaultRules}
+                          isCreatorOrMod={isCreatorOrMod}
+                        />
+                      )}
+
+                      {activeTab === "friends" && (
+                        <FriendsView
+                          currentUser={currentUser}
+                          db={db}
+                          profile={profile}
+                          onJoinRoomCode={handleJoinRoom}
+                          triggerToast={triggerToast}
+                        />
+                      )}
+                    </>
                   )}
 
                   {activeTab === "partners" && (
@@ -2070,6 +3039,7 @@ export default function App() {
                       onAddChannel={handleAddChannel}
                       onDeleteChannel={handleDeleteChannel}
                       onRenameChannel={handleRenameChannelTrigger}
+                      onSetChannelPin={handleSetChannelPin}
                       onCopyRoomCode={() => {
                         navigator.clipboard.writeText(activeRoom.id);
                         triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
@@ -2077,7 +3047,7 @@ export default function App() {
                       onJoinRoomCode={handleJoinRoom}
                       onCreateNewRoom={handleCreateRoom}
                       isCreatorOrMod={isCreatorOrMod}
-                      onSimulateAiAdvisor={handleSimulateAiAdvisor}
+                      onConsultAiAdvisor={handleConsultAiAdvisor}
                       voiceName={voiceName}
                       setVoiceName={setVoiceName}
                       vocalPrompt={vocalPrompt}
@@ -2086,6 +3056,11 @@ export default function App() {
                       stripeConfig={stripeConfig}
                       onSubscribe={handleSubscribe}
                       onManageBilling={handleManageBilling}
+                      onUpdateSubscriptionTier={handleUpdateSubscriptionTier}
+                      onUpdateRoomMonetization={handleUpdateRoomMonetization}
+                      onUpdateStripeConnect={handleUpdateStripeConnect}
+                      onUpdateDiscordWebhook={handleUpdateDiscordWebhook}
+                      isRoomOwner={activeRoom.creatorId === currentUser?.uid}
                     />
                   )}
                 </div>
@@ -2118,10 +3093,13 @@ export default function App() {
                         roomTraders={traders}
                         userId={currentUser.uid}
                         onSendChatMessage={handleSendChatMessage}
+                        onDeleteChatMessage={handleDeleteChatMessage}
                         roomAdminId={activeRoom.creatorId}
-                        roomMods={activeRoom.moderators}
+                        roomMods={activeRoom.moderators || []}
+                        isCreatorOrMod={isCreatorOrMod}
                         onToggleModRole={handleToggleModRole}
                         onOpenSidebar={() => setIsMobileSidebarOpen(true)}
+                        profile={profile}
                       />
                     </div>
                   </div>
@@ -2193,127 +3171,129 @@ export default function App() {
           {/* Modal Overlay: Log P&L Trade Setup */}
           {isLogModalOpen && (
             <div className="fixed inset-0 z-40 bg-[#0F1113]/90 flex items-center justify-center p-4 backdrop-blur-md">
-              <div className="bg-[#1E2023] border border-[#2A2D31] rounded w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in duration-200">
-                <div className="p-5 border-b border-[#2A2D31]/60 flex items-center justify-between bg-[#121417]">
+              <div className="bg-[#1E2023] border border-[#2A2D31] rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in duration-200 max-h-[calc(100vh-2rem)] flex flex-col">
+                <div className="p-4 sm:p-5 border-b border-[#2A2D31]/60 flex items-center justify-between bg-[#121417] shrink-0">
                   <h3 className="font-extrabold text-gray-100 text-sm flex items-center gap-2">
                     <TrendingUp className="text-[#5865F2] w-5 h-5" /> Log Verified Trade Setup
                   </h3>
-                  <button onClick={() => setIsLogModalOpen(false)} className="text-gray-400 hover:text-white transition">
+                  <button onClick={() => setIsLogModalOpen(false)} className="text-gray-400 hover:text-white transition cursor-pointer">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <form onSubmit={handleLogTradeSubmit} className="p-6 space-y-4 text-[#DCDDDE]">
-                  <div>
-                    <label className="block text-xs font-bold text-[#8E9297] uppercase mb-2">
-                      P&L Amount ($ USD)
-                    </label>
-                    <div className="flex rounded overflow-hidden border border-[#2A2D31]">
-                      <button
-                        type="button"
-                        onClick={() => setLogType("profit")}
-                        className={`flex-grow py-2.5 text-sm font-extrabold transition ${
-                          logType === "profit" ? "bg-[#43B581]/10 text-[#43B581]" : "bg-[#121417] text-gray-500"
-                        }`}
-                      >
-                        PROFIT (+)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLogType("loss")}
-                        className={`flex-grow py-2.5 text-sm font-extrabold transition ${
-                          logType === "loss" ? "bg-[#F04747]/10 text-[#F04747]" : "bg-[#121417] text-gray-500"
-                        }`}
-                      >
-                        LOSS (-)
-                      </button>
-                    </div>
-                    <div className="relative mt-2">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#72767D] font-bold">$</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={logAmount}
-                        onChange={(e) => setLogAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full bg-[#121417] border border-[#2A2D31] rounded pl-8 pr-4 py-2.5 text-lg font-black text-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={handleLogTradeSubmit} className="flex-grow flex flex-col overflow-hidden">
+                  <div className="p-4 sm:p-6 space-y-4 text-[#DCDDDE] overflow-y-auto flex-grow">
                     <div>
-                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Date</label>
-                      <input
-                        type="date"
-                        required
-                        value={logDate}
-                        onChange={(e) => setLogDate(e.target.value)}
+                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-2">
+                        P&L Amount ($ USD)
+                      </label>
+                      <div className="flex rounded overflow-hidden border border-[#2A2D31]">
+                        <button
+                          type="button"
+                          onClick={() => setLogType("profit")}
+                          className={`flex-grow py-2.5 text-sm font-extrabold transition cursor-pointer ${
+                            logType === "profit" ? "bg-[#43B581]/10 text-[#43B581]" : "bg-[#121417] text-gray-500"
+                          }`}
+                        >
+                          PROFIT (+)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLogType("loss")}
+                          className={`flex-grow py-2.5 text-sm font-extrabold transition cursor-pointer ${
+                            logType === "loss" ? "bg-[#F04747]/10 text-[#F04747]" : "bg-[#121417] text-gray-500"
+                          }`}
+                        >
+                          LOSS (-)
+                        </button>
+                      </div>
+                      <div className="relative mt-2">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#72767D] font-bold">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={logAmount}
+                          onChange={(e) => setLogAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded pl-8 pr-4 py-2.5 text-lg font-black text-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Date</label>
+                        <input
+                          type="date"
+                          required
+                          value={logDate}
+                          onChange={(e) => setLogDate(e.target.value)}
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Time</label>
+                        <input
+                          type="time"
+                          required
+                          value={logTime}
+                          onChange={(e) => setLogTime(e.target.value)}
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Asset / Ticker</label>
+                        <input
+                          type="text"
+                          required
+                          value={logAsset}
+                          onChange={(e) => setLogAsset(e.target.value)}
+                          placeholder="BTC"
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white uppercase font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Strategy</label>
+                        <select
+                          value={logStrategy}
+                          onChange={(e) => setLogStrategy(e.target.value)}
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
+                        >
+                          <option value="Breakout">Breakout</option>
+                          <option value="Mean Reversion">Mean Reversion</option>
+                          <option value="Supply/Demand">Supply/Demand</option>
+                          <option value="Scalp">Scalp</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Notes</label>
+                      <textarea
+                        value={logNotes}
+                        onChange={(e) => setLogNotes(e.target.value)}
+                        placeholder="Add technical indicator confirmations or leverage notes..."
+                        rows={2}
                         className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Time</label>
-                      <input
-                        type="time"
-                        required
-                        value={logTime}
-                        onChange={(e) => setLogTime(e.target.value)}
-                        className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
-                      />
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Asset / Ticker</label>
-                      <input
-                        type="text"
-                        required
-                        value={logAsset}
-                        onChange={(e) => setLogAsset(e.target.value)}
-                        placeholder="BTC"
-                        className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white uppercase font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Strategy</label>
-                      <select
-                        value={logStrategy}
-                        onChange={(e) => setLogStrategy(e.target.value)}
-                        className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
-                      >
-                        <option value="Breakout">Breakout</option>
-                        <option value="Mean Reversion">Mean Reversion</option>
-                        <option value="Supply/Demand">Supply/Demand</option>
-                        <option value="Scalp">Scalp</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Notes</label>
-                    <textarea
-                      value={logNotes}
-                      onChange={(e) => setLogNotes(e.target.value)}
-                      placeholder="Add technical indicator confirmations or leverage notes..."
-                      rows={2}
-                      className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-
-                  <div className="pt-3 flex gap-3">
+                  <div className="p-4 bg-[#121417] border-t border-[#2A2D31]/60 flex gap-3 shrink-0">
                     <button
                       type="button"
                       onClick={() => setIsLogModalOpen(false)}
-                      className="w-1/3 bg-[#121417] hover:bg-[#08090A] border border-[#2A2D31] text-gray-300 font-semibold text-xs py-2 rounded.5 transition"
+                      className="w-1/3 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-gray-300 font-semibold text-xs py-2.5 rounded transition cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs py-2 rounded transition shadow"
+                      className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs py-2.5 rounded transition shadow cursor-pointer"
                     >
                       Sync Record
                     </button>
@@ -2444,6 +3424,65 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Overlay: PIN Unlock */}
+          {pendingChannelToUnlock && (
+            <div className="fixed inset-0 z-[90] bg-[#0F1113]/95 flex items-center justify-center p-4 backdrop-blur-md">
+              <div className="bg-[#1E2023] border border-[#2A2D31] rounded w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 p-6">
+                <div className="flex items-center gap-2 mb-2 text-amber-500">
+                  <Lock className="w-5 h-5 fill-amber-500/10" />
+                  <h3 className="font-extrabold text-lg text-white">Unlock Channel</h3>
+                </div>
+                <p className="text-xs text-[#8E9297] mb-4">
+                  The {pendingChannelToUnlock.type === "text" ? "text channel" : "voice room"}{" "}
+                  <span className="text-white font-bold">#{pendingChannelToUnlock.name}</span> is PIN-protected. Please enter the room PIN to join.
+                </p>
+                <form onSubmit={handleVerifyChannelPin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                      Enter PIN Code
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      autoFocus
+                      placeholder="e.g. 1234"
+                      value={enteredPin}
+                      onChange={(e) => {
+                        setEnteredPin(e.target.value);
+                        if (pinError) setPinError("");
+                      }}
+                      className="w-full bg-[#121417] border border-[#2A2D31] rounded px-4 py-2.5 text-center text-lg text-white tracking-widest font-mono focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    {pinError && (
+                      <p className="text-rose-500 text-xs font-semibold mt-1.5 animate-pulse text-center">
+                        {pinError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingChannelToUnlock(null);
+                        setEnteredPin("");
+                        setPinError("");
+                      }}
+                      className="w-1/3 bg-[#121417] hover:bg-[#08090A] border border-[#2A2D31] text-gray-300 font-semibold text-xs py-2 rounded transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="w-2/3 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs py-2 rounded transition cursor-pointer flex items-center justify-center gap-1.5 shadow"
+                    >
+                      Unlock Room
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

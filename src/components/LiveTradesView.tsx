@@ -40,6 +40,8 @@ interface LiveTradesViewProps {
   onUpdateTradePrice: (id: string, currentPrice: number) => Promise<void>;
   onDeleteLiveTrade: (id: string) => Promise<void>;
   onTriggerPriceFluctuation: () => void;
+  isCreatorOrMod?: boolean;
+  userTier?: string;
 }
 
 export default function LiveTradesView({
@@ -54,6 +56,8 @@ export default function LiveTradesView({
   onUpdateTradePrice,
   onDeleteLiveTrade,
   onTriggerPriceFluctuation,
+  isCreatorOrMod = false,
+  userTier = "free",
 }: LiveTradesViewProps) {
   const [scope, setScope] = useState<"all" | "me">("all");
   const [isNewTradeOpen, setIsNewTradeOpen] = useState(false);
@@ -67,6 +71,26 @@ export default function LiveTradesView({
   const [tradeQuantity, setTradeQuantity] = useState("1");
   const [tradeNotes, setTradeNotes] = useState("");
   const [checkedRules, setCheckedRules] = useState<Record<string, boolean>>({});
+
+  // Risk Sizing Calculator States
+  const [calcBalance, setCalcBalance] = useState("10000");
+  const [calcRiskPct, setCalcRiskPct] = useState("1.0");
+
+  const calculatedRiskQuantity = useMemo(() => {
+    const balance = parseFloat(calcBalance);
+    const riskPct = parseFloat(calcRiskPct);
+    const entry = parseFloat(tradeEntryPrice);
+    const sl = parseFloat(tradeSL);
+
+    if (isNaN(balance) || isNaN(riskPct) || isNaN(entry) || isNaN(sl) || entry === sl) {
+      return null;
+    }
+
+    const riskCapital = balance * (riskPct / 100);
+    const stopLossDistance = Math.abs(entry - sl);
+    const qty = riskCapital / stopLossDistance;
+    return isNaN(qty) || qty <= 0 ? null : parseFloat(qty.toFixed(4));
+  }, [calcBalance, calcRiskPct, tradeEntryPrice, tradeSL]);
 
   const filteredTrades = useMemo(() => {
     return liveTrades.filter((t) => {
@@ -227,20 +251,24 @@ export default function LiveTradesView({
           <button
             onClick={onTriggerPriceFluctuation}
             disabled={openTrades.length === 0}
-            className={`font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 ${
+            className={`font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer ${
               openTrades.length === 0
                 ? "bg-[#1E2023] border border-[#2A2D31] text-gray-600 cursor-not-allowed"
                 : "bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-400"
             }`}
-            title="Slightly tick and fluctuate open trade prices to simulate real-time market updates"
+            title="Slightly tick and fluctuate open trade prices to generate real-time market updates"
           >
-            <Sparkles className="w-4 h-4 animate-bounce" /> Simulate Live Ticks
+            <Sparkles className="w-4 h-4 animate-bounce text-emerald-400" />
+            <span className="hidden sm:inline">Trigger Price Ticks</span>
+            <span className="sm:hidden">Ticks</span>
           </button>
           <button
             onClick={() => setIsNewTradeOpen(true)}
-            className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5"
+            className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus className="w-4 h-4" /> Open Position
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Open Position</span>
+            <span className="sm:hidden">Open</span>
           </button>
         </div>
       </div>
@@ -295,27 +323,29 @@ export default function LiveTradesView({
       </div>
 
       {/* Filter Scope Controls */}
-      <div className="glass-panel p-3 rounded flex gap-3 items-center flex-wrap border border-[#2A2D31] bg-[#121417]">
-        <div className="flex items-center space-x-2 text-xs font-bold text-[#8E9297] uppercase tracking-wider">
-          <Clock className="w-4 h-4 text-indigo-400 animate-pulse" />
+      <div className="glass-panel p-2.5 sm:p-3 rounded-xl flex items-center justify-between flex-wrap gap-2.5 border border-[#2A2D31] bg-[#121417]">
+        <div className="flex items-center space-x-2 text-xs font-bold text-[#8E9297] uppercase tracking-wider shrink-0">
+          <Clock className="w-4 h-4 text-indigo-400 animate-pulse shrink-0" />
           <span>Monitor Scope:</span>
         </div>
-        <button
-          onClick={() => setScope("all")}
-          className={`px-3 py-1.5 rounded text-xs font-bold transition ${
-            scope === "all" ? "bg-[#5865F2]/10 text-[#5865F2]" : "text-[#8E9297] hover:text-white"
-          }`}
-        >
-          All Desk Trades
-        </button>
-        <button
-          onClick={() => setScope("me")}
-          className={`px-3 py-1.5 rounded text-xs font-bold transition ${
-            scope === "me" ? "bg-[#5865F2]/10 text-[#5865F2]" : "text-[#8E9297] hover:text-white"
-          }`}
-        >
-          Only My Trades
-        </button>
+        <div className="flex rounded-lg p-0.5 bg-[#1E2023] border border-[#2A2D31]/80 shrink-0">
+          <button
+            onClick={() => setScope("all")}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-extrabold transition cursor-pointer ${
+              scope === "all" ? "bg-[#5865F2] text-white shadow-sm" : "text-[#8E9297] hover:text-white"
+            }`}
+          >
+            All Desk Trades
+          </button>
+          <button
+            onClick={() => setScope("me")}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-extrabold transition cursor-pointer ${
+              scope === "me" ? "bg-[#5865F2] text-white shadow-sm" : "text-[#8E9297] hover:text-white"
+            }`}
+          >
+            Only My Trades
+          </button>
+        </div>
       </div>
 
       {/* Grid of Open Live Positions */}
@@ -347,7 +377,7 @@ export default function LiveTradesView({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {openTrades.map((t) => {
               const qty = (t as any).quantity || 1;
               const diff = t.direction === "long" ? t.currentPrice - t.entryPrice : t.entryPrice - t.currentPrice;
@@ -443,22 +473,29 @@ export default function LiveTradesView({
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="p-3 border-t border-[#2A2D31]/40 bg-[#121417] flex gap-2">
-                    {t.userId === userId ? (
+                  <div className="p-3 border-t border-[#2A2D31]/40 bg-[#121417] flex flex-col gap-1.5">
+                    {t.userId === userId || isCreatorOrMod ? (
                       <>
-                        <button
-                          onClick={() => onCloseLiveTrade(t.id, "manual", t.currentPrice, unrealized)}
-                          className="flex-grow bg-[#5865F2]/20 hover:bg-[#5865F2]/30 border border-[#5865F2]/40 text-indigo-300 font-bold text-xs py-1.5 rounded transition flex items-center justify-center gap-1.5"
-                        >
-                          <Square className="w-3 h-3" /> Market Close
-                        </button>
-                        <button
-                          onClick={() => onDeleteLiveTrade(t.id)}
-                          className="p-1.5 bg-[#F04747]/10 hover:bg-[#F04747]/20 border border-[#F04747]/30 text-[#F04747] rounded transition"
-                          title="Delete trade"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {t.userId !== userId && isCreatorOrMod && (
+                          <span className="text-[9px] font-bold text-amber-500/90 tracking-wide uppercase px-1">
+                            ⚠️ Admin / Mod Control Intervention
+                          </span>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => onCloseLiveTrade(t.id, "manual", t.currentPrice, unrealized)}
+                            className="flex-grow bg-[#5865F2]/20 hover:bg-[#5865F2]/30 border border-[#5865F2]/40 text-indigo-300 font-bold text-xs py-1.5 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Square className="w-3 h-3" /> Market Close
+                          </button>
+                          <button
+                            onClick={() => onDeleteLiveTrade(t.id)}
+                            className="p-1.5 bg-[#F04747]/10 hover:bg-[#F04747]/20 border border-[#F04747]/30 text-[#F04747] rounded transition cursor-pointer"
+                            title="Delete trade"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </>
                     ) : (
                       <span className="text-[10px] text-[#8E9297] text-center w-full block py-1 font-semibold">
@@ -497,6 +534,7 @@ export default function LiveTradesView({
                     <th scope="col" className="px-6 py-3">TP/SL target</th>
                     <th scope="col" className="px-6 py-3">Outcome</th>
                     <th scope="col" className="px-6 py-3 text-right">Realized Profit</th>
+                    <th scope="col" className="px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2A2D31]/40 text-xs">
@@ -541,6 +579,19 @@ export default function LiveTradesView({
                         <td className={`px-6 py-3 text-right font-mono font-extrabold ${isWin ? "text-[#43B581]" : "text-[#F04747]"}`}>
                           {isWin ? "+" : ""}{formatCurrency(t.profitAmount || 0)}
                         </td>
+                        <td className="px-6 py-3 text-right whitespace-nowrap">
+                          {t.userId === userId || isCreatorOrMod ? (
+                            <button
+                              onClick={() => onDeleteLiveTrade(t.id)}
+                              className="p-1 bg-[#F04747]/10 hover:bg-[#F04747]/20 border border-[#F04747]/30 text-[#F04747] rounded transition cursor-pointer"
+                              title="Delete closed trade"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-gray-600">Locked</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -554,197 +605,271 @@ export default function LiveTradesView({
       {/* Modal Overlay: Launch Live Trade Form */}
       {isNewTradeOpen && (
         <div className="fixed inset-0 z-50 bg-[#0F1113]/90 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-[#1E2023] border border-[#2A2D31] rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="p-5 border-b border-[#2A2D31]/60 flex items-center justify-between bg-[#121417]">
+          <div className="bg-[#1E2023] border border-[#2A2D31] rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 max-h-[calc(100vh-2rem)] flex flex-col">
+            <div className="p-4 sm:p-5 border-b border-[#2A2D31]/60 flex items-center justify-between bg-[#121417] shrink-0">
               <h3 className="font-extrabold text-gray-100 text-sm flex items-center gap-2">
                 <Play className="text-[#5865F2] w-5 h-5" /> Launch Real-Time Live Position
               </h3>
-              <button onClick={() => setIsNewTradeOpen(false)} className="text-gray-400 hover:text-white transition">
+              <button onClick={() => setIsNewTradeOpen(false)} className="text-gray-400 hover:text-white transition cursor-pointer">
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 text-[#DCDDDE]">
-              {/* Direction Indicator */}
-              <div>
-                <label className="block text-xs font-bold text-[#8E9297] uppercase mb-2">
-                  Position Direction
-                </label>
-                <div className="flex rounded overflow-hidden border border-[#2A2D31]">
-                  <button
-                    type="button"
-                    onClick={() => setTradeDirection("long")}
-                    className={`flex-grow py-2.5 text-sm font-extrabold transition ${
-                      tradeDirection === "long" ? "bg-[#43B581]/10 text-[#43B581]" : "bg-[#121417] text-gray-500"
-                    }`}
-                  >
-                    LONG / BUY (+)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTradeDirection("short")}
-                    className={`flex-grow py-2.5 text-sm font-extrabold transition ${
-                      tradeDirection === "short" ? "bg-[#F04747]/10 text-[#F04747]" : "bg-[#121417] text-gray-500"
-                    }`}
-                  >
-                    SHORT / SELL (-)
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Preset Asset Ticker row */}
-              <div>
-                <label className="block text-[10px] font-bold text-[#8E9297] uppercase tracking-wider mb-2">
-                  Quick Asset Presets
-                </label>
-                <div className="flex gap-1.5 flex-wrap">
-                  {presetAssets.map((pa) => (
+            <form onSubmit={handleSubmit} className="flex-grow flex flex-col overflow-hidden">
+              <div className="p-4 sm:p-6 space-y-4 text-[#DCDDDE] overflow-y-auto flex-grow">
+                {/* Direction Indicator */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8E9297] uppercase mb-2">
+                    Position Direction
+                  </label>
+                  <div className="flex rounded overflow-hidden border border-[#2A2D31]">
                     <button
-                      key={pa.name}
                       type="button"
-                      onClick={() => handleSelectAssetPreset(pa.name)}
-                      className={`text-[10px] font-mono px-2 py-1 rounded transition border ${
-                        tradeAsset === pa.name
-                          ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
-                          : "bg-[#121417] text-gray-400 border-[#2A2D31] hover:text-white"
+                      onClick={() => setTradeDirection("long")}
+                      className={`flex-grow py-2.5 text-sm font-extrabold transition cursor-pointer ${
+                        tradeDirection === "long" ? "bg-[#43B581]/10 text-[#43B581]" : "bg-[#121417] text-gray-500"
                       }`}
                     >
-                      {pa.name}
+                      LONG / BUY (+)
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setTradeDirection("short")}
+                      className={`flex-grow py-2.5 text-sm font-extrabold transition cursor-pointer ${
+                        tradeDirection === "short" ? "bg-[#F04747]/10 text-[#F04747]" : "bg-[#121417] text-gray-500"
+                      }`}
+                    >
+                      SHORT / SELL (-)
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Asset & Quantity input */}
-              <div className="grid grid-cols-2 gap-4">
+                {/* Quick Preset Asset Ticker row */}
                 <div>
-                  <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Asset / Ticker</label>
-                  <input
-                    type="text"
-                    required
-                    value={tradeAsset}
-                    onChange={(e) => setTradeAsset(e.target.value)}
-                    placeholder="BTC/USD"
-                    className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white uppercase font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Position Size (Qty)</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    required
-                    value={tradeQuantity}
-                    onChange={(e) => setTradeQuantity(e.target.value)}
-                    placeholder="1.0"
-                    className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Entry Price & Quantity */}
-              <div>
-                <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Entry Price ($ USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={tradeEntryPrice}
-                  onChange={(e) => setTradeEntryPrice(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2.5 text-sm font-bold text-white focus:outline-none"
-                />
-              </div>
-
-              {/* Targets: TP and SL */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-emerald-400 uppercase mb-1.5 flex items-center gap-1">
-                    <Target className="w-3.5 h-3.5" /> Take Profit (TP)
+                  <label className="block text-[10px] font-bold text-[#8E9297] uppercase tracking-wider mb-2">
+                    Quick Asset Presets
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={tradeTP}
-                    onChange={(e) => setTradeTP(e.target.value)}
-                    placeholder="Target price"
-                    className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-red-400 uppercase mb-1.5 flex items-center gap-1">
-                    <ShieldAlert className="w-3.5 h-3.5" /> Stop Loss (SL)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={tradeSL}
-                    onChange={(e) => setTradeSL(e.target.value)}
-                    placeholder="Cut loss price"
-                    className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Trade Notes / Strategy</label>
-                <textarea
-                  value={tradeNotes}
-                  onChange={(e) => setTradeNotes(e.target.value)}
-                  placeholder="Technical triggers like 'VWAP cross', '15m RSI oversold'..."
-                  rows={2}
-                  className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
-                />
-              </div>
-
-              {/* Rules Checklist */}
-              {rules && rules.length > 0 && (
-                <div className="bg-[#121417]/80 border border-[#2A2D31] rounded-xl p-4 space-y-3">
-                  <span className="block text-xs font-extrabold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <ListTodo className="w-4 h-4 text-indigo-400 shrink-0" /> Mandatory Confirmation Checklist
-                  </span>
-                  <p className="text-[10px] text-[#8E9297] leading-relaxed">
-                    Confirm you are following the desk rules before placing this trade.
-                  </p>
-                  <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-800">
-                    {rules.map((rule) => (
-                      <label
-                        key={rule.id}
-                        className="flex items-start gap-2.5 cursor-pointer text-xs font-semibold text-gray-300 hover:text-white select-none"
+                  <div className="flex gap-1.5 flex-wrap">
+                    {presetAssets.map((pa) => (
+                      <button
+                        key={pa.name}
+                        type="button"
+                        onClick={() => handleSelectAssetPreset(pa.name)}
+                        className={`text-[10px] font-mono px-2 py-1 rounded transition border cursor-pointer ${
+                          tradeAsset === pa.name
+                            ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
+                            : "bg-[#121417] text-gray-400 border-[#2A2D31] hover:text-white"
+                        }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={!!checkedRules[rule.id]}
-                          onChange={(e) => {
-                            setCheckedRules((prev) => ({
-                              ...prev,
-                              [rule.id]: e.target.checked
-                            }));
-                          }}
-                          className="mt-0.5 rounded border-[#2A2D31] text-[#5865F2] focus:ring-[#5865F2] bg-[#121417] cursor-pointer"
-                        />
-                        <span className={`break-words whitespace-normal leading-relaxed ${checkedRules[rule.id] ? "text-gray-500 line-through decoration-[#8E9297]/60" : ""}`}>
-                          {rule.text}
-                        </span>
-                      </label>
+                        {pa.name}
+                      </button>
                     ))}
                   </div>
                 </div>
-              )}
 
-              <div className="pt-3 flex gap-3">
+                {/* Asset & Quantity input */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Asset / Ticker</label>
+                    <input
+                      type="text"
+                      required
+                      value={tradeAsset}
+                      onChange={(e) => setTradeAsset(e.target.value)}
+                      placeholder="BTC/USD"
+                      className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white uppercase font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Position Size (Qty)</label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      required
+                      value={tradeQuantity}
+                      onChange={(e) => setTradeQuantity(e.target.value)}
+                      placeholder="1.0"
+                      className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Entry Price & Quantity */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Entry Price ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={tradeEntryPrice}
+                    onChange={(e) => setTradeEntryPrice(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2.5 text-sm font-bold text-white focus:outline-none"
+                  />
+                </div>
+
+                {/* Targets: TP and SL */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-emerald-400 uppercase mb-1.5 flex items-center gap-1">
+                      <Target className="w-3.5 h-3.5" /> Take Profit (TP)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={tradeTP}
+                      onChange={(e) => setTradeTP(e.target.value)}
+                      placeholder="Target price"
+                      className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-red-400 uppercase mb-1.5 flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5" /> Stop Loss (SL)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={tradeSL}
+                      onChange={(e) => setTradeSL(e.target.value)}
+                      placeholder="Cut loss price"
+                      className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Trade Notes / Strategy</label>
+                  <textarea
+                    value={tradeNotes}
+                    onChange={(e) => setTradeNotes(e.target.value)}
+                    placeholder="Technical triggers like 'VWAP cross', '15m RSI oversold'..."
+                    rows={2}
+                    className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                {/* Dynamic Smart Position Sizing Risk Calculator */}
+                <div className="bg-[#121417]/80 border border-[#2A2D31]/80 rounded-xl p-3 sm:p-4 space-y-3 relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" /> Smart Position-Sizing Calculator
+                    </span>
+                    <span className="text-[9px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      Premium Tool
+                    </span>
+                  </div>
+
+                  {userTier === "free" ? (
+                    <div className="space-y-2 text-center py-2">
+                      <p className="text-[11px] text-gray-400 leading-normal">
+                        Keep your accounts disciplined with dynamic risk-based sizing. Use entry & stop parameters to auto-calculate lot sizes.
+                      </p>
+                      <div className="p-2 bg-amber-500/5 rounded-lg border border-amber-500/10 inline-block">
+                        <p className="text-[9px] text-amber-400 font-extrabold uppercase tracking-widest">
+                          🔒 Locked for Free Tier
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-[10px] text-gray-400 leading-normal">
+                        Calculate exact position size to risk based on account balance and stop loss distance.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3.5">
+                        <div>
+                          <label className="block text-[9px] font-bold text-[#8E9297] uppercase mb-1">Account Balance ($)</label>
+                          <input
+                            type="number"
+                            value={calcBalance}
+                            onChange={(e) => setCalcBalance(e.target.value)}
+                            placeholder="10000"
+                            className="w-full bg-[#1E2023] border border-[#2A2D31]/80 rounded px-2.5 py-1.5 text-xs text-white font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-[#8E9297] uppercase mb-1">Max Capital Risk (%)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={calcRiskPct}
+                            onChange={(e) => setCalcRiskPct(e.target.value)}
+                            placeholder="1.0"
+                            className="w-full bg-[#1E2023] border border-[#2A2D31]/80 rounded px-2.5 py-1.5 text-xs text-white font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-[#1E2023]/60 p-2.5 rounded-lg border border-[#2A2D31]/40 flex justify-between items-center">
+                        <div>
+                          <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider block">Recommended Size (Qty)</span>
+                          <span className="text-sm font-black text-white font-mono">
+                            {calculatedRiskQuantity !== null ? calculatedRiskQuantity.toLocaleString() : "Set Entry & SL"}
+                          </span>
+                        </div>
+                        {calculatedRiskQuantity !== null && (
+                          <button
+                            type="button"
+                            onClick={() => setTradeQuantity(calculatedRiskQuantity.toString())}
+                            className="bg-amber-500 hover:bg-amber-600 text-neutral-900 text-[10px] font-black px-2.5 py-1 rounded transition cursor-pointer"
+                          >
+                            Apply Qty
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Rules Checklist */}
+                {rules && rules.length > 0 && (
+                  <div className="bg-[#121417]/80 border border-[#2A2D31] rounded-xl p-3 sm:p-4 space-y-3">
+                    <span className="block text-xs font-extrabold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <ListTodo className="w-4 h-4 text-indigo-400 shrink-0" /> Mandatory Confirmation Checklist
+                    </span>
+                    <p className="text-[10px] text-[#8E9297] leading-relaxed">
+                      Confirm you are following the desk rules before placing this trade.
+                    </p>
+                    <div className="space-y-2.5 max-h-40 overflow-y-auto pr-1">
+                      {rules.map((rule) => (
+                        <label
+                          key={rule.id}
+                          className="flex items-start gap-2.5 cursor-pointer text-xs font-semibold text-gray-300 hover:text-white select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!checkedRules[rule.id]}
+                            onChange={(e) => {
+                              setCheckedRules((prev) => ({
+                                ...prev,
+                                [rule.id]: e.target.checked
+                              }));
+                            }}
+                            className="mt-0.5 rounded border-[#2A2D31] text-[#5865F2] focus:ring-[#5865F2] bg-[#121417] cursor-pointer"
+                          />
+                          <span className={`break-words whitespace-normal leading-relaxed ${checkedRules[rule.id] ? "text-gray-500 line-through decoration-[#8E9297]/60" : ""}`}>
+                            {rule.text}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-[#121417] border-t border-[#2A2D31]/60 flex gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsNewTradeOpen(false)}
-                  className="w-1/3 bg-[#121417] hover:bg-[#08090A] border border-[#2A2D31] text-gray-300 font-semibold text-xs py-2 rounded transition"
+                  className="w-1/3 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-gray-300 font-semibold text-xs py-2.5 rounded transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white font-black text-xs py-2 rounded transition shadow flex items-center justify-center gap-1.5"
+                  className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white font-black text-xs py-2.5 rounded transition shadow flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Activity className="w-4 h-4" /> Deploy Position
                 </button>

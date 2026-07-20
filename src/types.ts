@@ -5,6 +5,14 @@ export interface Room {
   moderators: string[];
   createdAt: string;
   name?: string;
+  isPaid?: boolean;
+  monthlyPrice?: number;
+  subscribers?: string[];
+  paypalLink?: string;
+  venmoUsername?: string;
+  cashappTag?: string;
+  stripePaymentLink?: string;
+  customPaymentInstructions?: string;
 }
 
 export interface UserProfile {
@@ -20,6 +28,13 @@ export interface UserProfile {
   subscriptionStatus?: "trialing" | "active" | "canceled" | "past_due" | "unpaid" | "none";
   subscriptionPeriodEnd?: string;
   trialEndDate?: string;
+  subscriptionTier?: "free" | "pro" | "elite" | "premium";
+  earningsMRR?: number;
+  stripeConnectLinked?: boolean;
+  stripeConnectAccountId?: string;
+  discordWebhookUrl?: string;
+  marketPresence?: "active" | "idle" | "dnd" | "offline";
+  customStatus?: string;
 }
 
 export interface PnlLog {
@@ -51,6 +66,7 @@ export interface Channel {
   type: "text" | "voice";
   groupId: string;
   createdAt: string;
+  pin?: string;
 }
 
 export interface ChatMessage {
@@ -113,5 +129,20 @@ export interface TradingRule {
   createdAt: string;
   order: number;
 }
+
+export interface Friendship {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarColor: string;
+  senderAvatarVal: string;
+  receiverId: string;
+  receiverName: string;
+  receiverAvatarColor: string;
+  receiverAvatarVal: string;
+  status: "pending" | "accepted";
+  createdAt: string;
+}
+
 
 
