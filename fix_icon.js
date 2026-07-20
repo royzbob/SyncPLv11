@@ -163,30 +163,28 @@ try {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Write PNG file
-  png.pack()
-    .pipe(fs.createWriteStream(iconPngPath))
-    .on('finish', () => {
-      console.log(`✅ Valid, uncorrupted source PNG written to: ${iconPngPath}`);
-      
-      // Also write copies to default paths at root
-      fs.copyFileSync(iconPngPath, 'app_icon.png');
-      fs.copyFileSync(iconPngPath, 'app-icon.png');
-      console.log('✅ Valid, uncorrupted app_icon.png and app-icon.png written to project root.');
+  // Write PNG file synchronously using PNG.sync.write
+  const buffer = PNG.sync.write(png);
+  fs.writeFileSync(iconPngPath, buffer);
+  console.log(`✅ Valid, uncorrupted source PNG written synchronously to: ${iconPngPath}`);
 
-      // Run Tauri CLI to compile the icon assets perfectly!
-      console.log('🚀 Running "npx tauri icon" to compile standard ICO and ICNS files...');
-      try {
-        // Explicitly pass the source image to be doubly sure
-        execSync('npx tauri icon src-tauri/icons/icon.png', { stdio: 'inherit' });
-        console.log('\n✨ SUCCESS! All Tauri icon files compiled flawlessly.');
-        console.log('👉 You can now run "npm run tauri build" or "npm run tauri dev" on Windows safely.');
-      } catch (cliErr) {
-        console.warn('⚠️ Warning: Could not run "npx tauri icon" automatically. Running manual fallback...');
-        console.error(cliErr.message);
-      }
-      console.log('----------------------------------------------------');
-    });
+  // Also write copies to default paths at root
+  fs.writeFileSync('app_icon.png', buffer);
+  fs.writeFileSync('app-icon.png', buffer);
+  console.log('✅ Valid, uncorrupted app_icon.png and app-icon.png written to project root.');
+
+  // Run Tauri CLI to compile the icon assets perfectly!
+  console.log('🚀 Running "npx tauri icon" to compile standard ICO and ICNS files...');
+  try {
+    // Explicitly use shell: true so that it resolves 'npx' on Windows
+    execSync('npx tauri icon src-tauri/icons/icon.png', { stdio: 'inherit', shell: true });
+    console.log('\n✨ SUCCESS! All Tauri icon files compiled flawlessly.');
+    console.log('👉 You can now run "npm run tauri build" or "npm run tauri dev" on Windows safely.');
+  } catch (cliErr) {
+    console.warn('⚠️ Warning: Could not run "npx tauri icon" automatically. Running manual fallback...');
+    console.error(cliErr.message);
+  }
+  console.log('----------------------------------------------------');
 
 } catch (error) {
   console.error('❌ Error generating valid app icons:', error);

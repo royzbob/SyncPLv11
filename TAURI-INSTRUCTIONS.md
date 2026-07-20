@@ -137,7 +137,25 @@ You can do this either via the command line or directly on the GitHub website!
 
 ---
 
-## 🔄 4. Dynamic Cloud Persistence
+## 🛡️ 5. Fix: macOS "App is damaged and can't be opened" (Gatekeeper Quarantine)
+
+Since this app is built automatically in the cloud on GitHub and is not signed with a paid Apple Developer Account certificate ($99/year), macOS's built-in **Gatekeeper** security feature will mark the downloaded application as "damaged" when you try to open it. 
+
+**The app is NOT damaged!** macOS simply sets an internet-download quarantine attribute (`com.apple.quarantine`) on any unsigned app.
+
+### How to fix it in 2 simple steps:
+
+1. **Move to Applications**: Double-click the downloaded `.dmg` file, and drag the **SyncPL Trading** app into your Mac's **Applications** folder.
+2. **Clear Quarantine**: Open the **Terminal** app on your Mac (press `Command + Space`, type `Terminal`, and hit Enter), copy and paste the following command, and press Enter:
+   ```bash
+   xattr -cr /Applications/SyncPL\ Trading.app
+   ```
+
+Now, double-click the app in your Applications folder, and it will start up perfectly!
+
+---
+
+## 🔄 6. Dynamic Cloud Persistence
 
 ### How is user data kept safe?
 Your desktop app is fully connected to your **Firebase Auth & Firestore database**. Because trade logs, user settings, checklist parameters, and custom market presences are synced to the cloud, users can update the application, change devices, or clean local caches without ever losing their data!
