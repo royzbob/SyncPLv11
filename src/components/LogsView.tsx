@@ -11,6 +11,7 @@ interface LogsViewProps {
   onOpenLogModal: () => void;
   roomCode: string;
   traders: UserProfile[];
+  isCreatorOrMod?: boolean;
 }
 
 export default function LogsView({
@@ -21,6 +22,7 @@ export default function LogsView({
   onOpenLogModal,
   roomCode,
   traders,
+  isCreatorOrMod = false,
 }: LogsViewProps) {
   const [scope, setScope] = useState<"all" | "me">("all");
   const [selectedFlexLog, setSelectedFlexLog] = useState<PnlLog | null>(null);
@@ -186,11 +188,11 @@ export default function LogsView({
                           >
                             <Award className="w-4 h-4" />
                           </button>
-                          {isOwner && (
+                          {(isOwner || isCreatorOrMod) && (
                             <button
                               onClick={() => onDeleteLog(log.id, log.asset, log.amount)}
-                              className="p-1.5 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded transition"
-                              title="Delete Log Entry"
+                              className="p-1.5 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded transition cursor-pointer"
+                              title={isOwner ? "Delete Log Entry" : "Delete Log Entry (Admin/Mod Control)"}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

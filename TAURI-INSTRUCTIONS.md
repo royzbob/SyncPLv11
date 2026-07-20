@@ -1,89 +1,163 @@
-# 🚀 Tauri Desktop compilation & Auto-Update Guide
+# 🚀 Tauri Desktop Compilation & Auto-Update Guide (macOS & Windows)
 
-This guide contains everything you need to compile your **SyncPL Trading Dashboard** into a lightweight, high-performance Windows native executable (`.exe`) using **Tauri**, and set up automated GitHub builds with push updates!
+This guide contains everything you need to run, compile, and distribute your **SyncPL Trading Dashboard** as a native desktop application for **macOS** (DMG / APP) and **Windows** (EXE / MSI) using **Tauri**, including automated cloud builds!
 
-We have already pre-configured the Tauri configuration and the GitHub Actions release workflow in this repository. When you run `git pull` on your local computer, these files will be added immediately.
-
----
-
-## 🛠️ Step 1: Install Local Windows Prerequisites
-Because Tauri compiles the application into native machine code (making it incredibly fast and under 10MB), you need the native Windows compiler tools on your PC:
-
-1. **Install Rust**:
-   * Download and run [rustup-init.exe](https://rustup.rs/) (choose option `1` to install default toolchain).
-2. **Install C++ Build Tools**:
-   * Download the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
-   * Run the installer and check **"Desktop development with C++"**, then complete the installation.
-3. **Install Node.js** (which you already have).
+We have already pre-configured the cross-platform Tauri configuration and the GitHub Actions release workflow. When you run `git pull` on your local computer, these updates are immediately available.
 
 ---
 
-## 📥 Step 2: Sync Your Local Repository
-Open your terminal inside your local folder:
-`C:\Users\1nath\OneDrive\Desktop\syncpl-trading-dashboard`
+## 📥 Step 0: How to Get These Files Onto Your Mac From AI Studio
 
-Run these commands to get the new configuration and install the Tauri CLI:
-```bash
-# Pull the latest code updates from GitHub
-git pull
+Since you are currently developing in the AI Studio environment, here is how you can easily download the source files to your Mac:
 
-# Install the new @tauri-apps/cli developer dependency
-npm install
-```
+### Option A: Download as a ZIP File (Easiest & Fastest)
+1. Look at the top-right corner of the **AI Studio** window.
+2. Click on the **Gear/Settings Icon** ⚙️.
+3. Click **"Download ZIP"** (or **"Export ZIP"**).
+4. Save the ZIP file to your Mac, double-click it to unzip, and you'll have all the files ready in a folder!
+
+### Option B: Export / Connect to GitHub
+1. Click the **Gear/Settings Icon** ⚙️ in the top-right.
+2. Choose **"Export to GitHub"**.
+3. Connect your GitHub account and let it push this project into a repository.
+4. Once pushed, open the **Terminal** application on your Mac and clone it:
+   ```bash
+   git clone <your-github-repo-url>
+   ```
 
 ---
 
-## 💻 Step 3: Run and Build Locally
+## 💻 1. For Your Mac: Running & Compiling on macOS
 
-### 1. Test Your App in Desktop Dev Mode
-You can run the dashboard inside a native native window with full hot-reloads:
-```bash
-npm run tauri dev
-```
+Tauri compiles your application directly to native machine code. It uses macOS's built-in Cocoa WebKit renderer, which means the finished app is incredibly lightweight (less than 15MB) and highly responsive.
 
-### 2. Compile to a Single Windows Installer (`.exe`)
-To bundle your app into an installer locally on your PC:
+### Step A: Install macOS Prerequisites
+To compile Rust code on your Mac, you need the macOS compiler command-line utilities:
+
+1. **Install Xcode Command Line Tools**:
+   Open your Terminal app on your Mac and run:
+   ```bash
+   xcode-select --install
+   ```
+   *(A pop-up will appear; click **Install** to let macOS configure the tools automatically.)*
+
+2. **Install Rust Compiler**:
+   Install Rust via the official installer:
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+   *(Choose option `1` when prompted. After installation, restart your terminal or run `source $HOME/.cargo/env` to activate Rust.)*
+
+3. **Install Node.js & NPM**:
+   Make sure you have Node.js installed on your Mac (you can download it from [nodejs.org](https://nodejs.org/) or install via Homebrew `brew install node`).
+
+---
+
+### Step B: Sync Your Local Repository & Run Local Dev
+
+1. Open your terminal and navigate to your local workspace folder:
+   ```bash
+   cd /path/to/your/syncpl-trading-dashboard
+   ```
+2. Pull latest workspace configurations from GitHub and install development dependencies:
+   ```bash
+   git pull origin main
+   npm install
+   ```
+3. **Launch Desktop Dev Mode**:
+   Test your dashboard in a beautiful native macOS window with full hot-reloads:
+   ```bash
+   npm run tauri dev
+   ```
+
+---
+
+### Step C: Package to Standalone Mac Application (.dmg / .app)
+To package your finished application into a native macOS Disk Image installer (`.dmg`) or raw Application bundle (`.app`) on your local Mac:
 ```bash
 npm run tauri build
 ```
-Once complete, your standalone `.exe` installer will be located in:
-`src-tauri/target/release/bundle/nsis/SyncPL Trading_1.0.0_x64-setup.exe`
+Once completed, your native macOS installers will be ready inside:
+* **Standalone App**: `src-tauri/target/release/bundle/macos/SyncPL Trading.app`
+* **Disk Image Installer**: `src-tauri/target/release/bundle/dmg/SyncPL Trading_1.0.3_x64.dmg` *(or `_aarch64.dmg` if on Apple Silicon)*
 
 ---
 
-## 🤖 Step 4: Setup Automatic `.exe` Builds with GitHub Actions
-We have created a automated workflow file in `.github/workflows/tauri-build.yml`. Every time you publish a release version on GitHub, GitHub will automatically compile the Windows `.exe` and upload it for you!
+## 🪟 2. For Windows: Running & Compiling on Windows
 
-### How to trigger a new release:
-1. Update your app version in `src-tauri/tauri.conf.json` (e.g., change `"version": "1.0.0"` to `"1.0.1"`).
-2. Commit and push your changes to GitHub.
-3. Push a version tag from your terminal:
+If you or your friends need to compile natively on Windows:
+
+### Step A: Install Windows Prerequisites
+1. **Install Rust**: Download and run [rustup-init.exe](https://rustup.rs/) (Choose option `1` to install default toolchain).
+2. **Install C++ Build Tools**: Download [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). Run the installer, select the **"Desktop development with C++"** checkbox, and complete the installation.
+
+### Step B: Compile Standalone Windows Installer (.exe)
+In your Windows terminal, run:
+```bash
+npm install
+npm run tauri build
+```
+Your standalone installer will be located at:
+`src-tauri/target/release/bundle/nsis/SyncPL Trading_1.0.3_x64-setup.exe`
+
+---
+
+## 🤖 3. Fully Automated macOS & Windows Builds via GitHub Actions
+
+You don't even need to build the apps locally! We have pre-configured a continuous-integration pipeline in `.github/workflows/tauri-build.yml`. 
+
+Whenever you publish a release version, **GitHub's virtual cloud runners will spin up macOS and Windows environments, compile both packages simultaneously in the cloud, and attach the finished macOS `.dmg` and Windows `.exe` installers straight to your release!**
+
+### How to trigger an automatic cross-platform release:
+
+You can do this either via the command line or directly on the GitHub website!
+
+#### Option A: Directly on GitHub.com (No Command Line Needed!)
+1. Go to your repository page on **GitHub.com**.
+2. On the right side, find the **Releases** section and click on **"Create a new release"** (or click **Releases** then **"Draft a new release"**).
+3. Click the **"Choose a tag"** dropdown, type in your new version tag (e.g., `v1.0.4`), and click **"Create new tag"**.
+4. Set the Release Title to something like `v1.0.4` or `SyncPL Trading Dashboard v1.0.4`.
+5. Click **"Publish release"**.
+6. **That's it!** GitHub Actions will instantly start running in the background. It will automatically build both the macOS (`.dmg`) installer and the Windows (`.exe`) installer and attach them directly to this release page in about 10-15 minutes!
+
+#### Option B: Via Local Terminal (Git Command Line)
+1. Open `src-tauri/tauri.conf.json` and bump your version (e.g., change `"version": "1.0.3"` to `"1.0.4"`).
+2. Commit and push your changes to GitHub:
    ```bash
-   # Create a version tag
-   git tag v1.0.1
-   
-   # Push the tag to GitHub
-   git push origin v1.0.1
+   git add .
+   git commit -m "bump version to v1.0.4"
+   git push origin main
    ```
-4. **Watch the magic**: Go to the **Actions** tab on your GitHub repository. You will see a workflow running. Once finished, a new Release will be created on your repository with the Windows setup `.exe` attached and ready for download!
+3. Tag the commit and push the tag to trigger the automatic pipeline:
+   ```bash
+   git tag v1.0.4
+   git push origin v1.0.4
+   ```
+4. **Watch the build**: Go to the **Actions** tab on your GitHub repository. You will see both macOS and Windows runners compiling. Once completed, a new Release page will be live on your GitHub repo with both downloads ready for your users!
 
 ---
 
-## 🔄 Step 5: Setting Up Auto-Updates & Preserving Previous Data
+## 🛡️ 5. Fix: macOS "App is damaged and can't be opened" (Gatekeeper Quarantine)
+
+Since this app is built automatically in the cloud on GitHub and is not signed with a paid Apple Developer Account certificate ($99/year), macOS's built-in **Gatekeeper** security feature will mark the downloaded application as "damaged" when you try to open it. 
+
+**The app is NOT damaged!** macOS simply sets an internet-download quarantine attribute (`com.apple.quarantine`) on any unsigned app.
+
+### How to fix it in 2 simple steps:
+
+1. **Move to Applications**: Double-click the downloaded `.dmg` file, and drag the **SyncPL Trading** app into your Mac's **Applications** folder.
+2. **Clear Quarantine**: Open the **Terminal** app on your Mac (press `Command + Space`, type `Terminal`, and hit Enter), copy and paste the following command, and press Enter:
+   ```bash
+   xattr -cr /Applications/SyncPL\ Trading.app
+   ```
+
+Now, double-click the app in your Applications folder, and it will start up perfectly!
+
+---
+
+## 🔄 6. Dynamic Cloud Persistence
 
 ### How is user data kept safe?
-Your app is integrated with **Firebase Authentication and Firestore Database**. Because user credentials, trade logs, and portfolios are stored securely in the cloud, users can install updates, change PCs, or clear their cache without **ever** losing their data!
+Your desktop app is fully connected to your **Firebase Auth & Firestore database**. Because trade logs, user settings, checklist parameters, and custom market presences are synced to the cloud, users can update the application, change devices, or clean local caches without ever losing their data!
 
-### Seamless Auto-Updater Integration:
-To notify users of updates directly inside the app, Tauri has a built-in auto-updater. Here is how to activate it:
-
-1. Install the official updater plugin in your local directory:
-   ```bash
-   npm run tauri add updater
-   ```
-2. Enable it in your `src-tauri/tauri.conf.json` by adding the updater endpoint. The easiest and free way is to use a public update server or a GitHub releases updater JSON file.
-3. When your friends open the app, it will query your GitHub Releases, see a newer version exists, and ask: *"A new version of SyncPL Trading is available! Would you like to install it now?"*
-
----
-
-🎉 **You are fully configured!** Pull the latest updates on your computer to start building your Windows executable.
+🎉 **Your app is now fully optimized for macOS!** Simply pull the latest updates on your Mac to start running your native macOS desktop app.

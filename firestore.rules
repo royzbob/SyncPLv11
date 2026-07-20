@@ -54,5 +54,10 @@ service cloud.firestore {
     match /trading_rules/{ruleId} {
       allow read, write: if isSignedIn();
     }
+
+    // Friendships and Requests
+    match /friendships/{friendshipId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }

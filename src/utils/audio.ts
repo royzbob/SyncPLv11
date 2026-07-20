@@ -19,7 +19,7 @@ function getAudioContext(): AudioContext | null {
 /**
  * Plays a pleasant, rising chime sound representing a connection / join action.
  */
-export function playJoinSound() {
+export function playJoinSound(volumeLevel: number = 0.8) {
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -35,8 +35,8 @@ export function playJoinSound() {
 
   // Setup gain envelope to prevent clicking
   gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(0.12, now + 0.05);
-  gainNode.gain.setValueAtTime(0.12, now + 0.22);
+  gainNode.gain.linearRampToValueAtTime(0.12 * volumeLevel, now + 0.05);
+  gainNode.gain.setValueAtTime(0.12 * volumeLevel, now + 0.22);
   gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
 
   // Frequencies corresponding to C5 -> E5 -> G5
@@ -63,7 +63,7 @@ export function playJoinSound() {
 /**
  * Plays a descending chime sound representing a disconnection / leave action.
  */
-export function playLeaveSound() {
+export function playLeaveSound(volumeLevel: number = 0.8) {
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -77,8 +77,8 @@ export function playLeaveSound() {
 
   // Setup gain envelope
   gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(0.15, now + 0.03);
-  gainNode.gain.setValueAtTime(0.15, now + 0.18);
+  gainNode.gain.linearRampToValueAtTime(0.15 * volumeLevel, now + 0.03);
+  gainNode.gain.setValueAtTime(0.15 * volumeLevel, now + 0.18);
   gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
   // G5 -> E5 -> C5

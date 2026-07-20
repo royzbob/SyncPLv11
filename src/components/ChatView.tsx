@@ -11,8 +11,11 @@ import {
   User,
   TrendingUp,
   Menu,
+  Trash2,
+  Lock,
+  Hash,
 } from "lucide-react";
-import { ChatMessage, Room, UserProfile } from "../types";
+import { ChatMessage, Room, UserProfile, Channel } from "../types";
 import { formatCurrency } from "../utils/helpers";
 
 interface ChatViewProps {
@@ -22,10 +25,15 @@ interface ChatViewProps {
   roomTraders: UserProfile[]; // Derived profiles in the room
   userId: string;
   onSendChatMessage: (text: string) => Promise<void>;
+  onDeleteChatMessage: (id: string) => Promise<void>;
   roomAdminId: string;
   roomMods: string[];
+  isCreatorOrMod: boolean;
   onToggleModRole: (targetUid: string, username: string) => Promise<void>;
   onOpenSidebar?: () => void;
+  channels?: Channel[];
+  onSelectChannel?: (name: string, type: "text" | "voice") => void;
+  profile?: UserProfile | null;
 }
 
 export default function ChatView({
@@ -35,13 +43,51 @@ export default function ChatView({
   roomTraders,
   userId,
   onSendChatMessage,
+  onDeleteChatMessage,
   roomAdminId,
   roomMods,
+  isCreatorOrMod,
   onToggleModRole,
   onOpenSidebar,
+  channels = [],
+  onSelectChannel,
+  profile = null,
 }: ChatViewProps) {
   const [inputText, setInputText] = useState("");
   const messageStreamRef = useRef<HTMLDivElement>(null);
+
+  const getPresenceIndicatorColor = (presence?: string) => {
+    switch (presence) {
+      case "active":
+        return "bg-emerald-500";
+      case "idle":
+        return "bg-amber-500";
+      case "dnd":
+        return "bg-rose-500";
+      case "offline":
+        return "bg-gray-500";
+      default:
+        return "bg-emerald-400";
+    }
+  };
+
+  const getPresenceLabel = (presence?: string, customStatus?: string) => {
+    if (customStatus) {
+      return customStatus;
+    }
+    switch (presence) {
+      case "active":
+        return "Active";
+      case "idle":
+        return "AFK";
+      case "dnd":
+        return "DND";
+      case "offline":
+        return "Invisible";
+      default:
+        return "Active";
+    }
+  };
 
   // Auto scroll down
   useEffect(() => {
@@ -63,14 +109,45 @@ export default function ChatView({
     (msg) => msg.channel === activeChannelName
   );
 
+  const textChannels = channels.filter((c) => c.type === "text");
+
   return (
-    <div className="flex-1 h-full min-h-0 flex w-full bg-[#1E2023] relative overflow-hidden">
+    <div className="flex-grow flex-1 h-full min-h-0 min-w-0 flex w-full bg-[#1E2023] relative overflow-hidden">
       {/* Middle Chat Panel */}
-      <div className="flex-1 h-full min-h-0 flex flex-col">
+      <div className="flex-grow flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
+        {/* Mobile Horizontal Text Channels Scrollbar */}
+        {textChannels.length > 0 && (
+          <div className="md:hidden flex items-center bg-[#121417]/95 border-b border-[#2A2D31]/40 px-3 py-2 shrink-0 overflow-x-auto no-scrollbar gap-1.5 shadow-md">
+            <span className="text-[9px] font-black uppercase text-[#72767D] tracking-wider select-none pr-1 whitespace-nowrap">
+              Desk Nodes:
+            </span>
+            {textChannels.map((chan) => {
+              const isSelected = activeChannelName === chan.name;
+              return (
+                <button
+                  key={chan.id}
+                  onClick={() => onSelectChannel && onSelectChannel(chan.name, "text")}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shrink-0 border select-none cursor-pointer ${
+                    isSelected
+                      ? "bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-600/10"
+                      : "bg-[#2A2D31]/40 border-transparent text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <span className={isSelected ? "text-indigo-400 font-bold" : "text-[#72767D]"}>#</span>
+                  <span>{chan.name}</span>
+                  {chan.pin && (
+                    <Lock className={`w-2.5 h-2.5 shrink-0 ${isSelected ? "text-indigo-400" : "text-amber-500"}`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Message Stream */}
         <div
           ref={messageStreamRef}
-          className="flex-grow p-4 md:p-6 overflow-y-auto space-y-3 no-scrollbar bg-[#1E2023]"
+          className="flex-grow p-2.5 sm:p-4 md:p-6 overflow-y-auto space-y-3 no-scrollbar bg-[#1E2023]"
         >
           {currentChanMessages.length > 0 ? (
             currentChanMessages.map((msg) => {
@@ -90,9 +167,9 @@ export default function ChatView({
                 return (
                   <div
                     key={msg.id}
-                    className="flex items-start space-x-3 max-w-lg mx-auto py-1 animate-in fade-in zoom-in-95 duration-200 w-full"
+                    className="flex items-start space-x-0 sm:space-x-3 max-w-lg mx-auto py-1 animate-in fade-in zoom-in-95 duration-200 w-full group"
                   >
-                    <div className="w-8 h-8 rounded bg-[#2A2D31] flex items-center justify-center text-white shrink-0 shadow">
+                    <div className="hidden sm:flex w-8 h-8 rounded bg-[#2A2D31] items-center justify-center text-white shrink-0 shadow">
                       <TrendingUp className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div className="flex-grow">
@@ -103,9 +180,18 @@ export default function ChatView({
                         <span className="text-[9px] text-[#72767D] font-mono font-bold">
                           {msgTime}
                         </span>
+                        {(isMe || isCreatorOrMod) && (
+                          <button
+                            onClick={() => onDeleteChatMessage(msg.id)}
+                            className="text-gray-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition cursor-pointer ml-1"
+                            title="Delete Message"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                       <div
-                        className={`mt-1.5 p-3.5 bg-[#121417] border ${
+                        className={`mt-1.5 p-2.5 sm:p-3.5 bg-[#121417] border ${
                           isProfit
                             ? "border-emerald-500/20 shadow-emerald-500/5"
                             : "border-red-500/20 shadow-red-500/5"
@@ -179,12 +265,12 @@ export default function ChatView({
                   ? "bg-sky-500/10 border-sky-500/30 text-sky-400"
                   : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400";
 
-              return (
+               return (
                 <div
                   key={msg.id}
-                  className="flex w-full py-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150 justify-start"
+                  className="flex w-full py-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150 justify-start group"
                 >
-                  <div className="flex items-start space-x-2.5 max-w-[85%]">
+                  <div className="flex items-start space-x-2 sm:space-x-2.5 max-w-[92%] sm:max-w-[85%]">
                     {/* Avatar */}
                     {msg.avatarType === "url" && msg.avatarVal ? (
                       <div className="w-8 h-8 rounded border border-[#2A2D31] overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0">
@@ -211,6 +297,18 @@ export default function ChatView({
                         }`}>
                           {msg.username}
                         </span>
+                        {(() => {
+                          const traderProfile = roomTraders?.find((t) => t.username === msg.username) || (isMe ? profile : null);
+                          const isTraderPremium = traderProfile?.subscriptionStatus === "active" || traderProfile?.subscriptionStatus === "trialing" || traderProfile?.subscriptionTier === "premium" || traderProfile?.subscriptionTier === "elite" || traderProfile?.subscriptionTier === "pro";
+                          if (isTraderPremium) {
+                            return (
+                              <span className="flex items-center gap-0.5 text-[9px] font-black uppercase text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.2 rounded-full scale-90">
+                                <Crown className="w-2.5 h-2.5 text-indigo-400 animate-pulse" /> Premium
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                         {isMe && (
                           <span className="text-[8px] bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 px-1 py-0.2 rounded font-black uppercase tracking-wider scale-90">
                             Me
@@ -219,8 +317,17 @@ export default function ChatView({
                         <span className="text-[9px] text-[#72767D] font-mono font-bold">
                           {msgTime}
                         </span>
+                        {(isMe || isCreatorOrMod) && (
+                          <button
+                            onClick={() => onDeleteChatMessage(msg.id)}
+                            className="text-gray-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition cursor-pointer ml-1"
+                            title="Delete Message"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
-                      <div className={`p-2.5 border rounded text-xs font-semibold leading-relaxed break-all text-gray-200 shadow-sm ${
+                      <div className={`p-2 sm:p-2.5 border rounded text-xs font-semibold leading-relaxed break-all text-gray-200 shadow-sm ${
                         isMe
                           ? "border-indigo-500/25 bg-indigo-950/15"
                           : "border-[#2A2D31]/50 bg-[#121417]/40"
@@ -250,22 +357,23 @@ export default function ChatView({
             <span>#pnl-flex is a read-only channel. Verified trade ledgers are automatically posted here.</span>
           </div>
         ) : (
-          <div className="p-3 border-t border-[#2A2D31] shrink-0 bg-[#1E2023]">
-            <form onSubmit={handleSubmit} className="flex gap-2">
+          <div className="p-2 sm:p-3 border-t border-[#2A2D31] shrink-0 bg-[#1E2023]">
+            <form onSubmit={handleSubmit} className="flex gap-1.5 sm:gap-2">
               <input
                 type="text"
                 required
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder={`Send a secure sync packet to #${activeChannelName}...`}
-                className="w-full bg-[#08090A] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2] font-medium placeholder-gray-500"
+                placeholder={`Sync to #${activeChannelName}...`}
+                className="flex-grow flex-1 min-w-0 bg-[#08090A] border border-[#2A2D31] rounded px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2] font-medium placeholder-gray-500"
               />
               <button
                 type="submit"
                 disabled={!inputText.trim()}
-                className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs px-4 rounded transition flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs p-2 sm:px-4 rounded transition flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 w-9 h-9 sm:w-auto"
               >
                 <Send className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Send</span>
               </button>
             </form>
           </div>
@@ -321,7 +429,7 @@ export default function ChatView({
                         {trader.avatarVal || initials}
                       </div>
                     )}
-                    <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-emerald-400 ring-1 ring-gray-950"></span>
+                    <span className={`absolute bottom-0 right-0 block h-2 w-2 rounded-full ${getPresenceIndicatorColor(trader.marketPresence)} ring-1 ring-gray-950`}></span>
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1">
@@ -335,7 +443,7 @@ export default function ChatView({
                       ) : null}
                     </div>
                     <span className="text-[8px] text-[#72767D] block truncate font-mono">
-                      Active Sync
+                      {getPresenceLabel(trader.marketPresence, trader.customStatus)}
                     </span>
                   </div>
                 </div>
