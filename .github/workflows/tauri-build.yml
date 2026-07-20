@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*' # Trigger build whenever a new tag (e.g. v1.0.0) is pushed to GitHub
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
 
 jobs:
   publish-tauri:
