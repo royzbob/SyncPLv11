@@ -6,6 +6,27 @@ We have already pre-configured the cross-platform Tauri configuration and the Gi
 
 ---
 
+## 📥 Step 0: How to Get These Files Onto Your Mac From AI Studio
+
+Since you are currently developing in the AI Studio environment, here is how you can easily download the source files to your Mac:
+
+### Option A: Download as a ZIP File (Easiest & Fastest)
+1. Look at the top-right corner of the **AI Studio** window.
+2. Click on the **Gear/Settings Icon** ⚙️.
+3. Click **"Download ZIP"** (or **"Export ZIP"**).
+4. Save the ZIP file to your Mac, double-click it to unzip, and you'll have all the files ready in a folder!
+
+### Option B: Export / Connect to GitHub
+1. Click the **Gear/Settings Icon** ⚙️ in the top-right.
+2. Choose **"Export to GitHub"**.
+3. Connect your GitHub account and let it push this project into a repository.
+4. Once pushed, open the **Terminal** application on your Mac and clone it:
+   ```bash
+   git clone <your-github-repo-url>
+   ```
+
+---
+
 ## 💻 1. For Your Mac: Running & Compiling on macOS
 
 Tauri compiles your application directly to native machine code. It uses macOS's built-in Cocoa WebKit renderer, which means the finished app is incredibly lightweight (less than 15MB) and highly responsive.
@@ -88,6 +109,18 @@ You don't even need to build the apps locally! We have pre-configured a continuo
 Whenever you publish a release version, **GitHub's virtual cloud runners will spin up macOS and Windows environments, compile both packages simultaneously in the cloud, and attach the finished macOS `.dmg` and Windows `.exe` installers straight to your release!**
 
 ### How to trigger an automatic cross-platform release:
+
+You can do this either via the command line or directly on the GitHub website!
+
+#### Option A: Directly on GitHub.com (No Command Line Needed!)
+1. Go to your repository page on **GitHub.com**.
+2. On the right side, find the **Releases** section and click on **"Create a new release"** (or click **Releases** then **"Draft a new release"**).
+3. Click the **"Choose a tag"** dropdown, type in your new version tag (e.g., `v1.0.4`), and click **"Create new tag"**.
+4. Set the Release Title to something like `v1.0.4` or `SyncPL Trading Dashboard v1.0.4`.
+5. Click **"Publish release"**.
+6. **That's it!** GitHub Actions will instantly start running in the background. It will automatically build both the macOS (`.dmg`) installer and the Windows (`.exe`) installer and attach them directly to this release page in about 10-15 minutes!
+
+#### Option B: Via Local Terminal (Git Command Line)
 1. Open `src-tauri/tauri.conf.json` and bump your version (e.g., change `"version": "1.0.3"` to `"1.0.4"`).
 2. Commit and push your changes to GitHub:
    ```bash

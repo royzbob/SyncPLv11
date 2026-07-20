@@ -74,8 +74,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__ # Auto-replaced with version in tauri.conf.json
-          releaseName: 'App v__VERSION__'
-          releaseBody: 'See the assets below to download the latest version for Windows.'
+          releaseName: 'SyncPL Trading Dashboard v__VERSION__'
+          releaseBody: 'See the assets below to download the latest version for macOS and Windows.'
           releaseDraft: false
           prerelease: false
           projectPath: ${{ steps.detect.outputs.project_path }}
