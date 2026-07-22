@@ -765,7 +765,7 @@ export default function App() {
         }
         if (!currentProfile.trialEndDate) {
           const createdTime = currentProfile.createdAt ? new Date(currentProfile.createdAt).getTime() : Date.now();
-          currentProfile.trialEndDate = new Date(createdTime + 30 * 24 * 60 * 60 * 1000).toISOString();
+          currentProfile.trialEndDate = new Date(createdTime + 3 * 24 * 60 * 60 * 1000).toISOString();
           needsUpdate = true;
         }
         if (user.email?.toLowerCase() === "1nathandrew6@gmail.com") {
@@ -785,7 +785,7 @@ export default function App() {
         // Create initial default profile
         const randomName = `Trader_${user.uid.substring(0, 5)}`;
         const now = new Date();
-        const trialEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
         const isCreator = user.email?.toLowerCase() === "1nathandrew6@gmail.com";
         currentProfile = {
           username: randomName,
@@ -1299,7 +1299,7 @@ export default function App() {
     // Enforce subscription limits
     const currentRoomCount = profile.groupIds?.length || 0;
     if (!subscriptionState.isPremium && currentRoomCount >= 1) {
-      triggerToast("Limit Reached", "Standard Free members are limited to 1 Workspace Desk. Start your 30-day Free Trial to unlock unlimited desks!", "info");
+      triggerToast("Limit Reached", "Standard Free members are limited to 1 Workspace Desk. Start your 3-day Free Trial to unlock unlimited desks!", "info");
       return;
     }
 

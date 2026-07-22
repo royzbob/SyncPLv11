@@ -1130,7 +1130,7 @@ export default function SettingsView({
                   )}
                 </h4>
                 <p className="text-xs text-[#8E9297] mt-0.5">
-                  Start your 30-day free trial or manage your high-performance SyncPL Premium workspace subscription.
+                  Start your 3-day free trial or manage your high-performance SyncPL Premium workspace subscription.
                 </p>
               </div>
             </div>
@@ -1163,7 +1163,7 @@ export default function SettingsView({
                   <span className="text-xs text-[#8E9297]">/ month</span>
                 </div>
                 <p className="text-[10px] text-emerald-400 font-extrabold uppercase tracking-widest flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 animate-pulse" /> 1-Month (30-Day) Free Trial Included!
+                  <Sparkles className="w-3 h-3 animate-pulse" /> 3-Day Free Trial Included!
                 </p>
               </div>
 
@@ -1212,7 +1212,7 @@ export default function SettingsView({
                   onClick={onSubscribe}
                   className="w-full text-center py-2.5 rounded-lg text-xs font-black bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg shadow-indigo-500/10 transition cursor-pointer"
                 >
-                  Start 30-Day Free Trial
+                  Start 3-Day Free Trial
                 </button>
               )}
             </div>
