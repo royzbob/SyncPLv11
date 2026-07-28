@@ -2010,6 +2010,69 @@ export default function App() {
     }
   };
 
+<<<<<<< HEAD
+=======
+  // Payout Operations
+  const handleAddPayout = async (payoutData: Omit<PayoutRecord, "id" | "timestamp">) => {
+    const newRecord = {
+      ...payoutData,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      const docRef = await addDoc(collection(db, "payouts"), newRecord);
+      setPayouts((prev) => {
+        if (prev.some((p) => p.id === docRef.id)) return prev;
+        return [{ id: docRef.id, ...newRecord }, ...prev];
+      });
+      triggerToast("Payout Logged!", `Recorded $${newRecord.amount.toLocaleString()} payout for ${newRecord.username}`, "success");
+
+      // Broadcast announcement to chat desk
+      if (activeRoom) {
+        await addDoc(collection(db, "chat_messages"), {
+          userId: currentUser?.uid || "system",
+          username: profile?.username || "Trader",
+          avatarColor: profile?.avatarColor || "indigo",
+          avatarType: profile?.avatarType || "emoji",
+          avatarVal: profile?.avatarVal || "🐂",
+          groupId: activeRoom.id,
+          channel: activeChannelName,
+          text: `💰 **NEW PAYOUT VERIFIED**: **${newRecord.username}** received a **$${newRecord.amount.toLocaleString()}** payout from **${newRecord.propFirm || "Prop Firm"}**! 🎉`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (err: any) {
+      console.error("Error adding payout:", err);
+      const mockId = "payout_" + Date.now();
+      setPayouts((prev) => [{ id: mockId, ...newRecord }, ...prev]);
+      triggerToast("Payout Logged (Local)", `Recorded $${newRecord.amount.toLocaleString()} payout for ${newRecord.username}`, "success");
+    }
+  };
+
+  const handleDeletePayout = async (payoutId: string, username?: string, amount?: number) => {
+    const formattedAmt = amount ? formatCurrency(amount) : "";
+    triggerConfirm(
+      "Delete Payout Entry",
+      `Are you sure you want to delete this payout entry ${formattedAmt ? "of " + formattedAmt : ""}${username ? " for " + username : ""}?`,
+      async () => {
+        try {
+          if (payoutId.startsWith("payout_")) {
+            setPayouts((prev) => prev.filter((p) => p.id !== payoutId));
+          } else {
+            await deleteDoc(doc(db, "payouts", payoutId));
+            setPayouts((prev) => prev.filter((p) => p.id !== payoutId));
+          }
+          triggerToast("Payout Deleted", "Payout record removed successfully.", "info");
+        } catch (err: any) {
+          console.error("Error deleting payout:", err);
+          triggerToast("Delete Failed", `Could not delete payout: ${err.message || err}`, "error");
+          setPayouts((prev) => prev.filter((p) => p.id !== payoutId));
+        }
+      }
+    );
+  };
+
+>>>>>>> 536ee5d (Local updates before pull)
   const handleUpdateTradePrice = async (id: string, currentPrice: number) => {
     try {
       const tradeRef = doc(db, "pnl_logs", id);

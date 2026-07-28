@@ -1,7 +1,11 @@
 {
   "name": "react-example",
   "private": true,
+<<<<<<< HEAD
   "version": "0.0.0",
+=======
+  "version": "1.0.8",
+>>>>>>> 536ee5d (Local updates before pull)
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
