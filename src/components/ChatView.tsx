@@ -150,7 +150,7 @@ export default function ChatView({
           className="flex-grow p-2.5 sm:p-4 md:p-6 overflow-y-auto space-y-3 no-scrollbar bg-[#1E2023]"
         >
           {currentChanMessages.length > 0 ? (
-            currentChanMessages.map((msg) => {
+            currentChanMessages.map((msg, idx) => {
               const isSystemEmbed = msg.isEmbed === true;
               const isMe = msg.userId === userId;
               const msgTime = msg.timestamp
@@ -166,7 +166,7 @@ export default function ChatView({
                 const isProfit = amount >= 0;
                 return (
                   <div
-                    key={msg.id}
+                    key={`${msg.id}_${idx}`}
                     className="flex items-start space-x-0 sm:space-x-3 max-w-lg mx-auto py-1 animate-in fade-in zoom-in-95 duration-200 w-full group"
                   >
                     <div className="hidden sm:flex w-8 h-8 rounded bg-[#2A2D31] items-center justify-center text-white shrink-0 shadow">
@@ -267,7 +267,7 @@ export default function ChatView({
 
                return (
                 <div
-                  key={msg.id}
+                  key={`${msg.id}_${idx}`}
                   className="flex w-full py-1.5 animate-in fade-in slide-in-from-bottom-2 duration-150 justify-start group"
                 >
                   <div className="flex items-start space-x-2 sm:space-x-2.5 max-w-[92%] sm:max-w-[85%]">

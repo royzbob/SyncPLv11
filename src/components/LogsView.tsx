@@ -149,13 +149,13 @@ export default function LogsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2A2D31]">
-                {filteredLogs.map((log) => {
+                {filteredLogs.map((log, idx) => {
                   const isProfit = log.amount >= 0;
                   const amtStr = formatCurrency(log.amount);
                   const isOwner = !log.userId || log.userId === userId || log.username === username;
 
                   return (
-                    <tr key={log.id} className="hover:bg-[#1E2023]/40 transition duration-150">
+                    <tr key={`${log.id}_${idx}`} className="hover:bg-[#1E2023]/40 transition duration-150">
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-[#8E9297] font-medium">
                         {log.date}
                       </td>

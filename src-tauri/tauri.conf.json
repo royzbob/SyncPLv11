@@ -1,11 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SyncPL Trading",
-<<<<<<< HEAD
-  "version": "1.0.4",
-=======
-  "version": "1.0.8",
->>>>>>> 536ee5d (Local updates before pull)
+  "version": "1.0.9",
   "identifier": "com.syncpl.trading.dashboard",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -47,6 +43,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://raw.githubusercontent.com/royzbob/SyncPLv2/main/updater.json",
+        "https://github.com/royzbob/SyncPLv2/releases/latest/download/latest.json",
         "https://raw.githubusercontent.com/1NathanDrew6/syncpl-trading-dashboard/main/updater.json"
       ],
       "pubkey": "dW51c2VkX3B1YmxpY19rZXlfX3BsZWFzZV9yZXBsYWNlX3dpdGhfcmVhbA=="

@@ -378,7 +378,7 @@ export default function LiveTradesView({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {openTrades.map((t) => {
+            {openTrades.map((t, idx) => {
               const qty = (t as any).quantity || 1;
               const diff = t.direction === "long" ? t.currentPrice - t.entryPrice : t.entryPrice - t.currentPrice;
               const unrealized = diff * qty;
@@ -394,7 +394,7 @@ export default function LiveTradesView({
 
               return (
                 <div
-                  key={t.id}
+                  key={`${t.id}_${idx}`}
                   className="bg-[#121417] border border-[#2A2D31] rounded-xl overflow-hidden shadow-lg hover:border-indigo-500/30 transition flex flex-col"
                 >
                   {/* Card Header */}
@@ -538,12 +538,12 @@ export default function LiveTradesView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2A2D31]/40 text-xs">
-                  {closedTrades.map((t) => {
+                  {closedTrades.map((t, idx) => {
                     const qty = (t as any).quantity || 1;
                     const isWin = (t.profitAmount || 0) >= 0;
 
                     return (
-                      <tr key={t.id} className="hover:bg-[#1E2023]/30 transition">
+                      <tr key={`${t.id}_${idx}`} className="hover:bg-[#1E2023]/30 transition">
                         <td className="px-6 py-3 text-[#DCDDDE] font-semibold">{t.username}</td>
                         <td className="px-6 py-3 text-white font-mono font-bold uppercase">{t.asset}</td>
                         <td className="px-6 py-3">

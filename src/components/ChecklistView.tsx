@@ -145,7 +145,7 @@ export default function ChecklistView({
               <div className="space-y-2.5">
                 {sortedRules.map((rule, idx) => (
                   <div
-                    key={rule.id}
+                    key={`${rule.id}_${idx}`}
                     className="bg-[#121417] border border-[#2A2D31] rounded-xl p-4 flex items-center justify-between gap-3 hover:border-indigo-500/20 transition group"
                   >
                     <div className="flex items-center gap-3.5 min-w-0 flex-grow">

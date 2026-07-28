@@ -25,6 +25,7 @@ import {
   Settings,
   Wifi,
   Users,
+  Banknote,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 
@@ -239,6 +240,21 @@ export default function ActiveRoomSidebar({
           <div className="flex items-center space-x-2.5">
             <Trophy className="w-4 h-4" />
             <span>Leaderboard Board</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => onSwitchTab("payouts")}
+          className={getNavBtnClass("payouts")}
+        >
+          <div className="flex items-center space-x-2.5">
+            <Banknote className="w-4 h-4 text-emerald-400" />
+            <span className="flex items-center gap-1.5">
+              <span>Payout Leaderboard</span>
+              <span className="bg-emerald-500/20 text-emerald-400 text-[9px] font-black px-1.5 py-0.2 rounded border border-emerald-500/30">
+                NEW
+              </span>
+            </span>
           </div>
         </button>
 

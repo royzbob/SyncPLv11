@@ -149,6 +149,22 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "senderId", "senderName", "receiverId", "receiverName", "status", "createdAt"]
+    },
+    "PayoutRecord": {
+      "title": "PayoutRecord",
+      "description": "Prop firm or live account payout logged for a trader",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "groupId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "propFirm": { "type": "string" },
+        "notes": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["userId", "username", "groupId", "amount", "date", "timestamp"]
     }
   },
   "firestore": {
@@ -187,6 +203,10 @@
     "friendships/{friendshipId}": {
       "schema": "Friendship",
       "description": "Real-time user friendship records and requests"
+    },
+    "payouts/{payoutId}": {
+      "schema": "PayoutRecord",
+      "description": "Community payout records per room"
     }
   }
 }

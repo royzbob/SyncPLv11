@@ -144,5 +144,18 @@ export interface Friendship {
   createdAt: string;
 }
 
+export interface PayoutRecord {
+  id: string;
+  userId: string;
+  username: string;
+  groupId: string;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  propFirm?: string; // e.g. Apex, Topstep, MyFundedFX, FTMO, FundedNext, Personal
+  notes?: string;
+  timestamp: string;
+}
+
+
 
 

@@ -10,6 +10,8 @@ import {
   BarChart2,
   ChevronLeft,
   ChevronRight,
+  Banknote,
+  ArrowRight,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -21,15 +23,17 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
-import { PnlLog } from "../types";
+import { PnlLog, PayoutRecord } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 
 interface DashboardViewProps {
   pnlLogs: PnlLog[];
   userId: string;
+  payouts?: PayoutRecord[];
+  onSwitchTab?: (tab: string) => void;
 }
 
-export default function DashboardView({ pnlLogs, userId }: DashboardViewProps) {
+export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchTab }: DashboardViewProps) {
   // 1. Calculate stats for current user
   const userLogs = useMemo(() => pnlLogs.filter((l) => l.userId === userId), [pnlLogs, userId]);
 
@@ -590,6 +594,43 @@ export default function DashboardView({ pnlLogs, userId }: DashboardViewProps) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Community Payout Tracker Summary Banner */}
+      <div className="bg-gradient-to-r from-[#121417] via-[#161B22] to-[#121417] border border-emerald-500/20 p-5 rounded-xl shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <Banknote className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase text-emerald-400 tracking-wider">
+                Community Payouts
+              </span>
+              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                {payouts.length} Recorded
+              </span>
+            </div>
+            <h4 className="text-xl font-extrabold text-white mt-0.5">
+              {formatCurrency(payouts.reduce((acc, p) => acc + p.amount, 0))} <span className="text-xs text-gray-400 font-semibold">Total Group Payouts</span>
+            </h4>
+            <p className="text-xs text-gray-400 mt-1">
+              {payouts.length > 0
+                ? `Latest: $${payouts[0]?.amount.toLocaleString()} by ${payouts[0]?.username} (${payouts[0]?.propFirm || "Prop Firm"})`
+                : "No payouts recorded yet in this room. Be the first to log a community payout!"}
+            </p>
+          </div>
+        </div>
+
+        {onSwitchTab && (
+          <button
+            onClick={() => onSwitchTab("payouts")}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition duration-200 shrink-0 cursor-pointer shadow-lg shadow-emerald-950/40"
+          >
+            <span>Open Payout Leaderboard</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

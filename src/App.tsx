@@ -48,9 +48,10 @@ import {
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
-import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule } from "./types";
+import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule, PayoutRecord } from "./types";
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString } from "./utils/helpers";
 import { playJoinSound, playLeaveSound } from "./utils/audio";
+import { WebRtcVoiceManager } from "./lib/webrtcVoice";
 
 const isMobileOrTablet = typeof window !== "undefined" && (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 1024);
 
@@ -113,6 +114,7 @@ import LogsView from "./components/LogsView";
 import SettingsView from "./components/SettingsView";
 import ChecklistView from "./components/ChecklistView";
 import FriendsView from "./components/FriendsView";
+import PayoutsView from "./components/PayoutsView";
 import UpdateNotifier from "./components/UpdateNotifier";
 
 export default function App() {
@@ -186,6 +188,27 @@ export default function App() {
     }
   });
 
+  const [selectedMicId, setSelectedMicId] = useState<string>(() => {
+    try {
+      return localStorage.getItem("syncpl_selected_mic_id") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    const handleStorage = () => {
+      try {
+        const stored = localStorage.getItem("syncpl_selected_mic_id") || "";
+        setSelectedMicId(stored);
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const handleToggleMuteUser = (userId: string) => {
     setMutedUsers((prev) => {
       const updated = { ...prev, [userId]: !prev[userId] };
@@ -231,6 +254,7 @@ export default function App() {
   const [pnlLogs, setPnlLogs] = useState<PnlLog[]>([]);
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([]);
   const [tradingRules, setTradingRules] = useState<TradingRule[]>([]);
+  const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
 
   // PIN lock states
   const [unlockedChannelIds, setUnlockedChannelIds] = useState<Record<string, boolean>>(() => {
@@ -347,6 +371,85 @@ export default function App() {
       }
     };
   }, [currentUser, activeVoiceChannel, isMuted]);
+
+  // WebRTC Real-Time Voice Audio Mesh Connection
+  const webrtcVoiceRef = useRef<WebRtcVoiceManager | null>(null);
+
+  useEffect(() => {
+    if (!currentUser || !activeVoiceChannel || !activeRoom) {
+      if (webrtcVoiceRef.current) {
+        webrtcVoiceRef.current.destroy();
+        webrtcVoiceRef.current = null;
+      }
+      return;
+    }
+
+    // Skip WebRTC peer mesh for synthetic AI bot channels
+    const isAi = activeVoiceChannel.includes("🤖") || activeVoiceChannel.toLowerCase().includes("ai");
+    if (isAi) {
+      if (webrtcVoiceRef.current) {
+        webrtcVoiceRef.current.destroy();
+        webrtcVoiceRef.current = null;
+      }
+      return;
+    }
+
+    const mutedUsersList = Array.isArray(mutedUsers)
+      ? mutedUsers
+      : Object.keys(mutedUsers || {}).filter((k) => mutedUsers[k]);
+
+    const manager = new WebRtcVoiceManager({
+      myUid: currentUser.uid,
+      groupId: activeRoom.id,
+      channelName: activeVoiceChannel,
+      selectedMicId,
+      isMuted,
+      isDeafened,
+      isMutedAll,
+      globalVolume,
+      inputVolume,
+      mutedUsers: mutedUsersList,
+      userVolumes,
+      onError: (err) => {
+        console.warn("WebRTC voice initialization notice:", err);
+      },
+    });
+
+    webrtcVoiceRef.current = manager;
+    manager.start();
+
+    return () => {
+      manager.destroy();
+      if (webrtcVoiceRef.current === manager) {
+        webrtcVoiceRef.current = null;
+      }
+    };
+  }, [currentUser?.uid, activeVoiceChannel, activeRoom?.id]);
+
+  // Update WebRTC voice manager when local mute or audio controls change
+  useEffect(() => {
+    if (webrtcVoiceRef.current) {
+      webrtcVoiceRef.current.setMuted(isMuted);
+    }
+  }, [isMuted]);
+
+  useEffect(() => {
+    if (webrtcVoiceRef.current) {
+      const mutedUsersList = Array.isArray(mutedUsers)
+        ? mutedUsers
+        : Object.keys(mutedUsers || {}).filter((k) => mutedUsers[k]);
+
+      webrtcVoiceRef.current.updateAudioSettings(
+        isDeafened,
+        isMutedAll,
+        globalVolume,
+        mutedUsersList,
+        userVolumes,
+        inputVolume,
+        selectedMicId
+      );
+    }
+  }, [isDeafened, isMutedAll, globalVolume, inputVolume, mutedUsers, userVolumes, selectedMicId]);
 
   // Stripe & Subscription state
   const getApiUrl = (path: string): string => {
@@ -847,6 +950,29 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser?.uid]);
 
+  // Sync public user profile to users collection whenever local profile updates
+  useEffect(() => {
+    if (!currentUser || !profile) return;
+    const syncPublicUserDoc = async () => {
+      try {
+        const publicRef = doc(db, "users", currentUser.uid);
+        await setDoc(publicRef, {
+          uid: currentUser.uid,
+          username: profile.username || "Trader",
+          avatarColor: profile.avatarColor || "indigo",
+          avatarType: profile.avatarType || "emoji",
+          avatarVal: profile.avatarVal || "🐂",
+          subscriptionTier: (profile.subscriptionStatus === "active" || profile.subscriptionStatus === "trialing" || profile.subscriptionTier === "premium") ? "premium" : "free",
+          activeGroupId: profile.activeGroupId || "",
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Failed to sync public user doc in App.tsx:", err);
+      }
+    };
+    syncPublicUserDoc();
+  }, [currentUser?.uid, profile]);
+
   const fetchJoinedRooms = async (groupIds: string[], activeGroupId: string) => {
     try {
       const roomPromises = groupIds.map(async (gid) => {
@@ -898,12 +1024,12 @@ export default function App() {
     // Observe channels
     const channelsQuery = query(collection(db, "channels"), where("groupId", "==", activeRoom.id));
     const unsubChannels = onSnapshot(channelsQuery, async (snapshot) => {
-      const list: Channel[] = [];
+      const map = new Map<string, Channel>();
       snapshot.forEach((d) => {
         const data = d.data();
-        list.push({ id: d.id, ...data } as Channel);
+        map.set(d.id, { id: d.id, ...data } as Channel);
       });
-      const sorted = list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const sorted = Array.from(map.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       setChannels(sorted);
 
       // If no channels exist inside room, creator should initialize standard default channels
@@ -928,10 +1054,10 @@ export default function App() {
     // Observe chat messages
     const chatQuery = query(collection(db, "chat_messages"), where("groupId", "==", activeRoom.id));
     const unsubChat = onSnapshot(chatQuery, (snapshot) => {
-      const list: ChatMessage[] = [];
+      const map = new Map<string, ChatMessage>();
       snapshot.forEach((d) => {
         const data = d.data();
-        list.push({ id: d.id, ...data } as ChatMessage);
+        map.set(d.id, { id: d.id, ...data } as ChatMessage);
       });
 
       // Browser Push Notifications on newly broadcasted trade logs or settlements
@@ -959,7 +1085,7 @@ export default function App() {
         }
       });
 
-      const sorted = list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const sorted = Array.from(map.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       setChatMessages(sorted);
     }, (error) => {
       console.error("Chat onSnapshot error:", error);
@@ -972,12 +1098,12 @@ export default function App() {
     // Observe voice users
     const voiceQuery = query(collection(db, "voice_users"), where("groupId", "==", activeRoom.id));
     const unsubVoice = onSnapshot(voiceQuery, (snapshot) => {
-      const list: VoiceUser[] = [];
+      const map = new Map<string, VoiceUser>();
       snapshot.forEach((d) => {
         const data = d.data();
-        list.push({ id: d.id, ...data } as VoiceUser);
+        map.set(d.id, { id: d.id, ...data } as VoiceUser);
       });
-      setVoiceUsers(list);
+      setVoiceUsers(Array.from(map.values()));
     }, (error) => {
       console.error("Voice onSnapshot error:", error);
       if (error.code === "permission-denied") {
@@ -989,11 +1115,11 @@ export default function App() {
     // Observe all users to get their dynamic market presence, custom status, and avatars
     const usersQuery = collection(db, "users");
     const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
-      const list: any[] = [];
+      const map = new Map<string, any>();
       snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() });
+        map.set(d.id, { id: d.id, ...d.data() });
       });
-      setPublicUsers(list);
+      setPublicUsers(Array.from(map.values()));
     }, (error) => {
       console.error("Users onSnapshot error:", error);
     });
@@ -1002,14 +1128,14 @@ export default function App() {
     // Observe PNL logs (excluding live trades)
     const logsQuery = query(collection(db, "pnl_logs"), where("groupId", "==", activeRoom.id));
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const list: PnlLog[] = [];
+      const map = new Map<string, PnlLog>();
       snapshot.forEach((d) => {
         const data = d.data();
         if (!data.isLive) {
-          list.push({ id: d.id, ...data } as PnlLog);
+          map.set(d.id, { id: d.id, ...data } as PnlLog);
         }
       });
-      const sorted = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const sorted = Array.from(map.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setPnlLogs(sorted);
     }, (error) => {
       console.error("Logs onSnapshot error:", error);
@@ -1021,14 +1147,14 @@ export default function App() {
 
     // Observe Live Trades (from pnl_logs where isLive === true)
     const unsubLiveTrades = onSnapshot(logsQuery, (snapshot) => {
-      const list: LiveTrade[] = [];
+      const map = new Map<string, LiveTrade>();
       snapshot.forEach((d) => {
         const data = d.data();
         if (data.isLive === true) {
-          list.push({ id: d.id, ...data } as any as LiveTrade);
+          map.set(d.id, { id: d.id, ...data } as any as LiveTrade);
         }
       });
-      const sorted = list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const sorted = Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setLiveTrades(sorted);
     }, (error) => {
       console.error("Live trades onSnapshot error:", error);
@@ -1038,17 +1164,35 @@ export default function App() {
     // Observe Trading Entry Checklist Rules
     const rulesQuery = query(collection(db, "trading_rules"), where("roomId", "==", activeRoom.id));
     const unsubRules = onSnapshot(rulesQuery, (snapshot) => {
-      const list: TradingRule[] = [];
+      const map = new Map<string, TradingRule>();
       snapshot.forEach((d) => {
         const data = d.data();
-        list.push({ id: d.id, ...data } as TradingRule);
+        map.set(d.id, { id: d.id, ...data } as TradingRule);
       });
-      const sorted = list.sort((a, b) => a.order - b.order);
+      const sorted = Array.from(map.values()).sort((a, b) => a.order - b.order);
       setTradingRules(sorted);
     }, (error) => {
       console.error("Rules onSnapshot error:", error);
     });
     unsubscribers.push(unsubRules);
+
+    // Observe Payout Records
+    const payoutsQuery = query(collection(db, "payouts"), where("groupId", "==", activeRoom.id));
+    const unsubPayouts = onSnapshot(payoutsQuery, (snapshot) => {
+      const map = new Map<string, PayoutRecord>();
+      snapshot.forEach((d) => {
+        const data = d.data();
+        map.set(d.id, { id: d.id, ...data } as PayoutRecord);
+      });
+      const sorted = Array.from(map.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setPayouts(sorted);
+    }, (error) => {
+      console.error("Payouts onSnapshot error:", error);
+      if (error.code === "permission-denied") {
+        setFirebaseError("Firestore permission denied on payouts. Security rules updated.");
+      }
+    });
+    unsubscribers.push(unsubPayouts);
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
@@ -2010,8 +2154,6 @@ export default function App() {
     }
   };
 
-<<<<<<< HEAD
-=======
   // Payout Operations
   const handleAddPayout = async (payoutData: Omit<PayoutRecord, "id" | "timestamp">) => {
     const newRecord = {
@@ -2072,7 +2214,6 @@ export default function App() {
     );
   };
 
->>>>>>> 536ee5d (Local updates before pull)
   const handleUpdateTradePrice = async (id: string, currentPrice: number) => {
     try {
       const tradeRef = doc(db, "pnl_logs", id);
@@ -3031,7 +3172,7 @@ export default function App() {
                   ) : (
                     <>
                       {activeTab === "dashboard" && (
-                        <DashboardView pnlLogs={pnlLogs} userId={currentUser.uid} />
+                        <DashboardView pnlLogs={pnlLogs} userId={currentUser.uid} payouts={payouts} onSwitchTab={setActiveTab} />
                       )}
 
                       {activeTab === "chat" && (
@@ -3057,6 +3198,16 @@ export default function App() {
                       )}
 
                       {activeTab === "leaderboard" && <LeaderboardView pnlLogs={pnlLogs} />}
+
+                      {activeTab === "payouts" && (
+                        <PayoutsView
+                          payouts={payouts}
+                          onAddPayout={handleAddPayout}
+                          onDeletePayout={handleDeletePayout}
+                          userProfile={profile}
+                          activeGroupId={activeRoom.id}
+                        />
+                      )}
 
                       {activeTab === "logs" && (
                         <LogsView
