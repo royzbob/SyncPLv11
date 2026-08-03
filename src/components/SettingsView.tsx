@@ -769,7 +769,7 @@ export default function SettingsView({
 
             <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#121417]/60 border border-[#2A2D31]/50 rounded-lg">
               <span className="text-xs text-neutral-400 font-medium">App Build</span>
-              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">v1.0.7 (Desktop)</span>
+              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">v1.0.9 (Desktop)</span>
             </div>
 
             <button
@@ -813,7 +813,7 @@ export default function SettingsView({
                       await relaunch();
                     }
                   } else {
-                    alert("Your application is fully up-to-date! (Version 1.0.7)");
+                    alert("Your application is fully up-to-date! (Version 1.0.9)");
                   }
                 } catch (err: any) {
                   alert(`Update check failed: ${err.message || err}`);
