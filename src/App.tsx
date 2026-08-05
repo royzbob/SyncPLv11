@@ -2376,6 +2376,63 @@ export default function App() {
     triggerToast("Voice Disconnected", "Voice channel lines safely closed.", "info");
   };
 
+  const handleKickVoiceUser = async (targetUserId: string, targetUsername: string) => {
+    if (!activeRoom || !currentUser) return;
+    if (!isCreatorOrMod) {
+      triggerToast("Permission Denied", "Only room owners and moderators can remove users from voice channels.", "error");
+      return;
+    }
+
+    try {
+      const voiceDocRef = doc(db, "voice_users", targetUserId);
+      await deleteDoc(voiceDocRef);
+
+      // Broadcast system message in chat
+      try {
+        const messageId = "notif_kick_" + Date.now();
+        const msgRef = doc(db, "rooms", activeRoom.id, "messages", messageId);
+        await setDoc(msgRef, {
+          id: messageId,
+          userId: "system",
+          username: "DESK MODERATION",
+          avatarColor: "amber",
+          avatarType: "emoji",
+          avatarVal: "🛡️",
+          groupId: activeRoom.id,
+          text: `🛡️ @${targetUsername} was disconnected from the voice channel by an admin.`,
+          channel: "general",
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("Could not log kick notice to chat messages", e);
+      }
+
+      triggerToast("User Disconnected", `${targetUsername} was removed from the voice channel.`, "info");
+    } catch (err: any) {
+      console.error("Error disconnecting user from voice:", err);
+      triggerToast("Action Failed", `Could not remove user: ${err.message || err}`, "error");
+    }
+  };
+
+  // Monitor if local user was disconnected/kicked from voice_users by an admin
+  useEffect(() => {
+    if (!currentUser || !activeVoiceChannel) return;
+
+    // Skip synthetic AI channels
+    const isAi = activeVoiceChannel.includes("🤖") || activeVoiceChannel.toLowerCase().includes("ai");
+    if (isAi) return;
+
+    const myVoiceDoc = voiceUsers.find((v) => v.id === currentUser.uid || v.userId === currentUser.uid);
+    if (!myVoiceDoc) {
+      setActiveVoiceChannel(null);
+      if (webrtcVoiceRef.current) {
+        webrtcVoiceRef.current.destroy();
+        webrtcVoiceRef.current = null;
+      }
+      triggerToast("Voice Disconnected", "An admin or moderator removed you from the voice channel.", "info");
+    }
+  }, [voiceUsers, currentUser?.uid, activeVoiceChannel]);
+
   const handleToggleMic = async () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
@@ -2674,6 +2731,7 @@ export default function App() {
                     onToggleMuteAll={handleToggleMuteAll}
                     onConsultAiAdvisor={handleConsultAiAdvisor}
                     isCreatorOrMod={isCreatorOrMod}
+                    onKickVoiceUser={handleKickVoiceUser}
                     onAddChannelClick={(type) => {
                       handleOpenCreateChannelModal(type);
                       setIsMobileSidebarOpen(false);
@@ -2737,6 +2795,7 @@ export default function App() {
                   onToggleMuteAll={handleToggleMuteAll}
                   onConsultAiAdvisor={handleConsultAiAdvisor}
                   isCreatorOrMod={isCreatorOrMod}
+                  onKickVoiceUser={handleKickVoiceUser}
                   onAddChannelClick={handleOpenCreateChannelModal}
                   onCopyRoomCode={() => {
                     navigator.clipboard.writeText(activeRoom.id);
@@ -3194,6 +3253,9 @@ export default function App() {
                             handleSelectChannelWithLockCheck(name, type, true);
                           }}
                           profile={profile}
+                          currentUser={currentUser}
+                          db={db}
+                          triggerToast={triggerToast}
                         />
                       )}
 
@@ -3315,6 +3377,9 @@ export default function App() {
                         onToggleModRole={handleToggleModRole}
                         onOpenSidebar={() => setIsMobileSidebarOpen(true)}
                         profile={profile}
+                        currentUser={currentUser}
+                        db={db}
+                        triggerToast={triggerToast}
                       />
                     </div>
                   </div>

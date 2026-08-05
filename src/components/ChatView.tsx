@@ -14,7 +14,19 @@ import {
   Trash2,
   Lock,
   Hash,
+  UserPlus,
+  UserCheck,
+  Check,
+  Clock,
+  Sparkles,
+  X,
+  MessageSquare,
+  Copy,
+  Activity,
+  Award,
 } from "lucide-react";
+import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { User as FirebaseUser } from "firebase/auth";
 import { ChatMessage, Room, UserProfile, Channel } from "../types";
 import { formatCurrency } from "../utils/helpers";
 
@@ -34,6 +46,9 @@ interface ChatViewProps {
   channels?: Channel[];
   onSelectChannel?: (name: string, type: "text" | "voice") => void;
   profile?: UserProfile | null;
+  currentUser?: FirebaseUser | null;
+  db?: any;
+  triggerToast?: (title: string, body: string, type: "success" | "error" | "info") => void;
 }
 
 export default function ChatView({
@@ -52,9 +67,106 @@ export default function ChatView({
   channels = [],
   onSelectChannel,
   profile = null,
+  currentUser = null,
+  db = null,
+  triggerToast,
 }: ChatViewProps) {
   const [inputText, setInputText] = useState("");
   const messageStreamRef = useRef<HTMLDivElement>(null);
+
+  // Selected partner modal state
+  const [selectedPartner, setSelectedPartner] = useState<UserProfile | null>(null);
+  const [friendshipStatus, setFriendshipStatus] = useState<"none" | "pending" | "accepted" | "self" | "loading">("loading");
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
+
+  useEffect(() => {
+    if (!selectedPartner) return;
+    
+    if (profile && selectedPartner.username.toLowerCase() === profile.username?.toLowerCase()) {
+      setFriendshipStatus("self");
+      return;
+    }
+
+    setFriendshipStatus("loading");
+
+    const checkStatus = async () => {
+      if (!currentUser || !db) {
+        setFriendshipStatus("none");
+        return;
+      }
+
+      try {
+        const friendshipsRef = collection(db, "friendships");
+        const snap = await getDocs(friendshipsRef);
+        let matchStatus: "none" | "pending" | "accepted" = "none";
+
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          const isSelfSender = data.senderId === currentUser.uid;
+          const isSelfReceiver = data.receiverId === currentUser.uid;
+          const otherUsername = isSelfSender ? data.receiverName : data.senderName;
+
+          if ((isSelfSender || isSelfReceiver) && otherUsername?.toLowerCase() === selectedPartner.username.toLowerCase()) {
+            matchStatus = data.status === "accepted" ? "accepted" : "pending";
+          }
+        });
+
+        setFriendshipStatus(matchStatus);
+      } catch (err) {
+        console.error("Error checking friendship status:", err);
+        setFriendshipStatus("none");
+      }
+    };
+
+    checkStatus();
+  }, [selectedPartner, currentUser?.uid, db, profile]);
+
+  const handleAddPartnerAsFriend = async () => {
+    if (!selectedPartner || !currentUser || !profile || !db) return;
+    setIsSendingRequest(true);
+
+    try {
+      const cleanUsername = selectedPartner.username.trim();
+
+      // Find user in /users collection if registered
+      const usersCol = collection(db, "users");
+      const querySnap = await getDocs(usersCol);
+      const matchedDoc = querySnap.docs.find((d) => {
+        const u = d.data();
+        return u.username && u.username.toLowerCase() === cleanUsername.toLowerCase();
+      });
+
+      const targetUid = matchedDoc ? matchedDoc.id : `user_${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+      const targetUser = matchedDoc ? matchedDoc.data() : null;
+
+      const friendshipId = `friend_${currentUser.uid}_${targetUid}`;
+      await setDoc(doc(db, "friendships", friendshipId), {
+        id: friendshipId,
+        senderId: currentUser.uid,
+        senderName: profile.username || "Trader",
+        senderAvatarColor: profile.avatarColor || "indigo",
+        senderAvatarVal: profile.avatarVal || "🐂",
+        receiverId: targetUid,
+        receiverName: selectedPartner.username,
+        receiverAvatarColor: targetUser?.avatarColor || selectedPartner.avatarColor || "indigo",
+        receiverAvatarVal: targetUser?.avatarVal || selectedPartner.avatarVal || "🐂",
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+
+      setFriendshipStatus("pending");
+      if (triggerToast) {
+        triggerToast("Request Dispatched", `Sent a co-trader friend request to ${selectedPartner.username}.`, "success");
+      }
+    } catch (err: any) {
+      console.error("Failed to add partner as friend:", err);
+      if (triggerToast) {
+        triggerToast("Error", err.message || "Failed to dispatch friend request.", "error");
+      }
+    } finally {
+      setIsSendingRequest(false);
+    }
+  };
 
   const getPresenceIndicatorColor = (presence?: string) => {
     switch (presence) {
@@ -389,10 +501,18 @@ export default function ChatView({
             </span>
           </div>
           {roomTraders.map((trader) => {
-            const isCreator = trader.activeGroupId
-              ? trader.username === activeRoom.creatorName
-              : false; // fallback check
-            const isMod = roomMods.includes(trader.username) || false; // simpler matching for mocks
+            const cleanName = trader.username.trim().toLowerCase();
+            const creatorNameClean = activeRoom.creatorName?.trim().toLowerCase();
+            const currentProfileNameClean = profile?.username?.trim().toLowerCase();
+
+            const isCreator = Boolean(
+              (creatorNameClean && cleanName === creatorNameClean) ||
+              (userId && activeRoom.creatorId && userId === activeRoom.creatorId && cleanName === currentProfileNameClean) ||
+              (trader.id && activeRoom.creatorId && trader.id === activeRoom.creatorId) ||
+              trader.role === "admin" ||
+              trader.role === "owner"
+            );
+            const isMod = roomMods.some((m) => m.trim().toLowerCase() === cleanName) || trader.role === "mod";
             const showModButton = userId === activeRoom.creatorId;
 
             const initials = trader.username.substring(0, 2).toUpperCase();
@@ -410,7 +530,9 @@ export default function ChatView({
             return (
               <div
                 key={trader.username}
-                className="flex items-center justify-between p-1 hover:bg-[#1E2023] rounded transition group"
+                onClick={() => setSelectedPartner(trader)}
+                className="flex items-center justify-between p-1.5 hover:bg-[#1E2023] rounded transition group cursor-pointer border border-transparent hover:border-[#2A2D31]/50"
+                title={`Click to view ${trader.username}'s profile & add friend`}
               >
                 <div className="flex items-center space-x-2 min-w-0">
                   <div className="relative">
@@ -432,14 +554,20 @@ export default function ChatView({
                     <span className={`absolute bottom-0 right-0 block h-2 w-2 rounded-full ${getPresenceIndicatorColor(trader.marketPresence)} ring-1 ring-gray-950`}></span>
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-semibold text-gray-200 block truncate">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-semibold text-gray-200 block truncate group-hover:text-indigo-400 transition-colors">
                         {trader.username}
                       </span>
                       {isCreator ? (
-                        <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" title="Creator" />
+                        <span className="text-[9px] font-extrabold uppercase text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1 py-0.2 rounded flex items-center gap-0.5 shrink-0" title="Room Owner / Admin">
+                          <Crown className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                          Admin
+                        </span>
                       ) : isMod ? (
-                        <Shield className="w-3.5 h-3.5 text-sky-400 shrink-0" title="Moderator" />
+                        <span className="text-[9px] font-extrabold uppercase text-sky-400 bg-sky-500/10 border border-sky-500/30 px-1 py-0.2 rounded flex items-center gap-0.5 shrink-0" title="Moderator">
+                          <Shield className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+                          Mod
+                        </span>
                       ) : null}
                     </div>
                     <span className="text-[8px] text-[#72767D] block truncate font-mono">
@@ -451,7 +579,10 @@ export default function ChatView({
                 {/* Mod Toggles inside Creator's panel */}
                 {showModButton && !isCreator && (
                   <button
-                    onClick={() => onToggleModRole(trader.username, trader.username)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleModRole(trader.username, trader.username);
+                    }}
                     className="p-1 hover:bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition duration-150"
                     title={isMod ? "Remove Mod Role" : "Grant Mod Role"}
                   >
@@ -467,6 +598,150 @@ export default function ChatView({
           })}
         </div>
       </div>
+
+      {/* Active Partner Profile Modal */}
+      {selectedPartner && (
+        <div 
+          className="fixed inset-0 z-[999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedPartner(null)}
+        >
+          <div 
+            className="w-full max-w-sm bg-[#121417] border border-[#2A2D31] rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Banner */}
+            <div className="h-24 bg-gradient-to-r from-indigo-900/60 via-purple-900/40 to-slate-900/80 relative border-b border-[#2A2D31]/50 p-3 flex justify-end items-start">
+              <button
+                onClick={() => setSelectedPartner(null)}
+                className="p-1.5 bg-black/40 hover:bg-black/70 text-gray-300 hover:text-white rounded-full transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Avatar & Profile Info */}
+            <div className="px-5 pb-5 pt-0 relative">
+              {/* Avatar position floating over header */}
+              <div className="-mt-10 mb-3 flex items-end justify-between">
+                <div className="relative">
+                  {selectedPartner.avatarType === "url" && selectedPartner.avatarVal ? (
+                    <div className="w-16 h-16 rounded-2xl border-4 border-[#121417] overflow-hidden bg-[#08090A] shadow-lg">
+                      <img src={selectedPartner.avatarVal} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl border-4 border-[#121417] bg-indigo-600/30 border-indigo-500/40 flex items-center justify-center text-2xl font-black text-indigo-300 shadow-lg">
+                      {selectedPartner.avatarVal || selectedPartner.username.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <span className={`absolute bottom-0 right-0 block h-4 w-4 rounded-full ${getPresenceIndicatorColor(selectedPartner.marketPresence)} ring-4 ring-[#121417]`}></span>
+                </div>
+
+                {/* Tier Badge */}
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                  <Crown className="w-3 h-3 text-amber-400" />
+                  {selectedPartner.subscriptionTier ? selectedPartner.subscriptionTier.toUpperCase() : "PRO TRADER"}
+                </span>
+              </div>
+
+              {/* Username & Badges */}
+              <div className="space-y-1.5 mb-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-black text-white tracking-wide">{selectedPartner.username}</h3>
+                  {(() => {
+                    const cleanName = selectedPartner.username.trim().toLowerCase();
+                    const creatorNameClean = activeRoom.creatorName?.trim().toLowerCase();
+                    const currentProfileNameClean = profile?.username?.trim().toLowerCase();
+
+                    const isPartnerAdmin = Boolean(
+                      (creatorNameClean && cleanName === creatorNameClean) ||
+                      (currentUser?.uid && activeRoom.creatorId && currentUser.uid === activeRoom.creatorId && cleanName === currentProfileNameClean) ||
+                      (selectedPartner.id && activeRoom.creatorId && selectedPartner.id === activeRoom.creatorId) ||
+                      selectedPartner.role === "admin" ||
+                      selectedPartner.role === "owner"
+                    );
+
+                    const isPartnerMod = roomMods.some((m) => m.trim().toLowerCase() === cleanName) || selectedPartner.role === "mod";
+
+                    if (isPartnerAdmin) {
+                      return (
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                          <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                          ADMIN
+                        </span>
+                      );
+                    }
+                    if (isPartnerMod) {
+                      return (
+                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                          <Shield className="w-3 h-3 text-sky-400 shrink-0" />
+                          MODERATOR
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-gray-800/40 border border-gray-700/40 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        MEMBER
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#8E9297]">
+                  <span className="flex items-center gap-1 font-mono text-[10px]">
+                    <span className={`w-1.5 h-1.5 rounded-full ${getPresenceIndicatorColor(selectedPartner.marketPresence)}`}></span>
+                    {getPresenceLabel(selectedPartner.marketPresence, selectedPartner.customStatus)}
+                  </span>
+                  <span>•</span>
+                  <span className="font-mono text-[10px] text-gray-400">Node: #{activeRoom.id}</span>
+                </div>
+              </div>
+
+              {/* Status Box */}
+              {selectedPartner.customStatus && (
+                <div className="bg-[#1E2023] border border-[#2A2D31] rounded-xl p-3 mb-4 text-xs text-gray-300 leading-relaxed italic">
+                  "{selectedPartner.customStatus}"
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-1">
+                {friendshipStatus === "self" ? (
+                  <div className="text-center text-xs text-[#8E9297] bg-[#1E2023] p-2.5 rounded-xl border border-[#2A2D31] font-semibold">
+                    This is your profile node
+                  </div>
+                ) : friendshipStatus === "accepted" ? (
+                  <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold py-2.5 px-3 rounded-xl shadow-inner">
+                    <UserCheck className="w-4 h-4" /> Co-Trader Linked
+                  </div>
+                ) : friendshipStatus === "pending" ? (
+                  <div className="flex items-center justify-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl shadow-inner">
+                    <Clock className="w-4 h-4 animate-spin" /> Friend Request Pending
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleAddPartnerAsFriend}
+                    disabled={isSendingRequest || friendshipStatus === "loading"}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-bold text-xs py-2.5 rounded-xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    {isSendingRequest ? "Sending Request..." : "Add as Friend / Co-Trader"}
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setInputText((prev) => `${prev} @${selectedPartner.username} `);
+                    setSelectedPartner(null);
+                  }}
+                  className="w-full bg-[#1E2023] hover:bg-[#2A2D31] text-gray-200 font-bold text-xs py-2 rounded-xl border border-[#2A2D31] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+                  Mention in #{activeChannelName}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

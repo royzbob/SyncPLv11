@@ -50,6 +50,7 @@ interface ActiveRoomSidebarProps {
   onToggleMuteAll: () => void;
   onConsultAiAdvisor: () => void;
   isCreatorOrMod: boolean;
+  onKickVoiceUser?: (userId: string, username: string) => void;
   onAddChannelClick: (type: "text" | "voice") => void;
   onCopyRoomCode: () => void;
   isChatSidePanelOpen?: boolean;
@@ -84,6 +85,7 @@ export default function ActiveRoomSidebar({
   onToggleMuteAll,
   onConsultAiAdvisor,
   isCreatorOrMod,
+  onKickVoiceUser,
   onAddChannelClick,
   onCopyRoomCode,
   isChatSidePanelOpen = false,
@@ -480,6 +482,21 @@ export default function ActiveRoomSidebar({
                                 </span>
                               </button>
 
+                              {/* Admin/Mod disconnect user button */}
+                              {isCreatorOrMod && onKickVoiceUser && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onKickVoiceUser(user.userId || user.id, user.username);
+                                  }}
+                                  className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition cursor-pointer"
+                                  title={`Remove ${user.username} from voice channel`}
+                                >
+                                  <PhoneOff className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+
                               {/* Discord-style User Volume Popover */}
                               {activeUserPopover === user.id && (
                                 <div 
@@ -512,6 +529,24 @@ export default function ActiveRoomSidebar({
                                       className="accent-[#5865f2] w-3.5 h-3.5 rounded border-gray-600 cursor-pointer"
                                     />
                                   </div>
+
+                                  {/* Admin Disconnect Option */}
+                                  {isCreatorOrMod && onKickVoiceUser && (
+                                    <div className="border-t border-[#2b2d31] pt-2 flex items-center justify-between">
+                                      <span className="text-[9px] font-bold text-rose-400 uppercase tracking-wider">Disconnect User</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveUserPopover(null);
+                                          onKickVoiceUser(user.userId || user.id, user.username);
+                                        }}
+                                        className="px-2 py-0.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[9px] font-extrabold rounded transition cursor-pointer flex items-center gap-1"
+                                      >
+                                        <PhoneOff className="w-2.5 h-2.5" /> Remove
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
