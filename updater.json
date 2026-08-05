@@ -1,0 +1,15 @@
+{
+  "version": "1.0.12",
+  "notes": "SyncPL Trading Dashboard v1.0.12 Release!",
+  "pub_date": "2026-08-05T08:10:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "8a477f597d28d172789f06886806bc55",
+      "url": "https://github.com/royzbob/SyncPLv2/releases/download/v1.0.9/SyncPL.Trading_1.0.9_x64-setup.exe"
+    },
+    "darwin-aarch64": {
+      "signature": "REPLACE_WITH_MACOS_ARM64_SIGNATURE_FROM_SIG_FILE",
+      "url": "https://github.com/royzbob/SyncPLv2/releases/download/v1.0.9/SyncPL.Trading_aarch64.app.tar.gz"
+    }
+  }
+}
