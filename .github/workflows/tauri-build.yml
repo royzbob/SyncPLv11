@@ -7,7 +7,41 @@ on:
   workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
 
 jobs:
-  publish-tauri:
+  draft-crabnebula:
+    runs-on: ubuntu-latest
+    env:
+      CN_API_KEY: ${{ secrets.CN_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Project Path
+        id: detect
+        shell: bash
+        run: |
+          if [ -f "src-tauri/Cargo.toml" ]; then
+            echo "project_path=." >> $GITHUB_OUTPUT
+          elif [ -f "syncpl-trading-dashboard/src-tauri/Cargo.toml" ]; then
+            echo "project_path=syncpl-trading-dashboard" >> $GITHUB_OUTPUT
+          else
+            found_path=$(find . -maxdepth 3 -name "Cargo.toml" | grep "src-tauri" | head -n 1)
+            if [ ! -z "$found_path" ]; then
+              dir_path=$(echo "$found_path" | sed 's|/src-tauri/Cargo.toml||' | sed 's|^\./||')
+              echo "project_path=$dir_path" >> $GITHUB_OUTPUT
+            else
+              echo "project_path=." >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Create CrabNebula Release Draft
+        if: env.CN_API_KEY != ''
+        uses: crabnebula-dev/cloud-release@v0
+        with:
+          command: release draft syncpl/syncpl --framework tauri
+          api-key: ${{ secrets.CN_API_KEY }}
+          path: ${{ steps.detect.outputs.project_path }}
+
+  build-and-upload:
+    needs: draft-crabnebula
     permissions:
       contents: write
     env:
@@ -42,10 +76,8 @@ jobs:
             echo "project_path=syncpl-trading-dashboard" >> $GITHUB_OUTPUT
             echo "npm_dir=syncpl-trading-dashboard" >> $GITHUB_OUTPUT
           else
-            # Search for any subdirectory containing src-tauri/Cargo.toml
             found_path=$(find . -maxdepth 3 -name "Cargo.toml" | grep "src-tauri" | head -n 1)
             if [ ! -z "$found_path" ]; then
-              # Extract directory path before /src-tauri/Cargo.toml
               dir_path=$(echo "$found_path" | sed 's|/src-tauri/Cargo.toml||' | sed 's|^\./||')
               echo "Found Tauri project in auto-detected path: $dir_path"
               echo "project_path=$dir_path" >> $GITHUB_OUTPUT
@@ -88,10 +120,44 @@ jobs:
           tauriScript: 'npm run tauri'
           args: ${{ matrix.args }}
 
-      - name: Publish to CrabNebula Cloud
+      - name: Upload to CrabNebula Cloud
         if: env.CN_API_KEY != ''
         uses: crabnebula-dev/cloud-release@v0
         with:
           command: release upload syncpl/syncpl --framework tauri
+          api-key: ${{ secrets.CN_API_KEY }}
+          path: ${{ steps.detect.outputs.project_path }}
+
+  publish-crabnebula:
+    needs: build-and-upload
+    runs-on: ubuntu-latest
+    env:
+      CN_API_KEY: ${{ secrets.CN_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Project Path
+        id: detect
+        shell: bash
+        run: |
+          if [ -f "src-tauri/Cargo.toml" ]; then
+            echo "project_path=." >> $GITHUB_OUTPUT
+          elif [ -f "syncpl-trading-dashboard/src-tauri/Cargo.toml" ]; then
+            echo "project_path=syncpl-trading-dashboard" >> $GITHUB_OUTPUT
+          else
+            found_path=$(find . -maxdepth 3 -name "Cargo.toml" | grep "src-tauri" | head -n 1)
+            if [ ! -z "$found_path" ]; then
+              dir_path=$(echo "$found_path" | sed 's|/src-tauri/Cargo.toml||' | sed 's|^\./||')
+              echo "project_path=$dir_path" >> $GITHUB_OUTPUT
+            else
+              echo "project_path=." >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Publish CrabNebula Release
+        if: env.CN_API_KEY != ''
+        uses: crabnebula-dev/cloud-release@v0
+        with:
+          command: release publish syncpl/syncpl --framework tauri
           api-key: ${{ secrets.CN_API_KEY }}
           path: ${{ steps.detect.outputs.project_path }}
