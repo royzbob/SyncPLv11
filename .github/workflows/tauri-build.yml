@@ -69,7 +69,7 @@ jobs:
           cd ${{ steps.detect.outputs.npm_dir }}
           npm install
 
-      - name: Build and Publish
+      - name: Build and Publish to GitHub
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,3 +85,12 @@ jobs:
           projectPath: ${{ steps.detect.outputs.project_path }}
           tauriScript: 'npm run tauri'
           args: ${{ matrix.args }}
+
+      - name: Publish to CrabNebula Cloud
+        if: secrets.CN_API_KEY != ''
+        uses: crabnebula-dev/cloud-release@v0
+        with:
+          command: release upload
+          api_key: ${{ secrets.CN_API_KEY }}
+          framework: tauri
+          path: ${{ steps.detect.outputs.project_path }}
