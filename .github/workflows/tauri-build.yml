@@ -10,6 +10,8 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
+    env:
+      CN_API_KEY: ${{ secrets.CN_API_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +89,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Publish to CrabNebula Cloud
-        if: secrets.CN_API_KEY != ''
+        if: env.CN_API_KEY != ''
         uses: crabnebula-dev/cloud-release@v0
         with:
           command: release upload
