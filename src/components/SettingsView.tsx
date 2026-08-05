@@ -131,6 +131,7 @@ export default function SettingsView({
   const [joinCode, setJoinCode] = useState("");
 
   // Update state for in-app update checking
+  const [runningVersion, setRunningVersion] = useState("1.0.16");
   const [updateState, setUpdateState] = useState<{
     status: "idle" | "checking" | "up-to-date" | "available" | "downloading" | "installed" | "error" | "web";
     version?: string;
@@ -139,6 +140,16 @@ export default function SettingsView({
     progress?: number;
     updateObj?: any;
   }>({ status: "idle" });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      import("@tauri-apps/api/app")
+        .then(({ getVersion }) => {
+          getVersion().then(ver => setRunningVersion(ver)).catch(() => {});
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   const handleCheckForUpdates = async () => {
     setUpdateState({ status: "checking" });
@@ -174,12 +185,12 @@ export default function SettingsView({
       } else {
         setUpdateState({
           status: "up-to-date",
-          version: "1.0.15"
+          version: runningVersion
         });
       }
     } catch (err: any) {
       const msg = String(err?.message || err);
-      // CrabNebula returns HTTP 204 (or empty JSON) when there is no newer version published than current v1.0.15
+      // CrabNebula returns HTTP 204 (or empty JSON) when there is no newer version published than current version
       if (
         msg.includes("Could not fetch a valid release JSON") ||
         msg.includes("204") ||
@@ -188,7 +199,7 @@ export default function SettingsView({
       ) {
         setUpdateState({
           status: "up-to-date",
-          version: "1.0.15"
+          version: runningVersion
         });
       } else {
         setUpdateState({
@@ -888,7 +899,7 @@ export default function SettingsView({
 
             <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#121417]/60 border border-[#2A2D31]/50 rounded-lg">
               <span className="text-xs text-neutral-400 font-medium">App Build Version</span>
-              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded">v1.0.15 (Desktop)</span>
+              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded">v{runningVersion} (Desktop)</span>
             </div>
 
             {/* Dynamic Update Status Banners */}
@@ -904,7 +915,7 @@ export default function SettingsView({
                 <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
                 <div className="text-xs">
                   <p className="font-semibold text-emerald-300">SyncPL Trading is fully up-to-date!</p>
-                  <p className="text-emerald-400/80 text-[11px] mt-0.5">You are currently running version v1.0.15.</p>
+                  <p className="text-emerald-400/80 text-[11px] mt-0.5">You are currently running version v{updateState.version || runningVersion}.</p>
                 </div>
               </div>
             )}
