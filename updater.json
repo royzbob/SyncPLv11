@@ -1,7 +1,7 @@
 {
-  "version": "1.0.10",
-  "notes": "SyncPL Trading Dashboard v1.0.10 Release!",
-  "pub_date": "2026-08-05T06:45:00Z",
+  "version": "1.0.11",
+  "notes": "SyncPL Trading Dashboard v1.0.11 Release!",
+  "pub_date": "2026-08-05T08:10:00Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "8a477f597d28d172789f06886806bc55",

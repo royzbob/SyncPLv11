@@ -161,3 +161,4 @@ jobs:
           command: release publish syncpl/syncpl --framework tauri
           api-key: ${{ secrets.CN_API_KEY }}
           path: ${{ steps.detect.outputs.project_path }}
+
