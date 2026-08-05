@@ -130,6 +130,118 @@ export default function SettingsView({
   // Room action state
   const [joinCode, setJoinCode] = useState("");
 
+  // Update state for in-app update checking
+  const [updateState, setUpdateState] = useState<{
+    status: "idle" | "checking" | "up-to-date" | "available" | "downloading" | "installed" | "error" | "web";
+    version?: string;
+    body?: string;
+    errorMsg?: string;
+    progress?: number;
+    updateObj?: any;
+  }>({ status: "idle" });
+
+  const handleCheckForUpdates = async () => {
+    setUpdateState({ status: "checking" });
+
+    const isTauri = typeof window !== "undefined" && (
+      (window as any).__TAURI__ || 
+      (window as any).__TAURI_INTERNALS__ ||
+      window.location.protocol === "tauri:" || 
+      window.location.protocol === "asset:" ||
+      window.location.hostname === "tauri.localhost" ||
+      window.location.hostname === ""
+    );
+
+    if (!isTauri) {
+      setUpdateState({
+        status: "web",
+        errorMsg: "Native update checking runs inside the Desktop client. You are currently in Web mode."
+      });
+      return;
+    }
+
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+
+      if (update && update.available) {
+        setUpdateState({
+          status: "available",
+          version: update.version,
+          body: update.body || "",
+          updateObj: update
+        });
+      } else {
+        setUpdateState({
+          status: "up-to-date",
+          version: "1.0.10"
+        });
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      // CrabNebula returns HTTP 204 (or empty JSON) when there is no newer version published than current v1.0.10
+      if (
+        msg.includes("Could not fetch a valid release JSON") ||
+        msg.includes("204") ||
+        msg.includes("404") ||
+        msg.includes("no release")
+      ) {
+        setUpdateState({
+          status: "up-to-date",
+          version: "1.0.10"
+        });
+      } else {
+        setUpdateState({
+          status: "error",
+          errorMsg: msg
+        });
+      }
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!updateState.updateObj) return;
+    setUpdateState(prev => ({ ...prev, status: "downloading", progress: 0 }));
+
+    try {
+      let downloaded = 0;
+      let contentLength = 0;
+      await updateState.updateObj.downloadAndInstall((event: any) => {
+        switch (event.event) {
+          case 'Started':
+            contentLength = event.data.contentLength || 0;
+            break;
+          case 'Progress':
+            downloaded += event.data.chunkLength || 0;
+            if (contentLength > 0) {
+              const pct = Math.round((downloaded / contentLength) * 100);
+              setUpdateState(prev => ({ ...prev, progress: pct }));
+            }
+            break;
+          case 'Finished':
+            setUpdateState(prev => ({ ...prev, progress: 100 }));
+            break;
+        }
+      });
+
+      setUpdateState(prev => ({ ...prev, status: "installed" }));
+    } catch (err: any) {
+      setUpdateState({
+        status: "error",
+        errorMsg: err.message || "Failed to download and install update."
+      });
+    }
+  };
+
+  const handleRelaunchApp = async () => {
+    try {
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    } catch (err) {
+      window.location.reload();
+    }
+  };
+
   // Mic hardware testing state
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>(() => {
@@ -760,68 +872,129 @@ export default function SettingsView({
 
           {/* App Version & Updates */}
           <div className="glass-panel p-5 rounded space-y-4 border border-[#2A2D31] bg-[#1E2023]/45">
-            <h4 className="font-bold text-gray-100 text-sm flex items-center gap-2">
-              <RefreshCw className="text-[#5865F2] w-4.5 h-4.5" /> System & App Updates
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-gray-100 text-sm flex items-center gap-2">
+                <RefreshCw className="text-[#5865F2] w-4.5 h-4.5" /> System & App Updates
+              </h4>
+              <span className="text-[10px] font-mono font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                CrabNebula CDN
+              </span>
+            </div>
+
             <p className="text-[11px] text-[#8E9297] leading-relaxed">
-              Verify your desktop environment or check for new builds of the SyncPL Trading Application.
+              Verify your desktop environment or check for new builds of SyncPL Trading via CrabNebula Cloud.
             </p>
 
             <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#121417]/60 border border-[#2A2D31]/50 rounded-lg">
-              <span className="text-xs text-neutral-400 font-medium">App Build</span>
-              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">v1.0.10 (Desktop)</span>
+              <span className="text-xs text-neutral-400 font-medium">App Build Version</span>
+              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded">v1.0.10 (Desktop)</span>
             </div>
 
+            {/* Dynamic Update Status Banners */}
+            {updateState.status === "checking" && (
+              <div className="p-3.5 bg-indigo-950/30 border border-indigo-500/30 rounded-xl flex items-center gap-3 animate-pulse">
+                <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin shrink-0" />
+                <span className="text-xs text-indigo-200 font-medium">Connecting to CrabNebula Cloud CDN...</span>
+              </div>
+            )}
+
+            {updateState.status === "up-to-date" && (
+              <div className="p-3.5 bg-emerald-950/30 border border-emerald-500/30 rounded-xl flex items-center gap-3">
+                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                <div className="text-xs">
+                  <p className="font-semibold text-emerald-300">SyncPL Trading is fully up-to-date!</p>
+                  <p className="text-emerald-400/80 text-[11px] mt-0.5">You are currently running version v1.0.10.</p>
+                </div>
+              </div>
+            )}
+
+            {updateState.status === "web" && (
+              <div className="p-3.5 bg-amber-950/30 border border-amber-500/30 rounded-xl flex items-center gap-3">
+                <AlertTriangle className="w-4.5 h-4.5 text-amber-400 shrink-0" />
+                <div className="text-xs">
+                  <p className="font-semibold text-amber-300">Web Client Detected</p>
+                  <p className="text-amber-400/80 text-[11px] mt-0.5">{updateState.errorMsg}</p>
+                </div>
+              </div>
+            )}
+
+            {updateState.status === "available" && (
+              <div className="p-4 bg-gradient-to-br from-indigo-950/50 to-purple-950/40 border border-indigo-500/40 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-indigo-400 animate-bounce" />
+                    New Update Available: v{updateState.version}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">Ready to Install</span>
+                </div>
+                {updateState.body && (
+                  <div className="p-2.5 bg-neutral-950/60 border border-neutral-800 rounded text-[11px] text-neutral-300 max-h-24 overflow-y-auto">
+                    {updateState.body}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleInstallUpdate}
+                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs py-2.5 px-4 rounded-lg shadow-lg shadow-indigo-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Download & Install Update Now
+                </button>
+              </div>
+            )}
+
+            {updateState.status === "downloading" && (
+              <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl space-y-2">
+                <div className="flex justify-between text-xs font-semibold text-neutral-200">
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                    Downloading update packages...
+                  </span>
+                  <span className="text-indigo-400 font-mono">{updateState.progress || 0}%</span>
+                </div>
+                <div className="w-full h-2 bg-neutral-950 rounded-full overflow-hidden p-[2px] border border-neutral-800">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-300"
+                    style={{ width: `${updateState.progress || 0}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            {updateState.status === "installed" && (
+              <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Update Downloaded & Installed Successfully!</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRelaunchApp}
+                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs py-2.5 px-4 rounded-lg shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  Relaunch Application Now
+                </button>
+              </div>
+            )}
+
+            {updateState.status === "error" && (
+              <div className="p-3.5 bg-red-950/30 border border-red-500/30 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-red-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Update Check Notice</span>
+                </div>
+                <p className="text-[11px] text-red-300/80">{updateState.errorMsg}</p>
+              </div>
+            )}
+
             <button
-              onClick={async () => {
-                const isTauri = typeof window !== "undefined" && (
-                  (window as any).__TAURI__ || 
-                  (window as any).__TAURI_INTERNALS__ ||
-                  window.location.protocol === "tauri:" || 
-                  window.location.protocol === "asset:" ||
-                  window.location.hostname === "tauri.localhost" ||
-                  window.location.hostname === ""
-                );
-                if (!isTauri) {
-                  alert("Manually checking for updates is only available in the Desktop client. You are currently viewing the Web version.");
-                  return;
-                }
-                try {
-                  const { check } = await import("@tauri-apps/plugin-updater");
-                  const update = await check();
-                  if (update && update.available) {
-                    const confirmInstall = confirm(
-                      `A new update is available: v${update.version}!\n\n${update.body ? `Notes:\n${update.body}\n\n` : ''}Would you like to download and install this update now?`
-                    );
-                    if (confirmInstall) {
-                      let downloaded = 0;
-                      let contentLength = 0;
-                      await update.downloadAndInstall((event) => {
-                        switch (event.event) {
-                          case 'Started':
-                            contentLength = event.data.contentLength || 0;
-                            break;
-                          case 'Progress':
-                            downloaded += event.data.chunkLength;
-                            break;
-                          case 'Finished':
-                            break;
-                        }
-                      });
-                      alert("Update installed successfully! The application will now restart.");
-                      const { relaunch } = await import("@tauri-apps/plugin-process");
-                      await relaunch();
-                    }
-                  } else {
-                    alert("Your application is fully up-to-date! (Version 1.0.10)");
-                  }
-                } catch (err: any) {
-                  alert(`Update check failed: ${err.message || err}`);
-                }
-              }}
-              className="w-full bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] text-gray-200 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+              type="button"
+              onClick={handleCheckForUpdates}
+              disabled={updateState.status === "checking" || updateState.status === "downloading"}
+              className="w-full bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] disabled:opacity-50 text-gray-200 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Check for Updates Now
+              <RefreshCw className={`w-3.5 h-3.5 ${updateState.status === "checking" ? "animate-spin" : ""}`} />
+              {updateState.status === "checking" ? "Checking CDN..." : "Check for Updates Now"}
             </button>
           </div>
         </div>
