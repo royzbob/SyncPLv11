@@ -17,8 +17,15 @@ export default function UpdateNotifier() {
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
+  const [currentVersion, setCurrentVersion] = useState("1.0.14");
+
   useEffect(() => {
     if (!isTauri) return;
+
+    // Retrieve version from tauri app info if available
+    import("@tauri-apps/api/app").then(({ getVersion }) => {
+      getVersion().then(ver => setCurrentVersion(ver)).catch(() => {});
+    }).catch(() => {});
 
     // Small delay before checking on launch to let the dashboard render smoothly
     const timer = setTimeout(() => {
@@ -122,7 +129,7 @@ export default function UpdateNotifier() {
           <div className="flex justify-between items-center px-4 py-3 bg-neutral-950/40 border border-neutral-800/60 rounded-xl">
             <div>
               <span className="block text-[10px] uppercase tracking-wider text-neutral-500">Current</span>
-              <span className="text-sm font-semibold text-neutral-400">1.0.14</span>
+              <span className="text-sm font-semibold text-neutral-400">v{currentVersion}</span>
             </div>
             <div className="h-6 w-[1px] bg-neutral-800"></div>
             <div className="text-right">
