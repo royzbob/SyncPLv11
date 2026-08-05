@@ -92,7 +92,6 @@ jobs:
         if: env.CN_API_KEY != ''
         uses: crabnebula-dev/cloud-release@v0
         with:
-          command: release upload
-          api_key: ${{ secrets.CN_API_KEY }}
-          framework: tauri
+          command: release upload SyncPL/SyncPL --framework tauri
+          api-key: ${{ secrets.CN_API_KEY }}
           path: ${{ steps.detect.outputs.project_path }}
