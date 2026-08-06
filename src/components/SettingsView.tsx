@@ -27,6 +27,8 @@ import {
   Wallet,
   Send,
   Share2,
+  ArrowUpCircle,
+  Download,
 } from "lucide-react";
 import { Channel, Room, UserProfile } from "../types";
 
@@ -190,12 +192,12 @@ export default function SettingsView({
       }
     } catch (err: any) {
       const msg = String(err?.message || err);
-      // CrabNebula returns HTTP 204 (or empty JSON) when there is no newer version published than current version
+      // Only treat clean 204 or no-release indicators as truly up to date
       if (
-        msg.includes("Could not fetch a valid release JSON") ||
         msg.includes("204") ||
-        msg.includes("404") ||
-        msg.includes("no release")
+        msg.includes("no release") ||
+        msg.includes("up to date") ||
+        msg.includes("latest version is already installed")
       ) {
         setUpdateState({
           status: "up-to-date",
@@ -998,15 +1000,27 @@ export default function SettingsView({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleCheckForUpdates}
-              disabled={updateState.status === "checking" || updateState.status === "downloading"}
-              className="w-full bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] disabled:opacity-50 text-gray-200 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${updateState.status === "checking" ? "animate-spin" : ""}`} />
-              {updateState.status === "checking" ? "Checking CDN..." : "Check for Updates Now"}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={handleCheckForUpdates}
+                disabled={updateState.status === "checking" || updateState.status === "downloading"}
+                className="flex-1 bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] disabled:opacity-50 text-gray-200 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${updateState.status === "checking" ? "animate-spin" : ""}`} />
+                {updateState.status === "checking" ? "Checking CDN..." : "Check for Updates Now"}
+              </button>
+              
+              <a
+                href="https://github.com/royzbob/SyncPLv11/releases/latest"
+                target="_blank"
+                rel="noreferrer"
+                className="bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-indigo-300 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ArrowUpCircle className="w-3.5 h-3.5 text-indigo-400" />
+                Direct Download (GitHub)
+              </a>
+            </div>
           </div>
         </div>
 
