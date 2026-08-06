@@ -17,7 +17,7 @@ export default function UpdateNotifier() {
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const [currentVersion, setCurrentVersion] = useState("1.0.18");
+  const [currentVersion, setCurrentVersion] = useState("1.0.19");
 
   useEffect(() => {
     if (!isTauri) return;

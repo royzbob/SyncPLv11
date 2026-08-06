@@ -82,6 +82,15 @@ interface SettingsViewProps {
   isRoomOwner?: boolean;
 }
 
+const openExternalUrl = async (url: string) => {
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } catch (_) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+};
+
 export default function SettingsView({
   profile,
   activeRoom,
@@ -1013,15 +1022,14 @@ export default function SettingsView({
                 {updateState.status === "checking" ? "Checking CDN..." : "Check for Updates Now"}
               </button>
               
-              <a
-                href="https://github.com/royzbob/SyncPLv11/releases/latest"
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
                 className="bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-indigo-300 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <ArrowUpCircle className="w-3.5 h-3.5 text-indigo-400" />
                 Direct Download (GitHub)
-              </a>
+              </button>
             </div>
           </div>
         </div>
