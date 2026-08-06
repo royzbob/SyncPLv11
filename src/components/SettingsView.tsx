@@ -192,9 +192,11 @@ export default function SettingsView({
       }
     } catch (err: any) {
       const msg = String(err?.message || err);
-      // Only treat clean 204 or no-release indicators as truly up to date
+      // CrabNebula / Tauri updater returns HTTP 204 or empty JSON when there are no newer releases available
       if (
+        msg.includes("Could not fetch a valid release JSON") ||
         msg.includes("204") ||
+        msg.includes("404") ||
         msg.includes("no release") ||
         msg.includes("up to date") ||
         msg.includes("latest version is already installed")
