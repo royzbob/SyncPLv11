@@ -1,6 +1,6 @@
 [package]
 name = "syncpl-trading"
-version = "1.0.17"
+version = "1.0.18"
 description = "SyncPL Trading Dashboard"
 authors = ["1NathanDrew6"]
 edition = "2021"

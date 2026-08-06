@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SyncPL Trading",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "identifier": "com.syncpl.trading.dashboard",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -43,7 +43,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://cdn.crabnebula.app/update/syncpl/syncpl/{{target}}-{{arch}}/{{current_version}}"
+        "https://cdn.crabnebula.app/update/syncpl/syncpl/{{target}}-{{arch}}/{{current_version}}",
+        "https://github.com/royzbob/SyncPLv11/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEyMjAwRjM2QzdFMkMwNzEKUldSeHdPTEhOZzhnRW1WK0RDWEZId3RhYnBQd0FGc3R6Zm1uOGd0eFVBaHRiVDVxSWN4eDBwWEIK"
     }
