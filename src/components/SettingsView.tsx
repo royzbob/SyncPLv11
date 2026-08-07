@@ -86,9 +86,20 @@ const openExternalUrl = async (url: string) => {
   try {
     const { openUrl } = await import("@tauri-apps/plugin-opener");
     await openUrl(url);
-  } catch (_) {
-    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  } catch (err) {
+    console.warn("plugin-opener failed:", err);
   }
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("plugin:opener|open_url", { path: url });
+    return;
+  } catch (err) {
+    console.warn("direct invoke failed:", err);
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
 };
 
 export default function SettingsView({

@@ -43,6 +43,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://raw.githubusercontent.com/royzbob/SyncPLv11/main/updater.json",
         "https://cdn.crabnebula.app/update/syncpl/syncpl/{{target}}-{{arch}}/{{current_version}}"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhDNkZBOTM5QjBDQ0E4Q0EKUldUS3FNeXdPYWx2akFPN09kbWlWcEVwaVZYR1NuMWZYT1MwekU2QVN5d2tDaTVXOCtmby83TzcK"
