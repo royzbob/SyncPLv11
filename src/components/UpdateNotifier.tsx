@@ -384,3 +384,4 @@ export default function UpdateNotifier() {
       </div>
     </div>
   );
+}
