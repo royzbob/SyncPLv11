@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowUpCircle, X, Download, Play, RefreshCw, CheckCircle2 } from "lucide-react";
+import { ArrowUpCircle, X, Download, Play, RefreshCw, CheckCircle2, ExternalLink } from "lucide-react";
 
 // Check if we are running inside Tauri
 const isTauri = typeof window !== "undefined" && (
@@ -9,6 +9,26 @@ const isTauri = typeof window !== "undefined" && (
   window.location.hostname === "tauri.localhost" ||
   window.location.hostname === ""
 );
+
+const openExternalUrl = async (url: string) => {
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  } catch (err) {
+    console.warn("plugin-opener failed:", err);
+  }
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("plugin:opener|open_url", { path: url });
+    return;
+  } catch (err) {
+    console.warn("direct invoke failed:", err);
+  }
+
+  window.open(url, "_blank");
+};
 
 export default function UpdateNotifier() {
   const [updateInfo, setUpdateInfo] = useState<any>(null);
@@ -176,9 +196,22 @@ export default function UpdateNotifier() {
           )}
 
           {status === "error" && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs space-y-1">
-              <p className="font-semibold">Update Failed</p>
-              <p className="text-neutral-400">{errorMsg}</p>
+            <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs space-y-2.5">
+              <div>
+                <p className="font-bold text-red-300">In-App Installer Error</p>
+                <p className="text-neutral-400 text-[11px] mt-0.5">{errorMsg || "Failed to download and verify update."}</p>
+              </div>
+              <p className="text-neutral-300 text-[11px] leading-relaxed">
+                Direct background updates require a signed installer. You can download and run the latest installer setup directly from GitHub:
+              </p>
+              <button
+                type="button"
+                onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Download Direct Installer from GitHub
+              </button>
             </div>
           )}
         </div>
@@ -223,12 +256,21 @@ export default function UpdateNotifier() {
           )}
 
           {status === "error" && (
-            <button
-              onClick={checkForUpdates}
-              className="px-5 py-2 text-xs font-bold text-white bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-            >
-              Retry Check
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-indigo-300 bg-indigo-950/60 border border-indigo-800/60 hover:bg-indigo-900/60 rounded-xl transition-colors cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Direct Download
+              </button>
+              <button
+                onClick={checkForUpdates}
+                className="px-4 py-2 text-xs font-bold text-white bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors cursor-pointer"
+              >
+                Retry Check
+              </button>
+            </div>
           )}
         </div>
 
