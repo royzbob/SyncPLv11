@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowUpCircle, X, Download, Play, RefreshCw, CheckCircle2, ExternalLink } from "lucide-react";
+import { ArrowUpCircle, X, Download, Play, RefreshCw, CheckCircle2, ExternalLink, Terminal, Copy, Check, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 
 // Check if we are running inside Tauri
 const isTauri = typeof window !== "undefined" && (
@@ -36,6 +36,9 @@ export default function UpdateNotifier() {
   const [status, setStatus] = useState<"idle" | "downloading" | "installed" | "error">("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
+  const [debugLog, setDebugLog] = useState("");
+  const [showDebug, setShowDebug] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   const [currentVersion, setCurrentVersion] = useState("1.0.20");
 
@@ -75,6 +78,16 @@ export default function UpdateNotifier() {
     if (!updateInfo) return;
     setStatus("downloading");
     setProgress(0);
+    setErrorMsg("");
+    setDebugLog("");
+
+    const logLines: string[] = [];
+    const addLog = (msg: string) => {
+      logLines.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+      setDebugLog(logLines.join("\n"));
+    };
+
+    addLog(`Initiating update download for v${updateInfo.version}...`);
 
     try {
       let downloaded = 0;
@@ -84,6 +97,7 @@ export default function UpdateNotifier() {
         switch (event.event) {
           case 'Started':
             contentLength = event.data.contentLength || 0;
+            addLog(`Download started. Package size: ${contentLength ? (contentLength / (1024 * 1024)).toFixed(2) + ' MB' : 'Unknown'}`);
             break;
           case 'Progress':
             downloaded += event.data.chunkLength || 0;
@@ -93,17 +107,62 @@ export default function UpdateNotifier() {
             }
             break;
           case 'Finished':
+            addLog(`Download finished successfully. Applying package & verifying signature...`);
             setProgress(100);
             break;
         }
       });
 
+      addLog(`Update installed successfully!`);
       setStatus("installed");
     } catch (err: any) {
       console.error("[Auto-Updater] Installation failed:", err);
       setStatus("error");
-      setErrorMsg(err.message || "Failed to download and install update.");
+      
+      const primaryMessage = typeof err === "string" 
+        ? err 
+        : err?.message || err?.toString() || "Failed to download and install update.";
+      
+      setErrorMsg(primaryMessage);
+
+      // Build rich debug info
+      let rawErrorStr = "";
+      if (typeof err === "object" && err !== null) {
+        try {
+          rawErrorStr = JSON.stringify(err, Object.getOwnPropertyNames(err), 2);
+        } catch {
+          rawErrorStr = String(err);
+        }
+      } else {
+        rawErrorStr = String(err);
+      }
+
+      const fullDebugInfo = [
+        `=== SYNCPL UPDATER ERROR REPORT ===`,
+        `Timestamp: ${new Date().toISOString()}`,
+        `App Version: v${currentVersion}`,
+        `Target Version: v${updateInfo?.version || "Unknown"}`,
+        `User Agent: ${navigator.userAgent}`,
+        `Error Summary: ${primaryMessage}`,
+        `Raw Error Details:`,
+        rawErrorStr,
+        err?.stack ? `\nStack Trace:\n${err.stack}` : "",
+        `\nEvent Log:\n${logLines.join("\n")}`
+      ].filter(Boolean).join("\n");
+
+      setDebugLog(fullDebugInfo);
+      setShowDebug(true);
     }
+  };
+
+  const handleCopyDebug = () => {
+    if (!debugLog) return;
+    navigator.clipboard.writeText(debugLog).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(err => {
+      console.warn("Failed to copy log:", err);
+    });
   };
 
   const handleRelaunch = async () => {
@@ -121,13 +180,13 @@ export default function UpdateNotifier() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-hidden bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+      <div className="w-full max-w-lg overflow-hidden bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="relative p-6 border-b border-neutral-800 bg-gradient-to-r from-indigo-950/30 to-purple-950/30">
           <button 
             onClick={() => setShowModal(false)}
-            className="absolute top-4 right-4 p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+            className="absolute top-4 right-4 p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
             disabled={status === "downloading"}
           >
             <X className="w-5 h-5" />
@@ -145,7 +204,7 @@ export default function UpdateNotifier() {
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           <div className="flex justify-between items-center px-4 py-3 bg-neutral-950/40 border border-neutral-800/60 rounded-xl">
             <div>
               <span className="block text-[10px] uppercase tracking-wider text-neutral-500">Current</span>
@@ -196,22 +255,70 @@ export default function UpdateNotifier() {
           )}
 
           {status === "error" && (
-            <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs space-y-2.5">
-              <div>
-                <p className="font-bold text-red-300">In-App Installer Error</p>
-                <p className="text-neutral-400 text-[11px] mt-0.5">{errorMsg || "Failed to download and verify update."}</p>
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold text-red-300 text-sm">Update Installation Failed</p>
+                  <p className="text-neutral-300 text-xs mt-1 leading-relaxed font-medium">
+                    {errorMsg || "Failed to download and install update."}
+                  </p>
+                </div>
               </div>
-              <p className="text-neutral-300 text-[11px] leading-relaxed">
-                Direct background updates require a signed installer. You can download and run the latest installer setup directly from GitHub:
-              </p>
-              <button
-                type="button"
-                onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Download Direct Installer from GitHub
-              </button>
+
+              {/* Debug drawer */}
+              {debugLog && (
+                <div className="border-t border-red-500/20 pt-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setShowDebug(!showDebug)}
+                      className="flex items-center gap-1.5 text-[11px] font-semibold text-neutral-300 hover:text-white transition cursor-pointer"
+                    >
+                      <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Debug & Error Details</span>
+                      {showDebug ? <ChevronUp className="w-3.5 h-3.5 ml-0.5" /> : <ChevronDown className="w-3.5 h-3.5 ml-0.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyDebug}
+                      className="flex items-center gap-1 px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-semibold rounded transition cursor-pointer"
+                      title="Copy error diagnostic log to clipboard"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span className="text-emerald-400">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Debug Info</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {showDebug && (
+                    <pre className="p-3 bg-black/80 border border-red-900/40 rounded-lg text-[11px] font-mono text-red-300 overflow-x-auto whitespace-pre-wrap select-text max-h-48 leading-relaxed scrollbar-thin scrollbar-thumb-neutral-800">
+                      {debugLog}
+                    </pre>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-1 border-t border-red-500/10 flex items-center justify-between">
+                <span className="text-neutral-400 text-[11px]">Need manual setup?</span>
+                <button
+                  type="button"
+                  onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
+                  className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 text-[11px] font-semibold transition cursor-pointer underline underline-offset-2"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Download Direct Installer from GitHub
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -277,4 +384,3 @@ export default function UpdateNotifier() {
       </div>
     </div>
   );
-}
