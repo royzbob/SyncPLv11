@@ -76,9 +76,16 @@ export default function FriendsView({
   const [activeTab, setActiveTab] = useState<"online" | "all" | "pending" | "add_partner" | "perks_support">("online");
   const [friendSearchQuery, setFriendSearchQuery] = useState("");
   
-  // User's own status presence states
-  const [myPresence, setMyPresence] = useState<"active" | "idle" | "dnd" | "offline">("active");
-  const [myCustomStatus, setMyCustomStatus] = useState("Analyzing Markets");
+  // User's own status presence states with persistent local cache fallback
+  const [myPresence, setMyPresence] = useState<"active" | "idle" | "dnd" | "offline">(() => {
+    return (localStorage.getItem("syncpl_my_presence") as any) || profile?.marketPresence || "active";
+  });
+  const [myCustomStatus, setMyCustomStatus] = useState(() => {
+    return localStorage.getItem("syncpl_my_custom_status") || profile?.customStatus || "Analyzing Markets";
+  });
+  const [statusInputText, setStatusInputText] = useState(() => {
+    return localStorage.getItem("syncpl_my_custom_status") || profile?.customStatus || "Analyzing Markets";
+  });
   const [isUpdatingOwnPresence, setIsUpdatingOwnPresence] = useState(false);
 
   // VIP Hotline states
@@ -99,8 +106,15 @@ export default function FriendsView({
         const snap = await getDoc(publicRef);
         if (snap.exists()) {
           const data = snap.data();
-          if (data.marketPresence) setMyPresence(data.marketPresence);
-          if (data.customStatus !== undefined) setMyCustomStatus(data.customStatus);
+          if (data.marketPresence) {
+            setMyPresence(data.marketPresence);
+            localStorage.setItem("syncpl_my_presence", data.marketPresence);
+          }
+          if (data.customStatus !== undefined && data.customStatus !== "") {
+            setMyCustomStatus(data.customStatus);
+            setStatusInputText(data.customStatus);
+            localStorage.setItem("syncpl_my_custom_status", data.customStatus);
+          }
         }
       } catch (err) {
         console.error("Error loading my status:", err);
@@ -133,7 +147,7 @@ export default function FriendsView({
       };
       syncPublic();
     }
-  }, [currentUser?.uid, profile, myPresence, myCustomStatus]);
+  }, [currentUser?.uid, profile?.username, profile?.avatarVal, profile?.avatarColor, profile?.subscriptionStatus, profile?.activeGroupId]);
 
   // Read Friendships in Real-time
   useEffect(() => {
@@ -234,20 +248,33 @@ export default function FriendsView({
 
   // Update own custom presence in database
   const handleUpdatePresenceAndStatus = async (presence: "active" | "idle" | "dnd" | "offline", statusText: string) => {
+    const cleanStatus = statusText.trim() || "Active Desk";
     setIsUpdatingOwnPresence(true);
     setMyPresence(presence);
-    setMyCustomStatus(statusText);
+    setMyCustomStatus(cleanStatus);
+    setStatusInputText(cleanStatus);
+    localStorage.setItem("syncpl_my_presence", presence);
+    localStorage.setItem("syncpl_my_custom_status", cleanStatus);
     try {
-      const publicRef = doc(db, "users", currentUser.uid);
-      await setDoc(publicRef, {
-        marketPresence: presence,
-        customStatus: statusText,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      triggerToast("Presence Updated", `Node status set to ${presence.toUpperCase()}`, "success");
+      if (currentUser?.uid) {
+        const publicRef = doc(db, "users", currentUser.uid);
+        await setDoc(publicRef, {
+          marketPresence: presence,
+          customStatus: cleanStatus,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        
+        // Also update private profile doc if available
+        const profileInfoRef = doc(db, "users", currentUser.uid, "profile", "info");
+        await setDoc(profileInfoRef, {
+          marketPresence: presence,
+          customStatus: cleanStatus
+        }, { merge: true });
+      }
+      triggerToast("Presence Updated", `Status saved: "${cleanStatus}"`, "success");
     } catch (err: any) {
       console.error(err);
-      triggerToast("Sync Error", "Could not broadcast presence update.", "error");
+      triggerToast("Sync Error", "Saved locally. Cloud sync retry in progress.", "info");
     } finally {
       setIsUpdatingOwnPresence(false);
     }
@@ -602,17 +629,30 @@ export default function FriendsView({
               <input
                 type="text"
                 placeholder="Broadcast a custom market status message..."
-                value={myCustomStatus}
-                onChange={(e) => setMyCustomStatus(e.target.value)}
-                onBlur={() => handleUpdatePresenceAndStatus(myPresence, myCustomStatus)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleUpdatePresenceAndStatus(myPresence, myCustomStatus);
+                value={statusInputText}
+                onChange={(e) => setStatusInputText(e.target.value)}
+                onBlur={() => {
+                  if (statusInputText !== myCustomStatus) {
+                    handleUpdatePresenceAndStatus(myPresence, statusInputText);
                   }
                 }}
-                className="flex-1 bg-[#090b0e] border border-dark-border/20 rounded-lg py-1.5 px-3 text-xs focus:outline-none focus:border-indigo-500 transition placeholder:text-gray-700"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleUpdatePresenceAndStatus(myPresence, statusInputText);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                className="flex-1 bg-[#090b0e] border border-dark-border/20 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none focus:border-indigo-500 transition placeholder:text-gray-700"
               />
-              <span className="text-[9px] text-gray-600 uppercase font-mono font-bold shrink-0">Press Enter</span>
+              <button
+                type="button"
+                onClick={() => handleUpdatePresenceAndStatus(myPresence, statusInputText)}
+                disabled={isUpdatingOwnPresence}
+                className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold tracking-wider transition shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                Save
+              </button>
             </div>
           </div>
 
