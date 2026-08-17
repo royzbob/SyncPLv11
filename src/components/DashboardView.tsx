@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Banknote,
   ArrowRight,
+  Layers,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -23,7 +24,7 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
-import { PnlLog, PayoutRecord } from "../types";
+import { PnlLog, PayoutRecord, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 
 interface DashboardViewProps {
@@ -34,8 +35,18 @@ interface DashboardViewProps {
 }
 
 export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchTab }: DashboardViewProps) {
+  const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
+
+  // Filter logs by selected account type if specified
+  const filteredRoomLogs = useMemo(() => {
+    if (accountFilter === "all") return pnlLogs;
+    return pnlLogs.filter((l) => (l.accountType || "funded") === accountFilter);
+  }, [pnlLogs, accountFilter]);
+
   // 1. Calculate stats for current user
-  const userLogs = useMemo(() => pnlLogs.filter((l) => l.userId === userId), [pnlLogs, userId]);
+  const userLogs = useMemo(() => {
+    return filteredRoomLogs.filter((l) => l.userId === userId);
+  }, [filteredRoomLogs, userId]);
 
   const stats = useMemo(() => {
     // Current timezone local dates
@@ -123,9 +134,9 @@ export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchT
 
     const totalDays = new Date(year, month + 1, 0).getDate();
 
-    // Sum P&L per day
+    // Sum P&L per day from filtered room logs
     const dailyPnLMap: Record<number, number> = {};
-    pnlLogs.forEach((log) => {
+    filteredRoomLogs.forEach((log) => {
       if (!log.date) return;
       const parts = log.date.split("-");
       if (parts.length !== 3) return;
@@ -148,7 +159,7 @@ export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchT
       year,
       month,
     };
-  }, [pnlLogs, calDate]);
+  }, [filteredRoomLogs, calDate]);
 
   // 3. Strategy aggregates table
   const strategyStats = useMemo(() => {
@@ -175,49 +186,91 @@ export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchT
 
   // 4. Cumulative line chart performance dataset mapping
   const chartData = useMemo(() => {
-    // Get unique sorted dates from all logs
-    const dates = Array.from(new Set(pnlLogs.map((l) => l.date))).sort(
+    // Get unique sorted dates from filtered logs
+    const dates = (Array.from(new Set(filteredRoomLogs.map((l) => l.date))) as string[]).sort(
       (a, b) => new Date(a).getTime() - new Date(b).getTime()
     );
 
     // Get unique traders
-    const traders = Array.from(new Set(pnlLogs.map((l) => l.username)));
+    const traders = Array.from(new Set(filteredRoomLogs.map((l) => l.username))) as string[];
 
     // Cumulative tracker for each trader
     const traderPnLMap: Record<string, number> = {};
-    traders.forEach((t) => {
+    traders.forEach((t: string) => {
       traderPnLMap[t] = 0;
     });
 
     // Create a data point for each date
-    return dates.map((date) => {
+    return dates.map((date: string) => {
       const point: Record<string, any> = { date };
 
       // Apply trades that happened on this date
-      pnlLogs
+      filteredRoomLogs
         .filter((l) => l.date === date)
         .forEach((log) => {
           traderPnLMap[log.username] = (traderPnLMap[log.username] || 0) + log.amount;
         });
 
       // Write active cumulative value for each trader
-      traders.forEach((t) => {
+      traders.forEach((t: string) => {
         point[t] = Number(traderPnLMap[t].toFixed(2));
       });
 
       return point;
     });
-  }, [pnlLogs]);
+  }, [filteredRoomLogs]);
 
   const uniqueTraders = useMemo(() => {
-    return Array.from(new Set(pnlLogs.map((l) => l.username)));
-  }, [pnlLogs]);
+    return Array.from(new Set(filteredRoomLogs.map((l) => l.username))) as string[];
+  }, [filteredRoomLogs]);
 
   // List of colors for lines
   const lineColors = ["#6366f1", "#ec4899", "#10b981", "#f59e0b", "#8b5cf6", "#3b82f6"];
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6 overflow-y-auto h-full text-[#DCDDDE]">
+      {/* Account Type Category Filter Pill Bar */}
+      <div className="flex items-center justify-between flex-wrap gap-3 bg-[#121417] p-2.5 rounded-xl border border-[#2A2D31]">
+        <div className="flex items-center gap-2">
+          <Layers className="w-4 h-4 text-indigo-400" />
+          <span className="text-xs font-bold text-[#8E9297] uppercase tracking-wider">Account Ledger Mode:</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setAccountFilter("all")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+              accountFilter === "all"
+                ? "bg-white/10 text-white border border-white/20 shadow-sm"
+                : "text-gray-400 hover:text-white border border-transparent"
+            }`}
+          >
+            All Accounts
+          </button>
+          {(
+            [
+              { id: "funded", label: "Funded", activeCls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
+              { id: "live", label: "Live", activeCls: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30" },
+              { id: "eval", label: "Eval", activeCls: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
+              { id: "practice", label: "Practice", activeCls: "bg-sky-500/10 text-sky-400 border-sky-500/30" },
+            ] as const
+          ).map((tab) => {
+            const isActive = accountFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setAccountFilter(tab.id)}
+                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition cursor-pointer border ${
+                  isActive
+                    ? `${tab.activeCls} shadow-sm`
+                    : "border-transparent text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Stat 1 */}

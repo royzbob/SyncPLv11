@@ -230,9 +230,12 @@ export default function ActiveRoomSidebar({
           className={getNavBtnClass("chat")}
         >
           <div className="flex items-center space-x-2.5">
-            <MessageSquareCode className="w-4 h-4" />
-            <span>Trading Desk Chat</span>
+            <MessageSquareCode className="w-4 h-4 text-indigo-400" />
+            <span className="font-bold">Trading Desk Chat</span>
           </div>
+          {activeTab !== "chat" && isChatSidePanelOpen && (
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" title="Side Panel Open" />
+          )}
         </button>
 
         <button

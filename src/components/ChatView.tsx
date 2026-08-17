@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { collection, getDocs, doc, setDoc } from "firebase/firestore";
 import { User as FirebaseUser } from "firebase/auth";
-import { ChatMessage, Room, UserProfile, Channel } from "../types";
+import { ChatMessage, Room, UserProfile, Channel, AccountType } from "../types";
 import { formatCurrency } from "../utils/helpers";
 
 interface ChatViewProps {
@@ -227,11 +227,11 @@ export default function ChatView({
     <div className="flex-grow flex-1 h-full min-h-0 min-w-0 flex w-full bg-[#1E2023] relative overflow-hidden">
       {/* Middle Chat Panel */}
       <div className="flex-grow flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
-        {/* Mobile Horizontal Text Channels Scrollbar */}
+        {/* Fast Channel Switcher Bar (Accessible across both desktop & mobile) */}
         {textChannels.length > 0 && (
-          <div className="md:hidden flex items-center bg-[#121417]/95 border-b border-[#2A2D31]/40 px-3 py-2 shrink-0 overflow-x-auto no-scrollbar gap-1.5 shadow-md">
-            <span className="text-[9px] font-black uppercase text-[#72767D] tracking-wider select-none pr-1 whitespace-nowrap">
-              Desk Nodes:
+          <div className="flex items-center bg-[#121417]/95 border-b border-[#2A2D31]/40 px-3 py-2 shrink-0 overflow-x-auto no-scrollbar gap-1.5 shadow-sm">
+            <span className="text-[9px] font-black uppercase text-[#72767D] tracking-wider select-none pr-1 whitespace-nowrap hidden sm:inline">
+              Channels:
             </span>
             {textChannels.map((chan) => {
               const isSelected = activeChannelName === chan.name;
@@ -239,10 +239,10 @@ export default function ChatView({
                 <button
                   key={chan.id}
                   onClick={() => onSelectChannel && onSelectChannel(chan.name, "text")}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shrink-0 border select-none cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 border select-none cursor-pointer ${
                     isSelected
-                      ? "bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-600/10"
-                      : "bg-[#2A2D31]/40 border-transparent text-gray-400 hover:text-white"
+                      ? "bg-indigo-600/25 border-indigo-500 text-white shadow-md shadow-indigo-600/15"
+                      : "bg-[#1E2023] border-[#2A2D31]/50 text-gray-400 hover:text-white hover:border-[#2A2D31]"
                   }`}
                 >
                   <span className={isSelected ? "text-indigo-400 font-bold" : "text-[#72767D]"}>#</span>
@@ -337,10 +337,30 @@ export default function ChatView({
 
                         <div className="my-2.5 border-t border-[#2A2D31] relative z-10" />
 
-                        <div className="flex items-center justify-between gap-4 relative z-10">
-                          <span className="px-2 py-0.5 rounded bg-[#1E2023] text-[9px] font-mono font-black text-indigo-300 border border-[#2A2D31] uppercase tracking-wider">
-                            {msg.asset}
-                          </span>
+                        <div className="flex items-center justify-between gap-2 relative z-10">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded bg-[#1E2023] text-[9px] font-mono font-black text-indigo-300 border border-[#2A2D31] uppercase tracking-wider">
+                              {msg.asset}
+                            </span>
+                            {(() => {
+                              const acct = msg.accountType || "funded";
+                              const badgeCls =
+                                acct === "live"
+                                  ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
+                                  : acct === "eval"
+                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                  : acct === "practice"
+                                  ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+                              return (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${badgeCls}`}
+                                >
+                                  {acct}
+                                </span>
+                              );
+                            })()}
+                          </div>
                           <span
                             className={`font-black text-sm font-mono flex items-center gap-1 ${
                               isProfit ? "text-[#43B581]" : "text-[#F04747]"

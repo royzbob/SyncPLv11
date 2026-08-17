@@ -48,7 +48,7 @@ import {
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
-import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule, PayoutRecord } from "./types";
+import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule, PayoutRecord, AccountType } from "./types";
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString } from "./utils/helpers";
 import { playJoinSound, playLeaveSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
@@ -594,7 +594,26 @@ export default function App() {
     }
     return false;
   });
-  const [isChatSidePanelOpen, setIsChatSidePanelOpen] = useState(true);
+  const [isChatSidePanelOpen, setIsChatSidePanelOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_chat_sidepanel_open");
+      return stored === "true"; // Defaults to false so it never cramps or clutters other views
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleChatSidePanel = (val?: boolean) => {
+    setIsChatSidePanelOpen((prev) => {
+      const next = typeof val === "boolean" ? val : !prev;
+      try {
+        localStorage.setItem("syncpl_chat_sidepanel_open", String(next));
+      } catch (e) {
+        console.warn(e);
+      }
+      return next;
+    });
+  };
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
   const [createChannelType, setCreateChannelType] = useState<"text" | "voice">("text");
   const [createChannelName, setCreateChannelName] = useState("");
@@ -602,6 +621,7 @@ export default function App() {
   // Log Trade Form input values
   const [logType, setLogType] = useState<"profit" | "loss">("profit");
   const [logAmount, setLogAmount] = useState("");
+  const [logAccountType, setLogAccountType] = useState<AccountType>("funded");
   const [logDate, setLogDate] = useState(() => getLocalDateString());
   const [logTime, setLogTime] = useState(() => getLocalTimeString());
   const [logAsset, setLogAsset] = useState("BTC");
@@ -1564,11 +1584,9 @@ export default function App() {
     }
 
     setActiveChannelName(name);
+    setActiveTab("chat");
     if (isMobile) {
-      setActiveTab("chat");
       setIsMobileSidebarOpen(false);
-    } else {
-      setIsChatSidePanelOpen(true);
     }
   };
 
@@ -1872,6 +1890,7 @@ export default function App() {
       strategy: logStrategy,
       asset: logAsset.toUpperCase(),
       notes: logNotes,
+      accountType: logAccountType,
       win: logType === "profit",
       timestamp: new Date().toISOString(),
     };
@@ -2873,15 +2892,39 @@ export default function App() {
                     <span className="text-[10px] font-bold uppercase tracking-wider hidden lg:inline">{isSidebarCollapsed ? "Expand" : "Collapse"}</span>
                   </button>
 
-                  {/* Chat Side-Panel Toggle */}
+                  {/* Quick Chat Access Button */}
+                  <button
+                    onClick={() => {
+                      if (activeTab !== "chat") {
+                        setActiveTab("chat");
+                      } else {
+                        setActiveTab("dashboard");
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition cursor-pointer shrink-0 text-[10px] md:text-xs font-bold uppercase tracking-wider ${
+                      activeTab === "chat"
+                        ? "bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20"
+                        : "bg-[#1E2023] hover:bg-[#2A2D31] text-gray-300 hover:text-white border-[#2A2D31]"
+                    }`}
+                    title={activeTab === "chat" ? "Switch back to Dashboard" : "Open Full Trading Desk Chat"}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>{activeTab === "chat" ? "Desk Chat (Active)" : "Desk Chat"}</span>
+                  </button>
+
+                  {/* Optional Split-Screen Side-Panel Toggle */}
                   {activeTab !== "chat" && (
                     <button
-                      onClick={() => setIsChatSidePanelOpen(!isChatSidePanelOpen)}
-                      className="hidden md:flex items-center gap-1.5 p-1.5 rounded border transition cursor-pointer shrink-0 hover:bg-[#1E2023] text-gray-400 hover:text-white border-[#2A2D31]/50"
-                      title={isChatSidePanelOpen ? "Close Side Chat Panel" : "Open Side Chat Panel"}
+                      onClick={() => toggleChatSidePanel()}
+                      className={`hidden lg:flex items-center gap-1 px-2 py-1.5 rounded-lg border transition cursor-pointer shrink-0 text-[10px] font-bold uppercase tracking-wider ${
+                        isChatSidePanelOpen
+                          ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-300"
+                          : "bg-transparent hover:bg-[#1E2023] text-gray-400 hover:text-white border-[#2A2D31]/40"
+                      }`}
+                      title={isChatSidePanelOpen ? "Hide Side Split Chat" : "Open Split-Screen Side Chat"}
                     >
-                      <MessageSquare className="w-4 h-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider hidden lg:inline">{isChatSidePanelOpen ? "Hide Chat" : "Show Chat"}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                      <span>{isChatSidePanelOpen ? "Split: On" : "Split Chat"}</span>
                     </button>
                   )}
 
@@ -3346,20 +3389,32 @@ export default function App() {
                 {activeTab !== "chat" && isChatSidePanelOpen && (
                   <div className="hidden md:flex w-[380px] lg:w-[440px] shrink-0 border-l border-[#2A2D31] bg-[#1E2023] h-full flex flex-col overflow-hidden relative z-20">
                     {/* Header for Chat Side Panel */}
-                    <div className="h-10 bg-[#121417] border-b border-[#2A2D31] px-4 flex items-center justify-between shrink-0">
+                    <div className="h-10 bg-[#121417] border-b border-[#2A2D31] px-3 flex items-center justify-between shrink-0">
                       <div className="flex items-center gap-1.5 truncate">
                         <MessageSquare className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                         <span className="text-[10px] font-black uppercase text-gray-300 tracking-wider truncate">
                           Room Chat: #{activeChannelName}
                         </span>
                       </div>
-                      <button
-                        onClick={() => setIsChatSidePanelOpen(false)}
-                        className="p-1 hover:bg-[#2A2D31] text-gray-400 hover:text-white rounded transition cursor-pointer"
-                        title="Close Chat Side Panel"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            toggleChatSidePanel(false);
+                            setActiveTab("chat");
+                          }}
+                          className="px-2 py-0.5 hover:bg-[#2A2D31] text-indigo-400 hover:text-white rounded text-[10px] font-bold transition cursor-pointer"
+                          title="Expand into full screen chat"
+                        >
+                          Full Screen
+                        </button>
+                        <button
+                          onClick={() => toggleChatSidePanel(false)}
+                          className="p-1 hover:bg-[#2A2D31] text-gray-400 hover:text-white rounded transition cursor-pointer"
+                          title="Close Chat Side Panel"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex-1 min-h-0 w-full">
@@ -3498,6 +3553,42 @@ export default function App() {
                           placeholder="0.00"
                           className="w-full bg-[#121417] border border-[#2A2D31] rounded pl-8 pr-4 py-2.5 text-lg font-black text-white focus:outline-none"
                         />
+                      </div>
+                    </div>
+
+                    {/* Account Ledger Category Selector */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5 flex items-center justify-between">
+                        <span>Account Type</span>
+                        <span className="text-[10px] text-indigo-400 font-mono font-bold capitalize">
+                          {logAccountType} Account
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-4 gap-1.5 p-1 bg-[#121417] border border-[#2A2D31] rounded-lg">
+                        {(
+                          [
+                            { id: "funded", label: "Funded", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
+                            { id: "live", label: "Live", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" },
+                            { id: "eval", label: "Eval", color: "text-amber-400 border-amber-500/30 bg-amber-500/10" },
+                            { id: "practice", label: "Practice", color: "text-sky-400 border-sky-500/30 bg-sky-500/10" },
+                          ] as const
+                        ).map((tab) => {
+                          const isActive = logAccountType === tab.id;
+                          return (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              onClick={() => setLogAccountType(tab.id)}
+                              className={`py-1.5 px-1 rounded text-xs font-black uppercase tracking-wider transition border cursor-pointer text-center ${
+                                isActive
+                                  ? `${tab.color} shadow-sm`
+                                  : "border-transparent text-gray-500 hover:text-gray-300 hover:bg-[#1E2023]"
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 

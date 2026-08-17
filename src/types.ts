@@ -39,6 +39,8 @@ export interface UserProfile {
   customStatus?: string;
 }
 
+export type AccountType = "funded" | "live" | "practice" | "eval";
+
 export interface PnlLog {
   id: string;
   userId: string;
@@ -52,6 +54,7 @@ export interface PnlLog {
   notes: string;
   win: boolean;
   timestamp: string;
+  accountType?: AccountType;
   isLive?: boolean;
   direction?: "long" | "short";
   entryPrice?: number;
@@ -86,6 +89,7 @@ export interface ChatMessage {
   amount?: number;
   asset?: string;
   notes?: string;
+  accountType?: AccountType;
 }
 
 export interface VoiceUser {
