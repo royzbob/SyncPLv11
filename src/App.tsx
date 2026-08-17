@@ -47,11 +47,14 @@ import {
   ExternalLink,
   Sparkles,
   Megaphone,
+  Bookmark,
+  Tag,
+  Check,
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
 import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule, PayoutRecord, AccountType } from "./types";
-import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString } from "./utils/helpers";
+import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString, DEFAULT_STRATEGIES } from "./utils/helpers";
 import { playJoinSound, playLeaveSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
 
@@ -634,6 +637,55 @@ export default function App() {
   const [logAsset, setLogAsset] = useState("BTC");
   const [logStrategy, setLogStrategy] = useState("Breakout");
   const [logNotes, setLogNotes] = useState("");
+
+  // Custom Strategies Management
+  const [customStrategies, setCustomStrategies] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_custom_strategies");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isAddingCustomStrategy, setIsAddingCustomStrategy] = useState(false);
+  const [newCustomStrategyInput, setNewCustomStrategyInput] = useState("");
+
+  const handleAddCustomStrategy = (strategyName: string) => {
+    const trimmed = strategyName.trim();
+    if (!trimmed) return;
+
+    const allKnown = [...DEFAULT_STRATEGIES, ...customStrategies];
+    const exists = allKnown.some((s) => s.toLowerCase() === trimmed.toLowerCase());
+
+    if (!exists) {
+      const updated = [...customStrategies, trimmed];
+      setCustomStrategies(updated);
+      try {
+        localStorage.setItem("syncpl_custom_strategies", JSON.stringify(updated));
+      } catch (err) {
+        console.warn("Failed to store custom strategy", err);
+      }
+      triggerToast("Strategy Saved", `"${trimmed}" added to your custom strategies list.`, "success");
+    }
+
+    setLogStrategy(trimmed);
+    setNewCustomStrategyInput("");
+    setIsAddingCustomStrategy(false);
+  };
+
+  const handleDeleteCustomStrategy = (strategyToDelete: string) => {
+    const updated = customStrategies.filter((s) => s !== strategyToDelete);
+    setCustomStrategies(updated);
+    try {
+      localStorage.setItem("syncpl_custom_strategies", JSON.stringify(updated));
+    } catch (err) {
+      console.warn("Failed to store custom strategy", err);
+    }
+    if (logStrategy === strategyToDelete) {
+      setLogStrategy(DEFAULT_STRATEGIES[0] || "Breakout");
+    }
+    triggerToast("Strategy Removed", `"${strategyToDelete}" removed.`, "info");
+  };
 
   // Voice Customizer
   const [voiceName, setVoiceName] = useState("Kore");
@@ -3668,23 +3720,161 @@ export default function App() {
                           value={logAsset}
                           onChange={(e) => setLogAsset(e.target.value)}
                           placeholder="BTC"
-                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white uppercase font-mono"
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white uppercase font-mono focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Strategy</label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-bold text-[#8E9297] uppercase">Strategy</label>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingCustomStrategy((prev) => !prev)}
+                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold transition flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>{isAddingCustomStrategy ? "Close" : "+ Add Own"}</span>
+                          </button>
+                        </div>
                         <select
-                          value={logStrategy}
-                          onChange={(e) => setLogStrategy(e.target.value)}
-                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white"
+                          value={isAddingCustomStrategy ? "__custom_new__" : logStrategy}
+                          onChange={(e) => {
+                            if (e.target.value === "__custom_new__") {
+                              setIsAddingCustomStrategy(true);
+                            } else {
+                              setIsAddingCustomStrategy(false);
+                              setLogStrategy(e.target.value);
+                            }
+                          }}
+                          className="w-full bg-[#121417] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
                         >
-                          <option value="Breakout">Breakout</option>
-                          <option value="Mean Reversion">Mean Reversion</option>
-                          <option value="Supply/Demand">Supply/Demand</option>
-                          <option value="Scalp">Scalp</option>
+                          <optgroup label="Popular Strategies">
+                            {DEFAULT_STRATEGIES.map((strat) => (
+                              <option key={strat} value={strat}>
+                                {strat}
+                              </option>
+                            ))}
+                          </optgroup>
+                          {customStrategies.length > 0 && (
+                            <optgroup label="Your Custom Strategies">
+                              {customStrategies.map((strat) => (
+                                <option key={strat} value={strat}>
+                                  ★ {strat}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <option value="__custom_new__">+ Add Your Own Strategy...</option>
                         </select>
                       </div>
                     </div>
+
+                    {/* Inline Custom Strategy Creator */}
+                    {isAddingCustomStrategy && (
+                      <div className="bg-[#0F1113] border border-indigo-500/40 rounded-lg p-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Create Custom Strategy
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAddingCustomStrategy(false);
+                              setNewCustomStrategyInput("");
+                            }}
+                            className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newCustomStrategyInput}
+                            onChange={(e) => setNewCustomStrategyInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddCustomStrategy(newCustomStrategyInput);
+                              }
+                            }}
+                            placeholder="e.g. 5m ICT Silver Bullet, 200 EMA Bounce..."
+                            className="flex-1 bg-[#121417] border border-[#2A2D31] rounded px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            disabled={!newCustomStrategyInput.trim()}
+                            onClick={() => handleAddCustomStrategy(newCustomStrategyInput)}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded transition cursor-pointer shrink-0 shadow"
+                          >
+                            Save & Use
+                          </button>
+                        </div>
+                        {customStrategies.length > 0 && (
+                          <div className="pt-1.5 border-t border-[#2A2D31]/40 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] text-gray-500 font-semibold mr-1">Your Saved:</span>
+                            {customStrategies.map((cs) => (
+                              <span
+                                key={cs}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-[#1E2023] border border-[#2A2D31] text-gray-300"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLogStrategy(cs);
+                                    setIsAddingCustomStrategy(false);
+                                  }}
+                                  className="hover:text-indigo-400 transition cursor-pointer"
+                                >
+                                  {cs}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCustomStrategy(cs)}
+                                  className="text-gray-500 hover:text-rose-400 transition ml-0.5 cursor-pointer"
+                                  title="Delete custom strategy"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Quick Strategy Suggestion Chips */}
+                    {!isAddingCustomStrategy && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                            Quick Pick Strategy
+                          </span>
+                          <span className="text-[10px] text-indigo-400 font-semibold truncate max-w-[180px]">
+                            Selected: {logStrategy}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-1">
+                          {["Breakout", "Mean Reversion", "Supply & Demand (OB/FVG)", "Scalp / Momentum", "Liquidity Sweep / ICT", "Trend Following / Pullback", ...customStrategies.slice(0, 3)].map((chip) => {
+                            const isSelected = logStrategy === chip;
+                            return (
+                              <button
+                                key={chip}
+                                type="button"
+                                onClick={() => setLogStrategy(chip)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer border ${
+                                  isSelected
+                                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-sm"
+                                    : "bg-[#121417] text-gray-400 border-[#2A2D31] hover:text-gray-200 hover:bg-[#1E2023]"
+                                }`}
+                              >
+                                {chip}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-xs font-bold text-[#8E9297] uppercase mb-1.5">Notes</label>

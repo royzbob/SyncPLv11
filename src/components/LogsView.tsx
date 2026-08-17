@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Download, Plus, Filter, Award, Trash2, X, Clipboard, FolderOpen, Sparkles, TrendingUp, TrendingDown, Layers } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Download, Plus, Filter, Award, Trash2, X, Clipboard, FolderOpen, Sparkles, TrendingUp, TrendingDown, Layers, Bookmark } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 
@@ -56,8 +56,20 @@ export default function LogsView({
 }: LogsViewProps) {
   const [scope, setScope] = useState<"all" | "me">("all");
   const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
+  const [strategyFilter, setStrategyFilter] = useState<string>("all");
   const [selectedFlexLog, setSelectedFlexLog] = useState<PnlLog | null>(null);
   const [copiedState, setCopiedState] = useState(false);
+
+  // Collect all unique strategies present in the logs
+  const availableStrategies = useMemo(() => {
+    const set = new Set<string>();
+    pnlLogs.forEach((log) => {
+      if (log.strategy && log.strategy.trim()) {
+        set.add(log.strategy.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [pnlLogs]);
 
   // Filter list
   const filteredLogs = pnlLogs.filter((log) => {
@@ -65,6 +77,9 @@ export default function LogsView({
     if (accountFilter !== "all") {
       const logAcct = log.accountType || "funded";
       if (logAcct !== accountFilter) return false;
+    }
+    if (strategyFilter !== "all" && log.strategy !== strategyFilter) {
+      return false;
     }
     return true;
   });
@@ -194,6 +209,28 @@ export default function LogsView({
             );
           })}
         </div>
+
+        {/* Strategy Filter */}
+        {availableStrategies.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center space-x-1.5 text-xs font-bold text-[#8E9297] uppercase tracking-wider mr-1">
+              <Bookmark className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Strategy:</span>
+            </div>
+            <select
+              value={strategyFilter}
+              onChange={(e) => setStrategyFilter(e.target.value)}
+              className="bg-[#121417] border border-[#2A2D31] text-xs text-white rounded px-2.5 py-1 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
+            >
+              <option value="all">All Strategies ({pnlLogs.length})</option>
+              {availableStrategies.map((strat) => (
+                <option key={strat} value={strat}>
+                  {strat}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Ledger Table */}

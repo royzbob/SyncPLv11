@@ -103,3 +103,24 @@ export const initialTickers: TickerInfo[] = [
   { symbol: "EUR/USD", price: 1.0825, change: -0.12 },
   { symbol: "GOLD", price: 2384.8, change: 1.15 },
 ];
+
+export const DEFAULT_STRATEGIES: string[] = [
+  "Breakout",
+  "Mean Reversion",
+  "Supply & Demand (OB/FVG)",
+  "Scalp / Momentum",
+  "Liquidity Sweep / ICT",
+  "Trend Following / Pullback",
+  "Support & Resistance Flip",
+  "Opening Range Breakout (ORB)",
+  "VWAP Reversal / Bounce",
+  "Range Bound / Box Fade",
+  "Fibonacci Golden Zone",
+  "News / Macro Catalyst",
+  "Gap Fill",
+  "Chart Pattern (Flags/Wedges)",
+  "Silver Bullet",
+  "Dip Buy / Oversold Bounce",
+  "Trend Continuation",
+  "Discretionary / Price Action",
+];
