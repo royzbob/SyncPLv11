@@ -17,18 +17,52 @@ export interface AppUpdateData {
 export default function WebUpdateNotifier() {
   const [activeUpdate, setActiveUpdate] = useState<AppUpdateData | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const activeUpdateRef = React.useRef<AppUpdateData | null>(null);
 
   useEffect(() => {
-    // Listen for custom trigger event (e.g. from Settings preview or manual review)
+    activeUpdateRef.current = activeUpdate;
+  }, [activeUpdate]);
+
+  useEffect(() => {
+    // 1. Listen for custom preview or direct re-open event (from Header or Settings)
     const handleOpenReview = (e: CustomEvent<AppUpdateData>) => {
       if (e.detail) {
         setActiveUpdate(e.detail);
         setShowModal(true);
       }
     };
-    window.addEventListener("syncpl_preview_update", handleOpenReview as EventListener);
 
-    // Real-time Firestore listener for latest broadcast update
+    const handleOpenLatest = async () => {
+      if (activeUpdateRef.current) {
+        setShowModal(true);
+      } else {
+        try {
+          const snap = await getDoc(doc(db, "app_updates", "latest"));
+          if (snap.exists()) {
+            const data = snap.data() as AppUpdateData;
+            setActiveUpdate(data);
+          } else {
+            setActiveUpdate({
+              id: "default_v1.0.22",
+              title: "SyncPL Trading Dashboard v1.0.22",
+              version: "v1.0.22",
+              tag: "Feature Release",
+              message: "• In-App Update Broadcaster: Real-time update notifications with instant reload\n• Prop Firm Payouts: Track and share verified prop firm withdrawals\n• Pre-Trade Checklist: Enforce trading discipline with customizable entry checklist rules\n• Live Trade Tracker: Real-time TP/SL and risk-to-reward position monitoring\n• Voice & Desk Chat: Low-latency WebRTC voice rooms and PIN-secured trading channels",
+              authorName: "Nathan (App Owner)",
+              createdAt: new Date().toISOString(),
+            });
+          }
+          setShowModal(true);
+        } catch (err) {
+          console.warn("Failed to fetch latest update doc:", err);
+        }
+      }
+    };
+
+    window.addEventListener("syncpl_preview_update", handleOpenReview as EventListener);
+    window.addEventListener("syncpl_open_latest_update", handleOpenLatest as EventListener);
+
+    // 2. Real-time Firestore listener for latest broadcast update
     const latestRef = doc(db, "app_updates", "latest");
     const unsubscribe = onSnapshot(
       latestRef,
@@ -36,9 +70,10 @@ export default function WebUpdateNotifier() {
         if (snap.exists()) {
           const data = snap.data() as AppUpdateData;
           if (data && data.id && data.message) {
+            setActiveUpdate(data);
             const lastSeen = localStorage.getItem("syncpl_last_seen_update_id");
+            // Only auto-pop once per unique update id
             if (lastSeen !== data.id) {
-              setActiveUpdate(data);
               setShowModal(true);
             }
           }
@@ -51,6 +86,7 @@ export default function WebUpdateNotifier() {
 
     return () => {
       window.removeEventListener("syncpl_preview_update", handleOpenReview as EventListener);
+      window.removeEventListener("syncpl_open_latest_update", handleOpenLatest as EventListener);
       unsubscribe();
     };
   }, []);

@@ -1096,21 +1096,23 @@ export default function SettingsView({
                 </button>
               ) : null}
 
-              {latestBroadcastUpdate && (
-                <button
-                  type="button"
-                  onClick={() => {
+              <button
+                type="button"
+                onClick={() => {
+                  if (latestBroadcastUpdate) {
                     window.dispatchEvent(
                       new CustomEvent("syncpl_preview_update", { detail: latestBroadcastUpdate })
                     );
-                  }}
-                  className="bg-[#121417] border border-[#2A2D31] hover:bg-[#1E2023] text-gray-300 font-bold text-xs py-2.5 px-3 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
-                  title="View the latest update announcement popup"
-                >
-                  <Eye className="w-3.5 h-3.5 text-gray-400" />
-                  View Notes
-                </button>
-              )}
+                  } else {
+                    window.dispatchEvent(new CustomEvent("syncpl_open_latest_update"));
+                  }
+                }}
+                className="bg-[#121417] border border-[#2A2D31] hover:bg-[#1E2023] text-gray-300 font-bold text-xs py-2.5 px-3 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+                title="View the latest update announcement popup"
+              >
+                <Eye className="w-3.5 h-3.5 text-gray-400" />
+                View Notes
+              </button>
             </div>
           </div>
         </div>

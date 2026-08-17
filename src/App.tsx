@@ -45,6 +45,8 @@ import {
   Bell,
   Coins,
   ExternalLink,
+  Sparkles,
+  Megaphone,
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
@@ -121,12 +123,16 @@ import WebUpdateNotifier from "./components/WebUpdateNotifier";
 export default function App() {
   // Authentication & Profile States
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [traders, setTraders] = useState<UserProfile[]>([]);
   const [publicUsers, setPublicUsers] = useState<any[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
+
+  // Performance cache refs
+  const lastSyncedProfileKey = useRef<string>("");
+  const lastFetchedGroupIdsKey = useRef<string>("");
 
   // Custom Bespoke Skin Selection (Elite Perk)
   const [activeSkin, setActiveSkin] = useState<string>(() => {
@@ -661,6 +667,20 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Helper with AbortController timeout to prevent slow network hanging
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 3000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (error) {
+      clearTimeout(id);
+      throw error;
+    }
+  };
+
   // Fetch actual real-time market quotes from Yahoo Finance (via multi-tier CORS proxies with local fallbacks)
   const fetchRealMarketData = async () => {
     const symbols = "BTC-USD,ETH-USD,^NDX,^GSPC,SPY,QQQ,EURUSD=X,GC=F";
@@ -680,9 +700,9 @@ export default function App() {
     let success = false;
     let results: any[] = [];
 
-    // Attempt 1: Direct Fetch (works beautifully inside Tauri apps which have zero CORS restrictions!)
+    // Attempt 1: Direct Fetch (works inside Tauri desktop apps with zero CORS)
     try {
-      const res = await fetch(yahooUrl);
+      const res = await fetchWithTimeout(yahooUrl, {}, 2500);
       if (res.ok) {
         const data = await res.json();
         if (data?.quoteResponse?.result) {
@@ -691,13 +711,13 @@ export default function App() {
         }
       }
     } catch (err) {
-      // Expected to fail in web browsers due to CORS, but will succeed in Tauri!
+      // Expected to fail in web browsers due to CORS
     }
 
     // Attempt 2: corsproxy.io (primary high-speed raw CORS proxy)
     if (!success) {
       try {
-        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
+        const res = await fetchWithTimeout(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`, {}, 3000);
         if (res.ok) {
           const data = await res.json();
           if (data?.quoteResponse?.result) {
@@ -706,26 +726,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.warn("corsproxy.io failed, trying allorigins fallback...");
-      }
-    }
-
-    // Attempt 3: api.allorigins.win (highly resilient wrapped fallback CORS proxy)
-    if (!success) {
-      try {
-        const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
-        if (res.ok) {
-          const wrapper = await res.json();
-          if (wrapper?.contents) {
-            const data = JSON.parse(wrapper.contents);
-            if (data?.quoteResponse?.result) {
-              results = data.quoteResponse.result;
-              success = true;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("allorigins proxy failed too:", err);
+        // Fall through
       }
     }
 
@@ -754,56 +755,43 @@ export default function App() {
         })
       );
     } else {
-      // Last-resort fallback: fetch individual public CORS APIs (Coinbase and ExchangeRate) for core items
+      // Fast fallback: fetch individual public CORS APIs (Coinbase and ExchangeRate)
       try {
-        const [btcRes, ethRes] = await Promise.all([
-          fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot"),
-          fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot"),
+        const [btcRes, ethRes] = await Promise.allSettled([
+          fetchWithTimeout("https://api.coinbase.com/v2/prices/BTC-USD/spot", {}, 2500),
+          fetchWithTimeout("https://api.coinbase.com/v2/prices/ETH-USD/spot", {}, 2500),
         ]);
         let btcPrice: number | null = null;
         let ethPrice: number | null = null;
 
-        if (btcRes.ok) {
-          const btcData = await btcRes.json();
+        if (btcRes.status === "fulfilled" && btcRes.value.ok) {
+          const btcData = await btcRes.value.json();
           if (btcData?.data?.amount) {
             btcPrice = Number(parseFloat(btcData.data.amount).toFixed(2));
           }
         }
-        if (ethRes.ok) {
-          const ethData = await ethRes.json();
+        if (ethRes.status === "fulfilled" && ethRes.value.ok) {
+          const ethData = await ethRes.value.json();
           if (ethData?.data?.amount) {
             ethPrice = Number(parseFloat(ethData.data.amount).toFixed(2));
           }
         }
 
-        setTickers((prev) =>
-          prev.map((t) => {
-            if (t.symbol === "BTC/USD" && btcPrice) {
-              return { ...t, price: btcPrice };
-            }
-            if (t.symbol === "ETH/USD" && ethPrice) {
-              return { ...t, price: ethPrice };
-            }
-            return t;
-          })
-        );
-      } catch (err) {
-        console.warn("Coinbase backup failed:", err);
-      }
-
-      try {
-        const fxRes = await fetch("https://open.er-api.com/v6/latest/USD");
-        if (fxRes.ok) {
-          const data = await fxRes.json();
-          if (data?.rates?.EUR) {
-            const eurUsdPrice = Number((1 / data.rates.EUR).toFixed(4));
-            setTickers((prev) =>
-              prev.map((t) => (t.symbol === "EUR/USD" ? { ...t, price: eurUsdPrice } : t))
-            );
-          }
+        if (btcPrice || ethPrice) {
+          setTickers((prev) =>
+            prev.map((t) => {
+              if (t.symbol === "BTC/USD" && btcPrice) {
+                return { ...t, price: btcPrice };
+              }
+              if (t.symbol === "ETH/USD" && ethPrice) {
+                return { ...t, price: ethPrice };
+              }
+              return t;
+            })
+          );
         }
       } catch (err) {
-        console.warn("Forex backup failed:", err);
+        // Fallback quiet
       }
     }
   };
@@ -848,17 +836,23 @@ export default function App() {
     };
   }, [profile?.subscriptionTier, profile?.subscriptionStatus, isMobileOrTablet]);
 
-  // 1. Auth Observer
+  // 1. Auth Observer with full session restoration
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        await initUserProfileAndRoom(user);
-      } else {
-        setCurrentUser(null);
-        setProfile(null);
-        setRooms([]);
-        setActiveRoom(null);
+      try {
+        if (user) {
+          setCurrentUser(user);
+          await initUserProfileAndRoom(user);
+        } else {
+          setCurrentUser(null);
+          setProfile(null);
+          setRooms([]);
+          setActiveRoom(null);
+        }
+      } catch (err) {
+        console.error("Auth state observer error:", err);
+      } finally {
+        setIsAuthLoading(false);
       }
     });
     return () => unsubscribe();
@@ -911,13 +905,14 @@ export default function App() {
         const now = new Date();
         const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
         const isCreator = user.email?.toLowerCase() === "1nathandrew6@gmail.com";
+        const defaultRoom = isCreator ? "SYNC-ALPHA" : "TRADING-DESK-1";
         currentProfile = {
           username: randomName,
           avatarColor: "indigo",
           avatarType: "emoji",
           avatarVal: "🐂",
-          groupIds: [],
-          activeGroupId: "",
+          groupIds: [defaultRoom],
+          activeGroupId: defaultRoom,
           createdAt: now.toISOString(),
           trialEndDate: trialEnd.toISOString(),
           subscriptionStatus: isCreator ? "active" : "trialing",
@@ -926,11 +921,21 @@ export default function App() {
         await setDoc(profileRef, currentProfile);
       }
 
+      // Auto-ensure default room if list is empty
+      if (!currentProfile.groupIds || currentProfile.groupIds.length === 0) {
+        const isCreator = user.email?.toLowerCase() === "1nathandrew6@gmail.com";
+        const defaultRoom = isCreator ? "SYNC-ALPHA" : "TRADING-DESK-1";
+        currentProfile.groupIds = [defaultRoom];
+        currentProfile.activeGroupId = defaultRoom;
+        await setDoc(profileRef, { groupIds: currentProfile.groupIds, activeGroupId: defaultRoom }, { merge: true });
+      }
+
       setProfile(currentProfile);
 
       // Setup list of room items dynamically from groupIds
       if (currentProfile.groupIds && currentProfile.groupIds.length > 0) {
-        await fetchJoinedRooms(currentProfile.groupIds, currentProfile.activeGroupId);
+        const preferredRoom = localStorage.getItem("syncpl_last_active_room") || currentProfile.activeGroupId || currentProfile.groupIds[0];
+        await fetchJoinedRooms(currentProfile.groupIds, preferredRoom);
       } else {
         setRooms([]);
         setActiveRoom(null);
@@ -958,8 +963,10 @@ export default function App() {
           };
         }
         setProfile(updatedProfile);
-        if (updatedProfile.groupIds) {
-          await fetchJoinedRooms(updatedProfile.groupIds, updatedProfile.activeGroupId);
+        const groupIdsKey = (updatedProfile.groupIds || []).join(",");
+        if (groupIdsKey && groupIdsKey !== lastFetchedGroupIdsKey.current) {
+          lastFetchedGroupIdsKey.current = groupIdsKey;
+          await fetchJoinedRooms(updatedProfile.groupIds || [], updatedProfile.activeGroupId);
         }
       }
     }, (error) => {
@@ -971,9 +978,14 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser?.uid]);
 
-  // Sync public user profile to users collection whenever local profile updates
+  // Sync public user profile to users collection whenever meaningful public fields change
   useEffect(() => {
     if (!currentUser || !profile) return;
+    const tier = (profile.subscriptionStatus === "active" || profile.subscriptionStatus === "trialing" || profile.subscriptionTier === "premium") ? "premium" : "free";
+    const currentKey = `${currentUser.uid}_${profile.username}_${profile.avatarColor}_${profile.avatarType}_${profile.avatarVal}_${profile.activeGroupId}_${tier}`;
+    if (currentKey === lastSyncedProfileKey.current) return;
+    lastSyncedProfileKey.current = currentKey;
+
     const syncPublicUserDoc = async () => {
       try {
         const publicRef = doc(db, "users", currentUser.uid);
@@ -983,16 +995,15 @@ export default function App() {
           avatarColor: profile.avatarColor || "indigo",
           avatarType: profile.avatarType || "emoji",
           avatarVal: profile.avatarVal || "🐂",
-          subscriptionTier: (profile.subscriptionStatus === "active" || profile.subscriptionStatus === "trialing" || profile.subscriptionTier === "premium") ? "premium" : "free",
+          subscriptionTier: tier,
           activeGroupId: profile.activeGroupId || "",
-          updatedAt: new Date().toISOString()
         }, { merge: true });
       } catch (err) {
         console.error("Failed to sync public user doc in App.tsx:", err);
       }
     };
     syncPublicUserDoc();
-  }, [currentUser?.uid, profile]);
+  }, [currentUser?.uid, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal, profile?.activeGroupId, profile?.subscriptionTier, profile?.subscriptionStatus]);
 
   const fetchJoinedRooms = async (groupIds: string[], activeGroupId: string) => {
     try {
@@ -1017,8 +1028,12 @@ export default function App() {
       const roomList = await Promise.all(roomPromises);
       setRooms(roomList);
 
-      const active = roomList.find((r) => r.id === activeGroupId) || roomList[0] || null;
+      const preferredId = activeGroupId || localStorage.getItem("syncpl_last_active_room") || "";
+      const active = roomList.find((r) => r.id === preferredId) || roomList[0] || null;
       setActiveRoom(active);
+      if (active) {
+        localStorage.setItem("syncpl_last_active_room", active.id);
+      }
     } catch (e: any) {
       console.error("Failed to fetch joined workspace rooms:", e);
       if (e.code === "permission-denied" || e.message?.toLowerCase().includes("permission")) {
@@ -1036,7 +1051,6 @@ export default function App() {
       setPnlLogs([]);
       setLiveTrades([]);
       setTradingRules([]);
-      setTraders([]);
       return;
     }
 
@@ -1146,18 +1160,23 @@ export default function App() {
     });
     unsubscribers.push(unsubUsers);
 
-    // Observe PNL logs (excluding live trades)
+    // Observe PNL logs and Live Trades in a single unified listener
     const logsQuery = query(collection(db, "pnl_logs"), where("groupId", "==", activeRoom.id));
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const map = new Map<string, PnlLog>();
+      const logsMap = new Map<string, PnlLog>();
+      const liveMap = new Map<string, LiveTrade>();
       snapshot.forEach((d) => {
         const data = d.data();
-        if (!data.isLive) {
-          map.set(d.id, { id: d.id, ...data } as PnlLog);
+        if (data.isLive === true) {
+          liveMap.set(d.id, { id: d.id, ...data } as any as LiveTrade);
+        } else {
+          logsMap.set(d.id, { id: d.id, ...data } as PnlLog);
         }
       });
-      const sorted = Array.from(map.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setPnlLogs(sorted);
+      const sortedLogs = Array.from(logsMap.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setPnlLogs(sortedLogs);
+      const sortedLive = Array.from(liveMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setLiveTrades(sortedLive);
     }, (error) => {
       console.error("Logs onSnapshot error:", error);
       if (error.code === "permission-denied") {
@@ -1165,22 +1184,6 @@ export default function App() {
       }
     });
     unsubscribers.push(unsubLogs);
-
-    // Observe Live Trades (from pnl_logs where isLive === true)
-    const unsubLiveTrades = onSnapshot(logsQuery, (snapshot) => {
-      const map = new Map<string, LiveTrade>();
-      snapshot.forEach((d) => {
-        const data = d.data();
-        if (data.isLive === true) {
-          map.set(d.id, { id: d.id, ...data } as any as LiveTrade);
-        }
-      });
-      const sorted = Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setLiveTrades(sorted);
-    }, (error) => {
-      console.error("Live trades onSnapshot error:", error);
-    });
-    unsubscribers.push(unsubLiveTrades);
 
     // Observe Trading Entry Checklist Rules
     const rulesQuery = query(collection(db, "trading_rules"), where("roomId", "==", activeRoom.id));
@@ -1218,11 +1221,11 @@ export default function App() {
     return () => {
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [currentUser?.uid, activeRoom?.id, pnlLogs.length]);
+  }, [currentUser?.uid, activeRoom?.id]);
 
-  // Dynamically derive room traders with live presence, status, and custom settings
-  useEffect(() => {
-    if (!activeRoom) return;
+  // Dynamically derive room traders with live presence, status, and custom settings (Optimized Memo)
+  const traders = useMemo(() => {
+    if (!activeRoom) return [];
 
     const derivedTraders: UserProfile[] = [];
     const addedUsernames = new Set<string>();
@@ -1294,8 +1297,8 @@ export default function App() {
       }
     });
 
-    setTraders(derivedTraders);
-  }, [profile, pnlLogs, publicUsers, activeRoom, currentUser?.uid]);
+    return derivedTraders;
+  }, [profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal, activeRoom?.id, publicUsers, pnlLogs, currentUser?.uid]);
 
   const initDefaultChannels = async (roomId: string) => {
     try {
@@ -1386,6 +1389,9 @@ export default function App() {
   // Multi-Room Switching & Admin triggers
   const handleSelectRoom = async (roomId: string) => {
     if (roomId === activeRoom?.id) return;
+    if (roomId) {
+      localStorage.setItem("syncpl_last_active_room", roomId);
+    }
     if (activeVoiceChannel) {
       await handleDisconnectVoice();
     }
@@ -2615,6 +2621,28 @@ export default function App() {
     return isOwner || isRoomMod;
   }, [currentUser?.uid, activeRoom, profile?.username]);
 
+  // Loading Screen while session credentials & rooms synchronize
+  if (isAuthLoading) {
+    return (
+      <div className="fixed inset-0 w-screen h-[100dvh] bg-[#0F1113] z-50 flex flex-col items-center justify-center p-4 select-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full ambient-glow-1 z-0 pointer-events-none" />
+        <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] rounded-full ambient-glow-2 z-0 pointer-events-none" />
+        <div className="glass-panel p-8 rounded-2xl max-w-xs w-full relative z-10 flex flex-col items-center space-y-4 text-center shadow-2xl border border-[#2A2D31] bg-[#1E2023]/95 backdrop-blur-md">
+          <div className="p-4 bg-indigo-600/20 text-indigo-400 rounded-2xl border border-indigo-500/30 shadow-inner">
+            <TrendingUp className="w-8 h-8 animate-pulse text-indigo-400" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-black text-white tracking-wider uppercase">SyncPL Terminal</h3>
+            <p className="text-xs text-gray-400 font-mono">Restoring trading workspace...</p>
+          </div>
+          <div className="w-full h-1 bg-[#121417] rounded-full overflow-hidden border border-[#2A2D31]/40">
+            <div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 rounded-full animate-pulse w-3/4" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-dark-bg text-gray-200 flex flex-col font-sans overflow-hidden">
       {/* Firebase Permission Error warning */}
@@ -2962,6 +2990,18 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center space-x-2 shrink-0">
+                  {/* View What's New / App Update Release Notes button */}
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent("syncpl_open_latest_update"));
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white transition cursor-pointer text-[10px] md:text-xs font-bold uppercase tracking-wider shadow-sm"
+                    title="View latest app release notes & changelog"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                    <span className="hidden sm:inline">Updates</span>
+                  </button>
+
                   <button
                     onClick={handleRequestNotificationPermission}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition cursor-pointer text-[10px] md:text-xs font-bold uppercase tracking-wider ${
