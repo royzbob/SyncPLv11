@@ -27,6 +27,7 @@ try {
 
 // Lazy Stripe initializer
 let stripeClient: Stripe | null = null;
+
 function getStripe(): Stripe | null {
   if (!stripeClient) {
     const secretKey = process.env.STRIPE_SECRET_KEY;
