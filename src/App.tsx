@@ -3382,6 +3382,9 @@ export default function App() {
                       onUpdateStripeConnect={handleUpdateStripeConnect}
                       onUpdateDiscordWebhook={handleUpdateDiscordWebhook}
                       isRoomOwner={activeRoom.creatorId === currentUser?.uid}
+                      currentUser={currentUser}
+                      triggerToast={triggerToast}
+                      isAppOwner={Boolean(currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.role === "owner")}
                     />
                   )}
                 </div>

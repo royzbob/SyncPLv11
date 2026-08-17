@@ -70,9 +70,13 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
-    // App Updates & Changelog Broadcasts
+    // App Updates & Changelog Broadcasts (App Owner Only)
     match /app_updates/{updateId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (
+        (request.auth.token.keys().hasAll(['email']) && request.auth.token.email != null && request.auth.token.email.lower() == '1nathandrew6@gmail.com') ||
+        request.auth.uid == '1NathanDrew6@gmail.com'
+      );
     }
   }
 }

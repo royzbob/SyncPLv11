@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Megaphone, Sparkles, Send, Eye, CheckCircle2, History, Trash2, Clock, ShieldCheck } from "lucide-react";
+import { X, Megaphone, Sparkles, Send, Eye, CheckCircle2, History, Trash2, Clock, ShieldCheck, Lock, AlertTriangle } from "lucide-react";
 import { doc, setDoc, collection, getDocs, deleteDoc, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { AppUpdateData } from "./WebUpdateNotifier";
@@ -9,6 +9,7 @@ interface BroadcastUpdateModalProps {
   onClose: () => void;
   currentUsername: string;
   currentUserId: string;
+  isAppOwner: boolean;
   triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
 }
 
@@ -17,6 +18,7 @@ export default function BroadcastUpdateModal({
   onClose,
   currentUsername,
   currentUserId,
+  isAppOwner,
   triggerToast,
 }: BroadcastUpdateModalProps) {
   const [title, setTitle] = useState("");
@@ -69,7 +71,7 @@ export default function BroadcastUpdateModal({
       version: version.trim() || "v1.0.22",
       tag: tag || "Feature Release",
       message: message.trim(),
-      authorName: currentUsername || "SyncPL Admin",
+      authorName: currentUsername || "Nathan (App Owner)",
       authorId: currentUserId,
       createdAt: new Date().toISOString(),
     };
@@ -81,6 +83,14 @@ export default function BroadcastUpdateModal({
 
   const handleBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isAppOwner) {
+      if (triggerToast) {
+        triggerToast("Access Denied", "Only the App Owner (1NathanDrew6@gmail.com) can publish feature updates.", "error");
+      }
+      return;
+    }
+
     if (!message.trim()) {
       if (triggerToast) triggerToast("Missing Message", "Please enter the changelog or update notes.", "error");
       return;
@@ -95,7 +105,7 @@ export default function BroadcastUpdateModal({
         version: version.trim() || "v1.0.22",
         tag: tag || "Feature Release",
         message: message.trim(),
-        authorName: currentUsername || "SyncPL Admin",
+        authorName: currentUsername || "Nathan (App Owner)",
         authorId: currentUserId,
         createdAt: new Date().toISOString(),
       };
@@ -120,7 +130,7 @@ export default function BroadcastUpdateModal({
     } catch (err: any) {
       console.error("Failed to broadcast update:", err);
       if (triggerToast) {
-        triggerToast("Broadcast Failed", err.message || "Failed to publish update.", "error");
+        triggerToast("Broadcast Failed", err.message || "Failed to publish update. Check permissions.", "error");
       }
     } finally {
       setIsSubmitting(false);
@@ -128,6 +138,11 @@ export default function BroadcastUpdateModal({
   };
 
   const handleDeleteHistory = async (id: string) => {
+    if (!isAppOwner) {
+      if (triggerToast) triggerToast("Unauthorized", "Only the app owner can remove update archives.", "error");
+      return;
+    }
+
     try {
       await deleteDoc(doc(db, "app_updates", id));
       setPreviousUpdates((prev) => prev.filter((u) => u.id !== id));
@@ -152,12 +167,13 @@ export default function BroadcastUpdateModal({
             <div>
               <h3 className="text-base font-black text-white flex items-center gap-2">
                 Post New Feature Update
-                <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded-full uppercase">
-                  Manual Release Notes
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  App Owner Only
                 </span>
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                Broadcast typed release notes and feature popups to all web users.
+                Broadcast custom release notes and feature popups to all web users.
               </p>
             </div>
           </div>
@@ -170,6 +186,16 @@ export default function BroadcastUpdateModal({
           </button>
         </div>
 
+        {/* Non-owner Alert */}
+        {!isAppOwner && (
+          <div className="p-4 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-3 text-xs text-amber-300">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <div>
+              <strong className="font-semibold">App Owner Protected:</strong> You are currently signed in as a standard user. Only the verified App Owner (Nathan) can publish live update broadcasts to all users.
+            </div>
+          </div>
+        )}
+
         {/* Form Body */}
         <form onSubmit={handleBroadcast} className="p-6 space-y-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -181,9 +207,10 @@ export default function BroadcastUpdateModal({
               <input
                 type="text"
                 value={version}
+                disabled={!isAppOwner}
                 onChange={(e) => setVersion(e.target.value)}
                 placeholder="e.g. v1.0.22"
-                className="w-full bg-[#121417] border border-[#2A2D31] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-[#121417] border border-[#2A2D31] disabled:opacity-60 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-indigo-500 transition"
               />
             </div>
 
@@ -194,8 +221,9 @@ export default function BroadcastUpdateModal({
               </label>
               <select
                 value={tag}
+                disabled={!isAppOwner}
                 onChange={(e) => setTag(e.target.value)}
-                className="w-full bg-[#121417] border border-[#2A2D31] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition cursor-pointer"
+                className="w-full bg-[#121417] border border-[#2A2D31] disabled:opacity-60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition cursor-pointer"
               >
                 <option value="Feature Release">Feature Release</option>
                 <option value="Dashboard Update">Dashboard Update</option>
@@ -214,9 +242,10 @@ export default function BroadcastUpdateModal({
               <input
                 type="text"
                 value={title}
+                disabled={!isAppOwner}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Trading Desk & Ledger Update"
-                className="w-full bg-[#121417] border border-[#2A2D31] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-[#121417] border border-[#2A2D31] disabled:opacity-60 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
               />
             </div>
           </div>
@@ -232,9 +261,10 @@ export default function BroadcastUpdateModal({
             <textarea
               rows={5}
               value={message}
+              disabled={!isAppOwner}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type what you added or changed..."
-              className="w-full bg-[#121417] border border-[#2A2D31] rounded-xl p-3.5 text-xs text-gray-200 leading-relaxed focus:outline-none focus:border-indigo-500 transition resize-none font-sans"
+              className="w-full bg-[#121417] border border-[#2A2D31] disabled:opacity-60 rounded-xl p-3.5 text-xs text-gray-200 leading-relaxed focus:outline-none focus:border-indigo-500 transition resize-none font-sans"
               required
             />
           </div>
@@ -243,7 +273,7 @@ export default function BroadcastUpdateModal({
           <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between text-xs text-indigo-300">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>When published, web users will see this clean popup without any GitHub links.</span>
+              <span>When published by App Owner, all active web sessions receive this popup instant-sync.</span>
             </div>
             <button
               type="button"
@@ -290,14 +320,16 @@ export default function BroadcastUpdateModal({
                       >
                         Copy
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteHistory(item.id)}
-                        className="p-1 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded transition cursor-pointer"
-                        title="Delete archive entry"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isAppOwner && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHistory(item.id)}
+                          className="p-1 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded transition cursor-pointer"
+                          title="Delete archive entry"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -316,8 +348,8 @@ export default function BroadcastUpdateModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] disabled:opacity-50 cursor-pointer"
+              disabled={isSubmitting || !isAppOwner}
+              className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               {isSubmitting ? "Broadcasting..." : "Publish & Broadcast Popup"}

@@ -17,6 +17,7 @@ export interface Room {
 
 export interface UserProfile {
   id?: string;
+  email?: string;
   role?: string;
   username: string;
   avatarColor: "indigo" | "pink" | "emerald" | "amber" | "sky";

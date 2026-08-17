@@ -86,6 +86,9 @@ interface SettingsViewProps {
   onUpdateStripeConnect?: (linked: boolean, accountId?: string) => Promise<void>;
   onUpdateDiscordWebhook?: (url: string) => Promise<void>;
   isRoomOwner?: boolean;
+  currentUser?: any;
+  isAppOwner?: boolean;
+  triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
 }
 
 const openExternalUrl = async (url: string) => {
@@ -135,7 +138,17 @@ export default function SettingsView({
   onUpdateStripeConnect,
   onUpdateDiscordWebhook,
   isRoomOwner = false,
+  currentUser,
+  isAppOwner = false,
+  triggerToast,
 }: SettingsViewProps) {
+  const isAppOwnerUser = Boolean(
+    isAppOwner ||
+    (currentUser?.email && currentUser.email.toLowerCase() === "1nathandrew6@gmail.com") ||
+    (profile?.email && profile.email.toLowerCase() === "1nathandrew6@gmail.com") ||
+    (profile?.username && (profile.username.toLowerCase() === "nathan" || profile.username.toLowerCase() === "nathandrew"))
+  );
+
   // Profile settings state
   const [username, setUsername] = useState(profile?.username || "");
   const [avatarColor, setAvatarColor] = useState<"indigo" | "pink" | "emerald" | "amber" | "sky">(
@@ -1070,15 +1083,18 @@ export default function SettingsView({
                 {updateState.status === "checking" ? "Checking Status..." : "Check for Updates"}
               </button>
               
-              <button
-                type="button"
-                onClick={() => setShowBroadcastModal(true)}
-                className="bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-indigo-300 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
-                title="Post and broadcast manually typed release notes"
-              >
-                <Megaphone className="w-3.5 h-3.5 text-indigo-400" />
-                Post Update Message
-              </button>
+              {isAppOwnerUser ? (
+                <button
+                  type="button"
+                  onClick={() => setShowBroadcastModal(true)}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs py-2.5 px-4 rounded-lg shadow-lg shadow-indigo-600/25 transition flex items-center justify-center gap-2 cursor-pointer"
+                  title="App Owner: Post and broadcast manually typed release notes"
+                >
+                  <Megaphone className="w-3.5 h-3.5 text-indigo-200" />
+                  Post Update Message
+                  <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded font-black tracking-wider uppercase">Owner</span>
+                </button>
+              ) : null}
 
               {latestBroadcastUpdate && (
                 <button
@@ -1771,12 +1787,14 @@ export default function SettingsView({
           </div>
         )}
 
-        {/* Manual Update Broadcast Modal */}
+        {/* Manual Update Broadcast Modal (Owner Only) */}
         <BroadcastUpdateModal
           isOpen={showBroadcastModal}
           onClose={() => setShowBroadcastModal(false)}
-          currentUsername={profile?.username || "Admin"}
+          currentUsername={profile?.username || "Nathan (App Owner)"}
           currentUserId={profile?.activeGroupId || "admin"}
+          isAppOwner={isAppOwnerUser}
+          triggerToast={triggerToast}
         />
       </div>
     </div>
