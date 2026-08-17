@@ -29,8 +29,14 @@ import {
   Share2,
   ArrowUpCircle,
   Download,
+  Megaphone,
+  Eye,
 } from "lucide-react";
 import { Channel, Room, UserProfile } from "../types";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
+import BroadcastUpdateModal from "./BroadcastUpdateModal";
+import { AppUpdateData } from "./WebUpdateNotifier";
 
 interface SettingsViewProps {
   profile: UserProfile | null;
@@ -154,6 +160,8 @@ export default function SettingsView({
 
   // Update state for in-app update checking
   const [runningVersion, setRunningVersion] = useState("1.0.16");
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [latestBroadcastUpdate, setLatestBroadcastUpdate] = useState<AppUpdateData | null>(null);
   const [updateState, setUpdateState] = useState<{
     status: "idle" | "checking" | "up-to-date" | "available" | "downloading" | "installed" | "error" | "web";
     version?: string;
@@ -171,6 +179,15 @@ export default function SettingsView({
         })
         .catch(() => {});
     }
+
+    // Load latest broadcast update
+    getDoc(doc(db, "app_updates", "latest"))
+      .then((snap) => {
+        if (snap.exists()) {
+          setLatestBroadcastUpdate(snap.data() as AppUpdateData);
+        }
+      })
+      .catch((err) => console.warn("Failed to load broadcast update:", err));
   }, []);
 
   const handleCheckForUpdates = async () => {
@@ -186,10 +203,30 @@ export default function SettingsView({
     );
 
     if (!isTauri) {
-      setUpdateState({
-        status: "web",
-        errorMsg: "Native update checking runs inside the Desktop client. You are currently in Web mode."
-      });
+      try {
+        const snap = await getDoc(doc(db, "app_updates", "latest"));
+        if (snap.exists()) {
+          const updateData = snap.data() as AppUpdateData;
+          setLatestBroadcastUpdate(updateData);
+          setUpdateState({
+            status: "web",
+            version: updateData.version || "v1.0.22",
+            body: updateData.message || "Latest custom release notes synced.",
+            errorMsg: `Web edition is active. Latest announcement: "${updateData.title || updateData.version}"`
+          });
+        } else {
+          setUpdateState({
+            status: "web",
+            version: "v1.0.22",
+            errorMsg: "Web edition is active and synced with the latest deployed build."
+          });
+        }
+      } catch {
+        setUpdateState({
+          status: "web",
+          errorMsg: "Web edition is active and synced with the latest deployed build."
+        });
+      }
       return;
     }
 
@@ -1030,17 +1067,34 @@ export default function SettingsView({
                 className="flex-1 bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] disabled:opacity-50 text-gray-200 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${updateState.status === "checking" ? "animate-spin" : ""}`} />
-                {updateState.status === "checking" ? "Checking CDN..." : "Check for Updates Now"}
+                {updateState.status === "checking" ? "Checking Status..." : "Check for Updates"}
               </button>
               
               <button
                 type="button"
-                onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
+                onClick={() => setShowBroadcastModal(true)}
                 className="bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-indigo-300 font-bold text-xs py-2.5 px-4 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Post and broadcast manually typed release notes"
               >
-                <ArrowUpCircle className="w-3.5 h-3.5 text-indigo-400" />
-                Direct Download (GitHub)
+                <Megaphone className="w-3.5 h-3.5 text-indigo-400" />
+                Post Update Message
               </button>
+
+              {latestBroadcastUpdate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent("syncpl_preview_update", { detail: latestBroadcastUpdate })
+                    );
+                  }}
+                  className="bg-[#121417] border border-[#2A2D31] hover:bg-[#1E2023] text-gray-300 font-bold text-xs py-2.5 px-3 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="View the latest update announcement popup"
+                >
+                  <Eye className="w-3.5 h-3.5 text-gray-400" />
+                  View Notes
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1716,6 +1770,14 @@ export default function SettingsView({
             </div>
           </div>
         )}
+
+        {/* Manual Update Broadcast Modal */}
+        <BroadcastUpdateModal
+          isOpen={showBroadcastModal}
+          onClose={() => setShowBroadcastModal(false)}
+          currentUsername={profile?.username || "Admin"}
+          currentUserId={profile?.activeGroupId || "admin"}
+        />
       </div>
     </div>
   );

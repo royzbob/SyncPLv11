@@ -165,6 +165,22 @@
         "timestamp": { "type": "string" }
       },
       "required": ["userId", "username", "groupId", "amount", "date", "timestamp"]
+    },
+    "AppUpdate": {
+      "title": "AppUpdate",
+      "description": "Manual feature update broadcast message and changelog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "version": { "type": "string" },
+        "tag": { "type": "string" },
+        "message": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "version", "message", "createdAt"]
     }
   },
   "firestore": {
@@ -207,6 +223,10 @@
     "payouts/{payoutId}": {
       "schema": "PayoutRecord",
       "description": "Community payout records per room"
+    },
+    "app_updates/{updateId}": {
+      "schema": "AppUpdate",
+      "description": "Broadcast release announcements and changelog updates"
     }
   }
 }

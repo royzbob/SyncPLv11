@@ -116,6 +116,7 @@ import ChecklistView from "./components/ChecklistView";
 import FriendsView from "./components/FriendsView";
 import PayoutsView from "./components/PayoutsView";
 import UpdateNotifier from "./components/UpdateNotifier";
+import WebUpdateNotifier from "./components/WebUpdateNotifier";
 
 export default function App() {
   // Authentication & Profile States
@@ -3890,6 +3891,7 @@ export default function App() {
           )}
 
           <UpdateNotifier />
+          <WebUpdateNotifier />
         </>
       )}
     </div>

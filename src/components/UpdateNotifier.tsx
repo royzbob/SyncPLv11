@@ -309,15 +309,8 @@ export default function UpdateNotifier() {
               )}
 
               <div className="pt-1 border-t border-red-500/10 flex items-center justify-between">
-                <span className="text-neutral-400 text-[11px]">Need manual setup?</span>
-                <button
-                  type="button"
-                  onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
-                  className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 text-[11px] font-semibold transition cursor-pointer underline underline-offset-2"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Download Direct Installer from GitHub
-                </button>
+                <span className="text-neutral-400 text-[11px]">Encountering issues?</span>
+                <span className="text-neutral-300 text-[11px] font-semibold">Contact SyncPL Admin</span>
               </div>
             </div>
           )}
@@ -365,15 +358,14 @@ export default function UpdateNotifier() {
           {status === "error" && (
             <div className="flex gap-2">
               <button
-                onClick={() => openExternalUrl("https://github.com/royzbob/SyncPLv11/releases/latest")}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-indigo-300 bg-indigo-950/60 border border-indigo-800/60 hover:bg-indigo-900/60 rounded-xl transition-colors cursor-pointer"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 text-xs font-bold text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 rounded-xl transition-colors cursor-pointer"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Direct Download
+                Dismiss
               </button>
               <button
                 onClick={checkForUpdates}
-                className="px-4 py-2 text-xs font-bold text-white bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-colors cursor-pointer"
               >
                 Retry Check
               </button>

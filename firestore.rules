@@ -69,5 +69,10 @@ service cloud.firestore {
     match /payouts/{payoutId} {
       allow read, write: if isSignedIn();
     }
+
+    // App Updates & Changelog Broadcasts
+    match /app_updates/{updateId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }
