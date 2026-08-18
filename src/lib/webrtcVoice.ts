@@ -34,6 +34,8 @@ export interface WebRtcVoiceConfig {
   mutedUsers: string[];
   userVolumes: Record<string, number>; // uid -> 0..100
   onError?: (err: any) => void;
+  onScreenShareStateChange?: (isSharing: boolean, stream: MediaStream | null) => void;
+  onRemoteScreenShare?: (peerUid: string, stream: MediaStream | null) => void;
 }
 
 export class WebRtcVoiceManager {
@@ -49,8 +51,14 @@ export class WebRtcVoiceManager {
   private mutedUsers: string[];
   private userVolumes: Record<string, number>;
   private onError?: (err: any) => void;
+  private onScreenShareStateChange?: (isSharing: boolean, stream: MediaStream | null) => void;
+  private onRemoteScreenShare?: (peerUid: string, stream: MediaStream | null) => void;
 
   private localStream: MediaStream | null = null;
+  private localScreenStream: MediaStream | null = null;
+  private remoteScreenStreams: Map<string, MediaStream> = new Map();
+  private screenSenders: Map<string, RTCRtpSender[]> = new Map();
+
   private peerConnections: Map<string, RTCPeerConnection> = new Map();
   private pendingCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
@@ -71,6 +79,8 @@ export class WebRtcVoiceManager {
     this.mutedUsers = config.mutedUsers;
     this.userVolumes = config.userVolumes;
     this.onError = config.onError;
+    this.onScreenShareStateChange = config.onScreenShareStateChange;
+    this.onRemoteScreenShare = config.onRemoteScreenShare;
   }
 
   public async start() {
@@ -147,6 +157,90 @@ export class WebRtcVoiceManager {
     this.audioElements.forEach((audio, peerUid) => {
       this.applyAudioVolumeAndMute(peerUid, audio);
     });
+  }
+
+  public async startScreenShare(): Promise<MediaStream | null> {
+    if (this.isDestroyed) return null;
+    try {
+      const displayMediaOptions: any = {
+        video: {
+          cursor: "always",
+          frameRate: { ideal: 30, max: 60 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: true,
+      };
+      const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+
+      this.localScreenStream = stream;
+
+      // Handle user stopping screen share via browser floating bar
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          this.stopScreenShare();
+        };
+      });
+
+      // Add tracks to all existing peer connections and renegotiate
+      this.peerConnections.forEach((pc, peerUid) => {
+        const senders: RTCRtpSender[] = [];
+        stream.getTracks().forEach((track) => {
+          try {
+            const sender = pc.addTrack(track, stream);
+            senders.push(sender);
+          } catch (e) {
+            console.warn("[WebRTC] Error adding screen track to peer connection:", e);
+          }
+        });
+        this.screenSenders.set(peerUid, senders);
+        this.initiateOffer(peerUid);
+      });
+
+      if (this.onScreenShareStateChange) {
+        this.onScreenShareStateChange(true, stream);
+      }
+
+      return stream;
+    } catch (err) {
+      console.warn("[WebRTC] Screen share failed or was cancelled by user:", err);
+      return null;
+    }
+  }
+
+  public stopScreenShare() {
+    if (this.localScreenStream) {
+      this.localScreenStream.getTracks().forEach((track) => track.stop());
+      this.localScreenStream = null;
+    }
+
+    // Remove screen senders from peer connections and renegotiate
+    this.peerConnections.forEach((pc, peerUid) => {
+      const senders = this.screenSenders.get(peerUid);
+      if (senders) {
+        senders.forEach((sender) => {
+          try {
+            pc.removeTrack(sender);
+          } catch (e) {
+            console.warn("[WebRTC] Error removing screen track sender:", e);
+          }
+        });
+      }
+      this.initiateOffer(peerUid);
+    });
+    this.screenSenders.clear();
+
+    if (this.onScreenShareStateChange) {
+      this.onScreenShareStateChange(false, null);
+    }
+  }
+
+  public getLocalScreenStream(): MediaStream | null {
+    return this.localScreenStream;
+  }
+
+  public getRemoteScreenStream(peerUid: string): MediaStream | null {
+    return this.remoteScreenStreams.get(peerUid) || null;
   }
 
   private async restartLocalMicStream() {
@@ -256,6 +350,20 @@ export class WebRtcVoiceManager {
       });
     }
 
+    // If local screen share is active, add screen tracks to this new peer
+    if (this.localScreenStream) {
+      const senders: RTCRtpSender[] = [];
+      this.localScreenStream.getTracks().forEach((track) => {
+        try {
+          const sender = pc.addTrack(track, this.localScreenStream!);
+          senders.push(sender);
+        } catch (e) {
+          console.warn("[WebRTC] Error adding screen stream to new peer:", e);
+        }
+      });
+      this.screenSenders.set(peerUid, senders);
+    }
+
     // Send ICE candidates to Firestore signaling
     pc.onicecandidate = async (event) => {
       if (event.candidate && !this.isDestroyed) {
@@ -275,12 +383,29 @@ export class WebRtcVoiceManager {
       }
     };
 
-    // Receive incoming remote audio track
+    // Receive incoming remote tracks (audio & video screen share)
     pc.ontrack = (event) => {
       if (this.isDestroyed) return;
 
-      const remoteStream = event.streams[0] || new MediaStream([event.track]);
-      this.attachRemoteAudioStream(peerUid, remoteStream);
+      if (event.track.kind === "audio") {
+        const remoteStream = event.streams[0] || new MediaStream([event.track]);
+        this.attachRemoteAudioStream(peerUid, remoteStream);
+      } else if (event.track.kind === "video") {
+        console.log(`[WebRTC] Received incoming live video stream from ${peerUid}`);
+        const remoteVideoStream = event.streams[0] || new MediaStream([event.track]);
+        this.remoteScreenStreams.set(peerUid, remoteVideoStream);
+        if (this.onRemoteScreenShare) {
+          this.onRemoteScreenShare(peerUid, remoteVideoStream);
+        }
+
+        event.track.onended = () => {
+          console.log(`[WebRTC] Remote video track ended from ${peerUid}`);
+          this.remoteScreenStreams.delete(peerUid);
+          if (this.onRemoteScreenShare) {
+            this.onRemoteScreenShare(peerUid, null);
+          }
+        };
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -307,11 +432,15 @@ export class WebRtcVoiceManager {
 
   private async initiateOffer(peerUid: string) {
     console.log(`[WebRTC] Creating offer for ${peerUid}`);
-    const pc = this.createPeerConnection(peerUid);
+    let pc = this.peerConnections.get(peerUid);
+    if (!pc) {
+      pc = this.createPeerConnection(peerUid);
+    }
 
     try {
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
       });
       await pc.setLocalDescription(offer);
 
@@ -479,6 +608,12 @@ export class WebRtcVoiceManager {
     }
 
     this.pendingCandidates.delete(peerUid);
+    this.remoteScreenStreams.delete(peerUid);
+    this.screenSenders.delete(peerUid);
+
+    if (this.onRemoteScreenShare) {
+      this.onRemoteScreenShare(peerUid, null);
+    }
 
     const audio = this.audioElements.get(peerUid);
     if (audio) {
@@ -502,9 +637,16 @@ export class WebRtcVoiceManager {
       this.unsubUsers = null;
     }
 
+    if (this.localScreenStream) {
+      this.localScreenStream.getTracks().forEach((t) => t.stop());
+      this.localScreenStream = null;
+    }
+
     this.peerConnections.forEach((pc) => pc.close());
     this.peerConnections.clear();
     this.pendingCandidates.clear();
+    this.remoteScreenStreams.clear();
+    this.screenSenders.clear();
 
     this.audioElements.forEach((audio) => {
       audio.pause();

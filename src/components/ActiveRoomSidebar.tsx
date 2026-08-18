@@ -31,6 +31,8 @@ import {
   ChevronDown,
   GripVertical,
   Check,
+  Monitor,
+  Radio,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 
@@ -68,6 +70,10 @@ interface ActiveRoomSidebarProps {
   onToggleMuteUser: (userId: string) => void;
   userVolumes: Record<string, number>;
   onChangeUserVolume: (userId: string, vol: number) => void;
+  isScreenSharing?: boolean;
+  onToggleScreenShare?: () => void;
+  onOpenScreenShareModal?: (uid?: string) => void;
+  remoteScreenStreams?: Map<string, MediaStream>;
 }
 
 export default function ActiveRoomSidebar({
@@ -104,6 +110,10 @@ export default function ActiveRoomSidebar({
   onToggleMuteUser,
   userVolumes,
   onChangeUserVolume,
+  isScreenSharing = false,
+  onToggleScreenShare,
+  onOpenScreenShareModal,
+  remoteScreenStreams,
 }: ActiveRoomSidebarProps) {
   const [voiceTheme, setVoiceTheme] = useState<"classic-dark" | "terminal-green" | "high-contrast-blue">(() => {
     try {
@@ -660,6 +670,23 @@ export default function ActiveRoomSidebar({
                               {user.speaking && (
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#23a55a] animate-pulse" />
                               )}
+                              {/* Live Screen Sharing Stream Badge */}
+                              {((isScreenSharing && (user.id === profile?.id || user.userId === profile?.id)) || (remoteScreenStreams && remoteScreenStreams.has(user.userId || user.id))) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onOpenScreenShareModal) {
+                                      onOpenScreenShareModal(user.userId || user.id);
+                                    }
+                                  }}
+                                  className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 transition cursor-pointer animate-pulse shrink-0 shadow-sm"
+                                  title="Click to watch live screen stream"
+                                >
+                                  <Radio className="w-2.5 h-2.5 text-rose-400" />
+                                  <span>LIVE</span>
+                                </button>
+                              )}
                               {user.muted && <MicOff className="w-2.5 h-2.5 text-rose-400/80" title="Muted" />}
                               {user.deafened && <VolumeX className="w-2.5 h-2.5 text-rose-400/80" title="Deafened" />}
 
@@ -794,6 +821,21 @@ export default function ActiveRoomSidebar({
                   <div className="w-[1.5px] h-3 bg-[#23a55a] rounded animate-bounce [animation-delay:0.3s]"></div>
                   <div className="w-[1.5px] h-1 bg-[#23a55a] rounded animate-bounce [animation-delay:0.5s]"></div>
                 </div>
+                {/* Screen Share Button in Voice Connected Bar */}
+                {onToggleScreenShare && (
+                  <button
+                    onClick={onToggleScreenShare}
+                    className={`p-1.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${
+                      isScreenSharing
+                        ? "bg-rose-500/20 text-rose-400 border-rose-500/30 hover:bg-rose-500/30 animate-pulse shadow-sm"
+                        : "text-[#949ba4] hover:text-[#dbdee1] bg-[#1e1f22] hover:bg-[#35373c] border-[#2b2d31]"
+                    }`}
+                    title={isScreenSharing ? "Stop Screen Share" : "Share Screen (Peer-to-Peer Live Stream)"}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                    {isScreenSharing && <span className="text-[9px] font-extrabold text-rose-400">LIVE</span>}
+                  </button>
+                )}
                 <button
                   onClick={onDisconnectVoice}
                   className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/5 hover:bg-rose-500/15 border border-rose-500/10 hover:border-rose-500/25 rounded-md transition cursor-pointer"
@@ -892,7 +934,7 @@ export default function ActiveRoomSidebar({
                 </div>
               </div>
 
-              {/* Mic, Deafen, and Gear settings buttons */}
+              {/* Mic, Deafen, Screen Share, and Gear settings buttons */}
               <div className="flex items-center space-x-0.5 shrink-0">
                 <button
                   onClick={onToggleMic}
@@ -913,6 +955,18 @@ export default function ActiveRoomSidebar({
                 >
                   {isDeafened ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Headphones className="w-4 h-4" />}
                 </button>
+
+                {activeVoiceChannel && onToggleScreenShare && (
+                  <button
+                    onClick={onToggleScreenShare}
+                    className={`p-1.5 rounded hover:bg-[#35373c] transition cursor-pointer ${
+                      isScreenSharing ? "text-rose-400 animate-pulse bg-rose-500/10" : "text-[#b5bac1] hover:text-[#dbdee1]"
+                    }`}
+                    title={isScreenSharing ? "Stop Screen Share" : "Share Live Trading Screen"}
+                  >
+                    <Monitor className="w-4 h-4" />
+                  </button>
+                )}
 
                 <button
                   onClick={(e) => {

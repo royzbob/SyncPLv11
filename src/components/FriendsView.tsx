@@ -159,80 +159,93 @@ export default function FriendsView({
     const unsub = onSnapshot(friendshipsRef, async (snapshot) => {
       const friendshipList: FriendDetail[] = [];
       const fetchPromises: Promise<void>[] = [];
+      const myUsernameLower = profile?.username?.toLowerCase() || "";
 
       snapshot.docs.forEach((d) => {
         const data = d.data() as Friendship;
-        if (data.senderId === currentUser.uid) {
+        const isSender = data.senderId === currentUser.uid || (myUsernameLower && data.senderName?.toLowerCase() === myUsernameLower);
+        const isReceiver = data.receiverId === currentUser.uid || (myUsernameLower && data.receiverName?.toLowerCase() === myUsernameLower);
+
+        if (isSender && isReceiver) {
+          // Self-request safeguard
+          return;
+        }
+
+        if (isSender) {
           // Current user sent the request
-          const p = getDoc(doc(db, "users", data.receiverId)).then((userSnap) => {
-            const userData = userSnap.exists() ? userSnap.data() : null;
-            friendshipList.push({
-              friendshipId: d.id,
-              friendId: data.receiverId,
-              username: userData?.username || data.receiverName,
-              avatarColor: userData?.avatarColor || data.receiverAvatarColor,
-              avatarVal: userData?.avatarVal || data.receiverAvatarVal,
-              avatarType: userData?.avatarType || "emoji",
-              activeGroupId: userData?.activeGroupId || "",
-              subscriptionTier: userData?.subscriptionTier || "free",
-              status: data.status,
-              isIncoming: false,
-              marketPresence: userData?.marketPresence || "active",
-              customStatus: userData?.customStatus || "Analyzing Markets"
+          const targetUid = data.receiverId;
+          const p = (targetUid && !targetUid.startsWith("user_") ? getDoc(doc(db, "users", targetUid)) : Promise.resolve(null as any))
+            .then((userSnap) => {
+              const userData = userSnap && userSnap.exists() ? userSnap.data() : null;
+              friendshipList.push({
+                friendshipId: d.id,
+                friendId: data.receiverId,
+                username: userData?.username || data.receiverName,
+                avatarColor: userData?.avatarColor || data.receiverAvatarColor || "indigo",
+                avatarVal: userData?.avatarVal || data.receiverAvatarVal || "🐂",
+                avatarType: userData?.avatarType || "emoji",
+                activeGroupId: userData?.activeGroupId || "",
+                subscriptionTier: userData?.subscriptionTier || "free",
+                status: data.status,
+                isIncoming: false,
+                marketPresence: userData?.marketPresence || "active",
+                customStatus: userData?.customStatus || "Analyzing Markets"
+              });
+            }).catch((err) => {
+              console.error(err);
+              friendshipList.push({
+                friendshipId: d.id,
+                friendId: data.receiverId,
+                username: data.receiverName,
+                avatarColor: data.receiverAvatarColor || "indigo",
+                avatarVal: data.receiverAvatarVal || "🐂",
+                avatarType: "emoji",
+                activeGroupId: "",
+                subscriptionTier: "free",
+                status: data.status,
+                isIncoming: false,
+                marketPresence: "active",
+                customStatus: "Analyzing Markets"
+              });
             });
-          }).catch((err) => {
-            console.error(err);
-            friendshipList.push({
-              friendshipId: d.id,
-              friendId: data.receiverId,
-              username: data.receiverName,
-              avatarColor: data.receiverAvatarColor,
-              avatarVal: data.receiverAvatarVal,
-              avatarType: "emoji",
-              activeGroupId: "",
-              subscriptionTier: "free",
-              status: data.status,
-              isIncoming: false,
-              marketPresence: "active",
-              customStatus: "Analyzing Markets"
-            });
-          });
           fetchPromises.push(p);
-        } else if (data.receiverId === currentUser.uid) {
+        } else if (isReceiver) {
           // Current user received the request
-          const p = getDoc(doc(db, "users", data.senderId)).then((userSnap) => {
-            const userData = userSnap.exists() ? userSnap.data() : null;
-            friendshipList.push({
-              friendshipId: d.id,
-              friendId: data.senderId,
-              username: userData?.username || data.senderName,
-              avatarColor: userData?.avatarColor || data.senderAvatarColor,
-              avatarVal: userData?.avatarVal || data.senderAvatarVal,
-              avatarType: userData?.avatarType || "emoji",
-              activeGroupId: userData?.activeGroupId || "",
-              subscriptionTier: userData?.subscriptionTier || "free",
-              status: data.status,
-              isIncoming: true,
-              marketPresence: userData?.marketPresence || "active",
-              customStatus: userData?.customStatus || "Analyzing Markets"
+          const targetUid = data.senderId;
+          const p = (targetUid && !targetUid.startsWith("user_") ? getDoc(doc(db, "users", targetUid)) : Promise.resolve(null as any))
+            .then((userSnap) => {
+              const userData = userSnap && userSnap.exists() ? userSnap.data() : null;
+              friendshipList.push({
+                friendshipId: d.id,
+                friendId: data.senderId,
+                username: userData?.username || data.senderName,
+                avatarColor: userData?.avatarColor || data.senderAvatarColor || "indigo",
+                avatarVal: userData?.avatarVal || data.senderAvatarVal || "🐂",
+                avatarType: userData?.avatarType || "emoji",
+                activeGroupId: userData?.activeGroupId || "",
+                subscriptionTier: userData?.subscriptionTier || "free",
+                status: data.status,
+                isIncoming: true,
+                marketPresence: userData?.marketPresence || "active",
+                customStatus: userData?.customStatus || "Analyzing Markets"
+              });
+            }).catch((err) => {
+              console.error(err);
+              friendshipList.push({
+                friendshipId: d.id,
+                friendId: data.senderId,
+                username: data.senderName,
+                avatarColor: data.senderAvatarColor || "indigo",
+                avatarVal: data.senderAvatarVal || "🐂",
+                avatarType: "emoji",
+                activeGroupId: "",
+                subscriptionTier: "free",
+                status: data.status,
+                isIncoming: true,
+                marketPresence: "active",
+                customStatus: "Analyzing Markets"
+              });
             });
-          }).catch((err) => {
-            console.error(err);
-            friendshipList.push({
-              friendshipId: d.id,
-              friendId: data.senderId,
-              username: data.senderName,
-              avatarColor: data.senderAvatarColor,
-              avatarVal: data.senderAvatarVal,
-              avatarType: "emoji",
-              activeGroupId: "",
-              subscriptionTier: "free",
-              status: data.status,
-              isIncoming: true,
-              marketPresence: "active",
-              customStatus: "Analyzing Markets"
-            });
-          });
           fetchPromises.push(p);
         }
       });
@@ -244,7 +257,7 @@ export default function FriendsView({
     });
 
     return () => unsub();
-  }, [currentUser?.uid, db]);
+  }, [currentUser?.uid, profile?.username, db]);
 
   // Update own custom presence in database
   const handleUpdatePresenceAndStatus = async (presence: "active" | "idle" | "dnd" | "offline", statusText: string) => {
@@ -355,9 +368,13 @@ export default function FriendsView({
   const handleAcceptRequest = async (friendshipId: string, friendName: string) => {
     try {
       const friendshipRef = doc(db, "friendships", friendshipId);
-      await updateDoc(friendshipRef, {
-        status: "accepted"
-      });
+      const updatePayload: any = {
+        status: "accepted",
+      };
+      if (currentUser?.uid) {
+        updatePayload.receiverId = currentUser.uid;
+      }
+      await updateDoc(friendshipRef, updatePayload);
       triggerToast("Connection Established", `You are now synchronized with ${friendName}.`, "success");
     } catch (err: any) {
       console.error(err);

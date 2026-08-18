@@ -34,8 +34,20 @@ import {
   Circle,
   Eye,
   Loader2,
+  UserX,
+  CheckCircle2,
+  Monitor,
+  MonitorPlay,
+  MonitorX,
+  Mic,
+  MicOff,
+  Headphones,
+  VolumeX,
+  PhoneOff,
+  Radio,
+  Tv,
 } from "lucide-react";
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { User as FirebaseUser } from "firebase/auth";
 import { ChatMessage, Room, UserProfile, Channel } from "../types";
 import { formatCurrency } from "../utils/helpers";
@@ -60,6 +72,18 @@ interface ChatViewProps {
   currentUser?: FirebaseUser | null;
   db?: any;
   triggerToast?: (title: string, body: string, type: "success" | "error" | "info") => void;
+  activeVoiceChannel?: string | null;
+  onToggleVoiceRoom?: (channelName: string) => void;
+  isScreenSharing?: boolean;
+  onToggleScreenShare?: () => void;
+  onOpenScreenShareModal?: (targetUid?: string) => void;
+  remoteScreenStreams?: Map<string, MediaStream>;
+  voiceUsers?: Array<any>;
+  isMuted?: boolean;
+  isDeafened?: boolean;
+  onToggleMic?: () => void;
+  onToggleDeafen?: () => void;
+  onDisconnectVoice?: () => void;
 }
 
 export default function ChatView({
@@ -81,6 +105,18 @@ export default function ChatView({
   currentUser = null,
   db = null,
   triggerToast,
+  activeVoiceChannel = null,
+  onToggleVoiceRoom,
+  isScreenSharing = false,
+  onToggleScreenShare,
+  onOpenScreenShareModal,
+  remoteScreenStreams = new Map(),
+  voiceUsers = [],
+  isMuted = false,
+  isDeafened = false,
+  onToggleMic,
+  onToggleDeafen,
+  onDisconnectVoice,
 }: ChatViewProps) {
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -100,7 +136,8 @@ export default function ChatView({
 
   // Selected partner modal state
   const [selectedPartner, setSelectedPartner] = useState<UserProfile | null>(null);
-  const [friendshipStatus, setFriendshipStatus] = useState<"none" | "pending" | "accepted" | "self" | "loading">("loading");
+  const [friendshipStatus, setFriendshipStatus] = useState<"none" | "incoming_pending" | "outgoing_pending" | "accepted" | "self" | "loading">("loading");
+  const [matchingFriendshipId, setMatchingFriendshipId] = useState<string | null>(null);
   const [isSendingRequest, setIsSendingRequest] = useState(false);
 
   // Process and compress image file
@@ -177,46 +214,60 @@ export default function ChatView({
   };
 
   useEffect(() => {
-    if (!selectedPartner) return;
+    if (!selectedPartner) {
+      setMatchingFriendshipId(null);
+      return;
+    }
     
     if (profile && selectedPartner.username.toLowerCase() === profile.username?.toLowerCase()) {
       setFriendshipStatus("self");
+      setMatchingFriendshipId(null);
       return;
     }
 
     setFriendshipStatus("loading");
+    if (!currentUser || !db) {
+      setFriendshipStatus("none");
+      setMatchingFriendshipId(null);
+      return;
+    }
 
-    const checkStatus = async () => {
-      if (!currentUser || !db) {
-        setFriendshipStatus("none");
-        return;
-      }
+    const friendshipsRef = collection(db, "friendships");
+    const myUsernameLower = profile?.username?.toLowerCase() || "";
+    const partnerUsernameLower = selectedPartner.username.toLowerCase();
 
-      try {
-        const friendshipsRef = collection(db, "friendships");
-        const snap = await getDocs(friendshipsRef);
-        let matchStatus: "none" | "pending" | "accepted" = "none";
+    // Listen in real-time to friendships so any accept/decline reflects instantly
+    const unsub = onSnapshot(friendshipsRef, (snap) => {
+      let matchStatus: "none" | "incoming_pending" | "outgoing_pending" | "accepted" = "none";
+      let matchId: string | null = null;
 
-        snap.docs.forEach((d) => {
-          const data = d.data();
-          const isSelfSender = data.senderId === currentUser.uid;
-          const isSelfReceiver = data.receiverId === currentUser.uid;
-          const otherUsername = isSelfSender ? data.receiverName : data.senderName;
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const isSelfSender = data.senderId === currentUser.uid || (myUsernameLower && data.senderName?.toLowerCase() === myUsernameLower);
+        const isSelfReceiver = data.receiverId === currentUser.uid || (myUsernameLower && data.receiverName?.toLowerCase() === myUsernameLower);
 
-          if ((isSelfSender || isSelfReceiver) && otherUsername?.toLowerCase() === selectedPartner.username.toLowerCase()) {
-            matchStatus = data.status === "accepted" ? "accepted" : "pending";
-          }
-        });
+        const isPartnerReceiver = data.receiverId === (selectedPartner as any).uid || data.receiverId === (selectedPartner as any).id || data.receiverName?.toLowerCase() === partnerUsernameLower;
+        const isPartnerSender = data.senderId === (selectedPartner as any).uid || data.senderId === (selectedPartner as any).id || data.senderName?.toLowerCase() === partnerUsernameLower;
 
-        setFriendshipStatus(matchStatus);
-      } catch (err) {
-        console.error("Error checking friendship status:", err);
-        setFriendshipStatus("none");
-      }
-    };
+        if (isSelfSender && isPartnerReceiver) {
+          matchId = d.id;
+          matchStatus = data.status === "accepted" ? "accepted" : "outgoing_pending";
+        } else if (isSelfReceiver && isPartnerSender) {
+          matchId = d.id;
+          matchStatus = data.status === "accepted" ? "accepted" : "incoming_pending";
+        }
+      });
 
-    checkStatus();
-  }, [selectedPartner, currentUser?.uid, db, profile]);
+      setFriendshipStatus(matchStatus);
+      setMatchingFriendshipId(matchId);
+    }, (err) => {
+      console.error("Error listening to friendship status:", err);
+      setFriendshipStatus("none");
+      setMatchingFriendshipId(null);
+    });
+
+    return () => unsub();
+  }, [selectedPartner, currentUser?.uid, db, profile?.username]);
 
   const handleAddPartnerAsFriend = async () => {
     if (!selectedPartner || !currentUser || !profile || !db) return;
@@ -233,7 +284,7 @@ export default function ChatView({
         return u.username && u.username.toLowerCase() === cleanUsername.toLowerCase();
       });
 
-      const targetUid = matchedDoc ? matchedDoc.id : `user_${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+      const targetUid = matchedDoc ? matchedDoc.id : ((selectedPartner as any).uid || (selectedPartner as any).id || `user_${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, "")}`);
       const targetUser = matchedDoc ? matchedDoc.data() : null;
 
       const friendshipId = `friend_${currentUser.uid}_${targetUid}`;
@@ -251,7 +302,8 @@ export default function ChatView({
         createdAt: new Date().toISOString(),
       });
 
-      setFriendshipStatus("pending");
+      setMatchingFriendshipId(friendshipId);
+      setFriendshipStatus("outgoing_pending");
       if (triggerToast) {
         triggerToast("Request Dispatched", `Sent a co-trader friend request to ${selectedPartner.username}.`, "success");
       }
@@ -262,6 +314,80 @@ export default function ChatView({
       }
     } finally {
       setIsSendingRequest(false);
+    }
+  };
+
+  const handleAcceptPartnerRequest = async () => {
+    if (!matchingFriendshipId || !db) return;
+    try {
+      const friendshipRef = doc(db, "friendships", matchingFriendshipId);
+      const updatePayload: any = {
+        status: "accepted",
+      };
+      if (currentUser?.uid) {
+        updatePayload.receiverId = currentUser.uid;
+      }
+      await updateDoc(friendshipRef, updatePayload);
+      setFriendshipStatus("accepted");
+      if (triggerToast) {
+        triggerToast("Co-Trader Linked", `You and ${selectedPartner?.username} are now synchronized!`, "success");
+      }
+    } catch (err: any) {
+      console.error("Failed to accept friend request:", err);
+      if (triggerToast) {
+        triggerToast("Accept Error", err.message || "Could not accept request.", "error");
+      }
+    }
+  };
+
+  const handleDeclinePartnerRequest = async () => {
+    if (!matchingFriendshipId || !db) return;
+    try {
+      await deleteDoc(doc(db, "friendships", matchingFriendshipId));
+      setFriendshipStatus("none");
+      setMatchingFriendshipId(null);
+      if (triggerToast) {
+        triggerToast("Request Declined", `Declined co-trader request from ${selectedPartner?.username}.`, "info");
+      }
+    } catch (err: any) {
+      console.error("Failed to decline friend request:", err);
+      if (triggerToast) {
+        triggerToast("Decline Error", err.message || "Could not decline request.", "error");
+      }
+    }
+  };
+
+  const handleCancelPartnerRequest = async () => {
+    if (!matchingFriendshipId || !db) return;
+    try {
+      await deleteDoc(doc(db, "friendships", matchingFriendshipId));
+      setFriendshipStatus("none");
+      setMatchingFriendshipId(null);
+      if (triggerToast) {
+        triggerToast("Request Cancelled", `Cancelled friend request to ${selectedPartner?.username}.`, "info");
+      }
+    } catch (err: any) {
+      console.error("Failed to cancel friend request:", err);
+      if (triggerToast) {
+        triggerToast("Cancel Error", err.message || "Could not cancel request.", "error");
+      }
+    }
+  };
+
+  const handleRemovePartnerFriendship = async () => {
+    if (!matchingFriendshipId || !db) return;
+    try {
+      await deleteDoc(doc(db, "friendships", matchingFriendshipId));
+      setFriendshipStatus("none");
+      setMatchingFriendshipId(null);
+      if (triggerToast) {
+        triggerToast("Co-Trader Unlinked", `Removed ${selectedPartner?.username} from friends list.`, "info");
+      }
+    } catch (err: any) {
+      console.error("Failed to remove friend:", err);
+      if (triggerToast) {
+        triggerToast("Error", err.message || "Could not remove friend link.", "error");
+      }
     }
   };
 
@@ -335,6 +461,7 @@ export default function ChatView({
   );
 
   const textChannels = channels.filter((c) => c.type === "text");
+  const voiceChannels = channels.filter((c) => c.type === "voice");
 
   // Calculate live presence counts
   const onlineCount = roomTraders.filter((t) => t.marketPresence === "active" || t.marketPresence === "idle").length;
@@ -373,7 +500,7 @@ export default function ChatView({
       {/* Middle Chat Panel */}
       <div className="flex-grow flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
         {/* Top Header / Channel Switcher Bar */}
-        <div className="flex items-center justify-between bg-[#121417]/95 border-b border-[#2A2D31]/40 px-3 py-2 shrink-0 gap-2 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between bg-[#121417]/95 border-b border-[#2A2D31]/40 px-3 py-2 shrink-0 gap-2 shadow-sm">
           {/* Channel buttons list */}
           <div className="flex items-center overflow-x-auto no-scrollbar gap-1.5 flex-1 min-w-0">
             <span className="text-[9px] font-black uppercase text-[#72767D] tracking-wider select-none pr-1 whitespace-nowrap hidden sm:inline">
@@ -399,23 +526,172 @@ export default function ChatView({
                 </button>
               );
             })}
+
+            {/* Voice Channels in Chat Top Bar */}
+            {voiceChannels.map((chan) => {
+              const isConnected = activeVoiceChannel === chan.name;
+              const hasStream = voiceUsers.some((u) => u.isStreaming && (u.channel === chan.name || isConnected));
+              return (
+                <button
+                  key={chan.id}
+                  onClick={() => onToggleVoiceRoom && onToggleVoiceRoom(chan.name)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 border select-none cursor-pointer ${
+                    isConnected
+                      ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-300 shadow-md shadow-emerald-900/20"
+                      : "bg-[#1E2023] border-[#2A2D31]/50 text-gray-400 hover:text-white hover:border-[#2A2D31]"
+                  }`}
+                  title={isConnected ? `Connected to ${chan.name} (Click to disconnect)` : `Join voice desk ${chan.name}`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400 animate-ping" : "bg-gray-500"}`} />
+                  <Radio className={`w-3 h-3 ${isConnected ? "text-emerald-400" : "text-gray-400"}`} />
+                  <span>{chan.name}</span>
+                  {hasStream && (
+                    <span className="bg-rose-600 text-white text-[8px] font-black px-1 rounded uppercase tracking-wider animate-pulse">
+                      LIVE
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Members Toggle Button (Always visible on mobile & tablet, easy access) */}
-          <button
-            onClick={() => setIsMobileMembersOpen((prev) => !prev)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-gray-300 hover:text-white transition text-xs font-bold shrink-0 cursor-pointer shadow-sm"
-            title="View Group Members & Live Online Status"
-          >
-            <div className="relative">
-              <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="absolute -top-1 -right-1 block h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-[#121417]" />
-            </div>
-            <span className="text-[11px] font-mono font-semibold">
-              {onlineCount}/{totalCount} <span className="hidden sm:inline text-gray-400">Online</span>
-            </span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Screen Share Action Button in Chat Header */}
+            {onToggleScreenShare && (
+              <button
+                onClick={onToggleScreenShare}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 border shadow-sm ${
+                  isScreenSharing
+                    ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-500 animate-pulse"
+                    : activeVoiceChannel
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400"
+                    : "bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-500/30"
+                }`}
+                title={
+                  isScreenSharing
+                    ? "Click to Stop Sharing Screen"
+                    : activeVoiceChannel
+                    ? "Start Sharing Your Trading Screen / Charts (P2P)"
+                    : "Connect to Voice & Start Screen Share"
+                }
+              >
+                {isScreenSharing ? (
+                  <>
+                    <MonitorX className="w-3.5 h-3.5" />
+                    <span>Stop Share</span>
+                  </>
+                ) : (
+                  <>
+                    <MonitorPlay className="w-3.5 h-3.5 text-indigo-400 group-hover:text-white" />
+                    <span>Share Screen</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Watch Stream Button (When anyone is streaming) */}
+            {(remoteScreenStreams.size > 0 || isScreenSharing) && onOpenScreenShareModal && (
+              <button
+                onClick={() => onOpenScreenShareModal()}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 hover:text-white text-xs font-black transition cursor-pointer shrink-0 animate-pulse shadow-sm"
+                title="Open Live Screen Share Viewer"
+              >
+                <Tv className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Watch Stream ({remoteScreenStreams.size + (isScreenSharing ? 1 : 0)})</span>
+              </button>
+            )}
+
+            {/* Members Toggle Button */}
+            <button
+              onClick={() => setIsMobileMembersOpen((prev) => !prev)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-gray-300 hover:text-white transition text-xs font-bold shrink-0 cursor-pointer shadow-sm"
+              title="View Group Members & Live Online Status"
+            >
+              <div className="relative">
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="absolute -top-1 -right-1 block h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-[#121417]" />
+              </div>
+              <span className="text-[11px] font-mono font-semibold">
+                {onlineCount}/{totalCount} <span className="hidden sm:inline text-gray-400">Online</span>
+              </span>
+            </button>
+          </div>
         </div>
+
+        {/* Persistent Voice Bar if connected while in Chat */}
+        {activeVoiceChannel && (
+          <div className="bg-[#121417] border-b border-[#2A2D31] px-3 py-1.5 flex items-center justify-between gap-2 shrink-0 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+              <span className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider truncate">
+                Voice Desk: #{activeVoiceChannel}
+              </span>
+              {isScreenSharing && (
+                <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 animate-pulse">
+                  Streaming Live
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {onToggleMic && (
+                <button
+                  onClick={onToggleMic}
+                  className={`p-1.5 rounded border transition cursor-pointer text-xs font-bold flex items-center gap-1 ${
+                    isMuted
+                      ? "bg-rose-600/20 border-rose-500/40 text-rose-400"
+                      : "bg-[#1E2023] border-[#2A2D31] text-gray-300 hover:text-white"
+                  }`}
+                  title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
+                >
+                  {isMuted ? <MicOff className="w-3.5 h-3.5 text-rose-400" /> : <Mic className="w-3.5 h-3.5 text-emerald-400" />}
+                  <span className="text-[10px] hidden sm:inline">{isMuted ? "Muted" : "Mute"}</span>
+                </button>
+              )}
+
+              {onToggleDeafen && (
+                <button
+                  onClick={onToggleDeafen}
+                  className={`p-1.5 rounded border transition cursor-pointer text-xs font-bold flex items-center gap-1 ${
+                    isDeafened
+                      ? "bg-rose-600/20 border-rose-500/40 text-rose-400"
+                      : "bg-[#1E2023] border-[#2A2D31] text-gray-300 hover:text-white"
+                  }`}
+                  title={isDeafened ? "Undeafen Audio" : "Deafen Audio"}
+                >
+                  {isDeafened ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Headphones className="w-3.5 h-3.5 text-indigo-400" />}
+                  <span className="text-[10px] hidden sm:inline">{isDeafened ? "Deafened" : "Deafen"}</span>
+                </button>
+              )}
+
+              {onToggleScreenShare && (
+                <button
+                  onClick={onToggleScreenShare}
+                  className={`p-1.5 rounded border transition cursor-pointer text-xs font-bold flex items-center gap-1 ${
+                    isScreenSharing
+                      ? "bg-rose-600 text-white border-rose-500"
+                      : "bg-indigo-600/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30"
+                  }`}
+                  title={isScreenSharing ? "Stop Screen Share" : "Share Trading Screen"}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span className="text-[10px] hidden sm:inline">{isScreenSharing ? "Stop Share" : "Share Screen"}</span>
+                </button>
+              )}
+
+              {onDisconnectVoice && (
+                <button
+                  onClick={onDisconnectVoice}
+                  className="p-1.5 bg-rose-950/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 hover:text-white rounded transition cursor-pointer text-xs font-bold flex items-center gap-1"
+                  title="Disconnect from Voice"
+                >
+                  <PhoneOff className="w-3.5 h-3.5" />
+                  <span className="text-[10px] hidden sm:inline">Leave</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Message Stream */}
         <div
@@ -1213,12 +1489,48 @@ export default function ChatView({
                     This is your profile node
                   </div>
                 ) : friendshipStatus === "accepted" ? (
-                  <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold py-2.5 px-3 rounded-xl shadow-inner">
-                    <UserCheck className="w-4 h-4" /> Co-Trader Linked
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold py-2.5 px-3 rounded-xl shadow-inner">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Co-Trader Linked
+                    </div>
+                    <button
+                      onClick={handleRemovePartnerFriendship}
+                      className="w-full text-center text-[11px] text-gray-500 hover:text-rose-400 py-1 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <UserX className="w-3 h-3" /> Unlink Co-Trader
+                    </button>
                   </div>
-                ) : friendshipStatus === "pending" ? (
-                  <div className="flex items-center justify-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl shadow-inner">
-                    <Clock className="w-4 h-4 animate-spin" /> Friend Request Pending
+                ) : friendshipStatus === "incoming_pending" ? (
+                  <div className="space-y-2">
+                    <div className="text-center text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 py-1.5 px-2 rounded-lg">
+                      Received Co-Trader Link Request!
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={handleAcceptPartnerRequest}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-2 rounded-xl transition shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <UserCheck className="w-4 h-4" /> Accept Link
+                      </button>
+                      <button
+                        onClick={handleDeclinePartnerRequest}
+                        className="bg-[#2A2D31] hover:bg-rose-900/30 hover:text-rose-300 text-gray-300 font-bold text-xs py-2.5 px-2 rounded-xl border border-[#3A3D42] hover:border-rose-500/40 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" /> Decline
+                      </button>
+                    </div>
+                  </div>
+                ) : friendshipStatus === "outgoing_pending" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl shadow-inner">
+                      <Clock className="w-4 h-4 animate-spin" /> Request Sent (Waiting...)
+                    </div>
+                    <button
+                      onClick={handleCancelPartnerRequest}
+                      className="w-full bg-[#1E2023] hover:bg-rose-900/20 hover:text-rose-300 text-gray-400 font-semibold text-xs py-2 rounded-xl border border-[#2A2D31] hover:border-rose-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <UserX className="w-3.5 h-3.5" /> Cancel Request
+                    </button>
                   </div>
                 ) : (
                   <button

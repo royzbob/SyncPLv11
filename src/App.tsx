@@ -51,6 +51,11 @@ import {
   Bookmark,
   Tag,
   Check,
+  Monitor,
+  MonitorPlay,
+  MonitorX,
+  Radio,
+  Tv,
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
@@ -123,6 +128,7 @@ import FriendsView from "./components/FriendsView";
 import PayoutsView from "./components/PayoutsView";
 import UpdateNotifier from "./components/UpdateNotifier";
 import WebUpdateNotifier from "./components/WebUpdateNotifier";
+import { LiveScreenShareModal } from "./components/LiveScreenShareModal";
 
 export default function App() {
   // Authentication & Profile States
@@ -165,6 +171,13 @@ export default function App() {
   const [isDeafened, setIsDeafened] = useState(false);
   const [isMutedAll, setIsMutedAll] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+
+  // Screen Sharing WebRTC States (P2P zero cloud cost)
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
+  const [remoteScreenStreams, setRemoteScreenStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [activeScreenStreamUid, setActiveScreenStreamUid] = useState<string | null>(null);
+  const [isScreenModalOpen, setIsScreenModalOpen] = useState(false);
 
   const [globalVolume, setGlobalVolume] = useState<number>(() => {
     try {
@@ -423,6 +436,30 @@ export default function App() {
       userVolumes,
       onError: (err) => {
         console.warn("WebRTC voice initialization notice:", err);
+      },
+      onScreenShareStateChange: (isSharing, stream) => {
+        setIsScreenSharing(isSharing);
+        setLocalScreenStream(stream);
+        if (isSharing && stream) {
+          setActiveScreenStreamUid(currentUser.uid);
+          setIsScreenModalOpen(true);
+        }
+      },
+      onRemoteScreenShare: (peerUid, stream) => {
+        if (stream) {
+          setRemoteScreenStreams((prev) => {
+            const next = new Map(prev);
+            next.set(peerUid, stream);
+            return next;
+          });
+          triggerToast("Screen Share Live", "A desk trader is sharing their live trading terminal.", "info");
+        } else {
+          setRemoteScreenStreams((prev) => {
+            const next = new Map(prev);
+            next.delete(peerUid);
+            return next;
+          });
+        }
       },
     });
 
@@ -2792,6 +2829,72 @@ export default function App() {
     }
   };
 
+  const handleToggleScreenShare = async () => {
+    if (!activeVoiceChannel) {
+      const defaultVoice = channels.find((c) => c.type === "voice")?.name || "General Trading";
+      handleToggleVoiceRoomWithLockCheck(defaultVoice);
+      triggerToast("Joining Voice Desk", `Connecting to #${defaultVoice} to start your screen share...`, "info");
+      setTimeout(async () => {
+        if (webrtcVoiceRef.current) {
+          try {
+            const stream = await webrtcVoiceRef.current.startScreenShare();
+            if (stream) {
+              setIsScreenSharing(true);
+              setLocalScreenStream(stream);
+              setActiveScreenStreamUid(currentUser?.uid || null);
+              setIsScreenModalOpen(true);
+              triggerToast("Screen Share Active", "Broadcasting your live trading screen (P2P zero cloud cost).", "success");
+            }
+          } catch (err: any) {
+            console.warn("Screen share start error:", err);
+          }
+        }
+      }, 800);
+      return;
+    }
+
+    if (isScreenSharing) {
+      if (webrtcVoiceRef.current) {
+        webrtcVoiceRef.current.stopScreenShare();
+      }
+      setIsScreenSharing(false);
+      setLocalScreenStream(null);
+      if (activeScreenStreamUid === currentUser?.uid) {
+        setIsScreenModalOpen(false);
+        setActiveScreenStreamUid(null);
+      }
+      triggerToast("Screen Share Ended", "Live trading stream ended.", "info");
+    } else {
+      if (webrtcVoiceRef.current) {
+        try {
+          const stream = await webrtcVoiceRef.current.startScreenShare();
+          if (stream) {
+            setIsScreenSharing(true);
+            setLocalScreenStream(stream);
+            setActiveScreenStreamUid(currentUser?.uid || null);
+            setIsScreenModalOpen(true);
+            triggerToast("Screen Share Active", "Broadcasting your live trading screen (P2P zero cloud cost).", "success");
+          }
+        } catch (err: any) {
+          console.warn("Screen share start error:", err);
+          triggerToast("Screen Share Notice", "Screen capture was cancelled or not granted.", "info");
+        }
+      } else {
+        triggerToast("Voice Connection Initializing", "Please wait a moment for the voice mesh to connect.", "info");
+      }
+    }
+  };
+
+  const handleOpenScreenShareModal = (targetUid?: string) => {
+    const uidToOpen = targetUid || (isScreenSharing ? currentUser?.uid : (remoteScreenStreams.keys().next().value || null));
+    if (uidToOpen) {
+      setActiveScreenStreamUid(uidToOpen);
+      setIsScreenModalOpen(true);
+    } else {
+      triggerToast("No Active Stream", "No one is currently screen sharing in this channel.", "info");
+    }
+  };
+
   const handleRequestNotificationPermission = async () => {
     if (!("Notification" in window)) {
       triggerToast("Not Supported", "Browser push notifications are not supported in this browser.", "info");
@@ -3106,6 +3209,10 @@ export default function App() {
                     onToggleMuteUser={handleToggleMuteUser}
                     userVolumes={userVolumes}
                     onChangeUserVolume={handleChangeUserVolume}
+                    isScreenSharing={isScreenSharing}
+                    onToggleScreenShare={handleToggleScreenShare}
+                    onOpenScreenShareModal={handleOpenScreenShareModal}
+                    remoteScreenStreams={remoteScreenStreams}
                   />
                 </div>
               </div>
@@ -3169,6 +3276,10 @@ export default function App() {
                   onToggleMuteUser={handleToggleMuteUser}
                   userVolumes={userVolumes}
                   onChangeUserVolume={handleChangeUserVolume}
+                  isScreenSharing={isScreenSharing}
+                  onToggleScreenShare={handleToggleScreenShare}
+                  onOpenScreenShareModal={handleOpenScreenShareModal}
+                  remoteScreenStreams={remoteScreenStreams}
                 />
               )}
             </div>
@@ -3300,7 +3411,51 @@ export default function App() {
                   </h2>
                 </div>
 
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+                  {/* Screen Share / Watch Live Streams Button in Global Header */}
+                  <button
+                    onClick={() => {
+                      if (remoteScreenStreams.size > 0 && !isScreenSharing) {
+                        handleOpenScreenShareModal();
+                      } else {
+                        handleToggleScreenShare();
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition cursor-pointer text-[10px] md:text-xs font-bold uppercase tracking-wider shadow-sm select-none ${
+                      isScreenSharing
+                        ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-500 animate-pulse"
+                        : remoteScreenStreams.size > 0
+                        ? "bg-emerald-600/25 hover:bg-emerald-600/35 text-emerald-300 border-emerald-500/50 animate-pulse"
+                        : activeVoiceChannel
+                        ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400"
+                        : "bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border-indigo-500/30"
+                    }`}
+                    title={
+                      isScreenSharing
+                        ? "Stop sharing your trading terminal"
+                        : remoteScreenStreams.size > 0
+                        ? `Watch ${remoteScreenStreams.size} live trader stream(s)`
+                        : "Start sharing your screen (P2P zero data cost)"
+                    }
+                  >
+                    {isScreenSharing ? (
+                      <>
+                        <MonitorX className="w-3.5 h-3.5" />
+                        <span>Stop Share</span>
+                      </>
+                    ) : remoteScreenStreams.size > 0 ? (
+                      <>
+                        <Tv className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Watch Stream ({remoteScreenStreams.size})</span>
+                      </>
+                    ) : (
+                      <>
+                        <Monitor className="w-3.5 h-3.5 text-indigo-400" />
+                        <span className="hidden sm:inline">Share Screen</span>
+                      </>
+                    )}
+                  </button>
+
                   {/* View What's New / App Update Release Notes button */}
                   <button
                     onClick={() => {
@@ -3651,6 +3806,18 @@ export default function App() {
                           currentUser={currentUser}
                           db={db}
                           triggerToast={triggerToast}
+                          activeVoiceChannel={activeVoiceChannel}
+                          onToggleVoiceRoom={handleToggleVoiceRoomWithLockCheck}
+                          isScreenSharing={isScreenSharing}
+                          onToggleScreenShare={handleToggleScreenShare}
+                          onOpenScreenShareModal={handleOpenScreenShareModal}
+                          remoteScreenStreams={remoteScreenStreams}
+                          voiceUsers={voiceUsers}
+                          isMuted={isMuted}
+                          isDeafened={isDeafened}
+                          onToggleMic={handleToggleMic}
+                          onToggleDeafen={handleToggleDeafen}
+                          onDisconnectVoice={handleDisconnectVoice}
                         />
                       )}
 
@@ -4387,6 +4554,79 @@ export default function App() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Live WebRTC Screen Share Modal */}
+          {isScreenModalOpen && (
+            <LiveScreenShareModal
+              isOpen={isScreenModalOpen}
+              onClose={() => setIsScreenModalOpen(false)}
+              stream={
+                activeScreenStreamUid === currentUser?.uid
+                  ? localScreenStream
+                  : (activeScreenStreamUid ? remoteScreenStreams.get(activeScreenStreamUid) || null : null)
+              }
+              streamerUser={(() => {
+                if (activeScreenStreamUid === currentUser?.uid) {
+                  return {
+                    uid: currentUser?.uid || "",
+                    username: profile?.username || "You",
+                    avatarColor: profile?.avatarColor,
+                    avatarType: profile?.avatarType,
+                    avatarVal: profile?.avatarVal,
+                  };
+                }
+                const vUser = voiceUsers.find((u) => u.userId === activeScreenStreamUid || u.id === activeScreenStreamUid);
+                if (vUser) {
+                  return {
+                    uid: vUser.userId || vUser.id,
+                    username: vUser.username,
+                    avatarColor: vUser.avatarColor,
+                    avatarType: vUser.avatarType,
+                    avatarVal: vUser.avatarVal,
+                  };
+                }
+                const pUser = publicUsers.find((u) => u.uid === activeScreenStreamUid);
+                if (pUser) {
+                  return {
+                    uid: pUser.uid,
+                    username: pUser.username || "Trader",
+                    avatarColor: pUser.avatarColor,
+                    avatarType: pUser.avatarType,
+                    avatarVal: pUser.avatarVal,
+                  };
+                }
+                return {
+                  uid: activeScreenStreamUid || "",
+                  username: "Desk Trader",
+                };
+              })()}
+              isLocalUserStream={activeScreenStreamUid === currentUser?.uid}
+              onStopScreenShare={handleToggleScreenShare}
+              activeVoiceUsers={voiceUsers}
+              availableStreams={(() => {
+                const streams: Array<{ uid: string; username: string; stream: MediaStream; isLocal: boolean }> = [];
+                if (isScreenSharing && localScreenStream && currentUser) {
+                  streams.push({
+                    uid: currentUser.uid,
+                    username: profile?.username || "You",
+                    stream: localScreenStream,
+                    isLocal: true,
+                  });
+                }
+                remoteScreenStreams.forEach((stream, uid) => {
+                  const u = voiceUsers.find((v) => v.userId === uid || v.id === uid) || publicUsers.find((p) => p.uid === uid);
+                  streams.push({
+                    uid,
+                    username: u?.username || "Desk Peer",
+                    stream,
+                    isLocal: false,
+                  });
+                });
+                return streams;
+              })()}
+              onSelectStream={(uid) => setActiveScreenStreamUid(uid)}
+            />
           )}
 
           <UpdateNotifier />

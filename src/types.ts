@@ -109,6 +109,8 @@ export interface VoiceUser {
   avatarColor?: string;
   avatarType?: "emoji" | "url";
   avatarVal?: string;
+  isScreenSharing?: boolean;
+  screenShareStartedAt?: string;
 }
 
 export interface LiveTrade {
