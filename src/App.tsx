@@ -19,6 +19,7 @@ import {
   deleteDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import {
   TrendingUp,
@@ -1116,7 +1117,11 @@ export default function App() {
         const data = d.data();
         map.set(d.id, { id: d.id, ...data } as Channel);
       });
-      const sorted = Array.from(map.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const sorted = Array.from(map.values()).sort((a, b) => {
+        const orderA = typeof a.order === "number" ? a.order : new Date(a.createdAt).getTime();
+        const orderB = typeof b.order === "number" ? b.order : new Date(b.createdAt).getTime();
+        return orderA - orderB;
+      });
       setChannels(sorted);
 
       // If no channels exist inside room, creator should initialize standard default channels
@@ -1479,12 +1484,12 @@ export default function App() {
     try {
       const channelsCol = collection(db, "channels");
       const defaults = [
-        { name: "general-trading", type: "text", groupId: roomId, createdAt: new Date().toISOString() },
-        { name: "pnl-flex", type: "text", groupId: roomId, createdAt: new Date().toISOString() },
-        { name: "market-alpha", type: "text", groupId: roomId, createdAt: new Date().toISOString() },
-        { name: "voice-general-chat", type: "text", groupId: roomId, createdAt: new Date().toISOString() },
-        { name: "Voice Desk 1", type: "voice", groupId: roomId, createdAt: new Date().toISOString() },
-        { name: "🤖 AI Risk Assistant", type: "voice", groupId: roomId, createdAt: new Date().toISOString() },
+        { name: "general-trading", type: "text", groupId: roomId, createdAt: new Date().toISOString(), order: 0 },
+        { name: "pnl-flex", type: "text", groupId: roomId, createdAt: new Date().toISOString(), order: 1 },
+        { name: "market-alpha", type: "text", groupId: roomId, createdAt: new Date().toISOString(), order: 2 },
+        { name: "voice-general-chat", type: "text", groupId: roomId, createdAt: new Date().toISOString(), order: 3 },
+        { name: "Voice Desk 1", type: "voice", groupId: roomId, createdAt: new Date().toISOString(), order: 0 },
+        { name: "🤖 AI Risk Assistant", type: "voice", groupId: roomId, createdAt: new Date().toISOString(), order: 1 },
       ];
       for (const item of defaults) {
         await addDoc(channelsCol, item);
@@ -1694,13 +1699,56 @@ export default function App() {
   const handleAddChannel = async (name: string, type: "text" | "voice") => {
     if (!activeRoom) return;
     const channelsCol = collection(db, "channels");
+    const sameTypeChannels = channels.filter((c) => c.type === type);
+    const maxOrder = sameTypeChannels.reduce((max, c) => Math.max(max, typeof c.order === "number" ? c.order : 0), -1);
     await addDoc(channelsCol, {
       name,
       type,
       groupId: activeRoom.id,
       createdAt: new Date().toISOString(),
+      order: maxOrder + 1,
     });
     triggerToast("Channel Created", `Node #${name} is now online.`, "success");
+  };
+
+  const handleMoveChannel = async (id: string, direction: "up" | "down") => {
+    const targetChannel = channels.find((c) => c.id === id);
+    if (!targetChannel) return;
+
+    const sameTypeChannels = channels.filter((c) => c.type === targetChannel.type);
+    const currentIndex = sameTypeChannels.findIndex((c) => c.id === id);
+    if (currentIndex === -1) return;
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= sameTypeChannels.length) return;
+
+    // Create a reordered array for this channel type
+    const reordered = [...sameTypeChannels];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    // Optimistically update local channels state
+    const otherTypeChannels = channels.filter((c) => c.type !== targetChannel.type);
+    const updatedReordered = reordered.map((chan, idx) => ({ ...chan, order: idx }));
+    const updatedChannels = [...otherTypeChannels, ...updatedReordered].sort((a, b) => {
+      const orderA = typeof a.order === "number" ? a.order : new Date(a.createdAt).getTime();
+      const orderB = typeof b.order === "number" ? b.order : new Date(b.createdAt).getTime();
+      return orderA - orderB;
+    });
+    setChannels(updatedChannels);
+
+    try {
+      const batch = writeBatch(db);
+      reordered.forEach((chan, idx) => {
+        const chanRef = doc(db, "channels", chan.id);
+        batch.update(chanRef, { order: idx });
+      });
+      await batch.commit();
+      triggerToast("Channel Order Saved", `Positioned #${targetChannel.name} ${direction === "up" ? "higher" : "lower"}.`, "success");
+    } catch (err: any) {
+      console.error("Failed to reorder channel:", err);
+      triggerToast("Reorder Error", err.message || "Failed to update channel sequence.", "error");
+    }
   };
 
   const handleDeleteChannel = async (id: string, name: string) => {
@@ -2963,6 +3011,7 @@ export default function App() {
                       handleOpenCreateChannelModal(type);
                       setIsMobileSidebarOpen(false);
                     }}
+                    onMoveChannel={handleMoveChannel}
                     onCopyRoomCode={() => {
                       navigator.clipboard.writeText(activeRoom.id);
                       triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
@@ -3024,6 +3073,7 @@ export default function App() {
                   isCreatorOrMod={isCreatorOrMod}
                   onKickVoiceUser={handleKickVoiceUser}
                   onAddChannelClick={handleOpenCreateChannelModal}
+                  onMoveChannel={handleMoveChannel}
                   onCopyRoomCode={() => {
                     navigator.clipboard.writeText(activeRoom.id);
                     triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
@@ -3580,6 +3630,7 @@ export default function App() {
                       onDeleteChannel={handleDeleteChannel}
                       onRenameChannel={handleRenameChannelTrigger}
                       onSetChannelPin={handleSetChannelPin}
+                      onMoveChannel={handleMoveChannel}
                       onCopyRoomCode={() => {
                         navigator.clipboard.writeText(activeRoom.id);
                         triggerToast("Room Code Copied", "Share invite code with your partners.", "info");

@@ -31,6 +31,10 @@ import {
   Download,
   Megaphone,
   Eye,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
 } from "lucide-react";
 import { Channel, Room, UserProfile } from "../types";
 import { doc, getDoc } from "firebase/firestore";
@@ -52,6 +56,7 @@ interface SettingsViewProps {
   onDeleteChannel: (id: string, name: string) => Promise<void>;
   onRenameChannel: (id: string, name: string) => void;
   onSetChannelPin: (id: string, pin: string) => Promise<void>;
+  onMoveChannel?: (id: string, direction: "up" | "down") => Promise<void>;
   onCopyRoomCode: () => void;
   onJoinRoomCode: (code: string) => Promise<void>;
   onCreateNewRoom: () => Promise<void>;
@@ -120,6 +125,7 @@ export default function SettingsView({
   onDeleteChannel,
   onRenameChannel,
   onSetChannelPin,
+  onMoveChannel,
   onCopyRoomCode,
   onJoinRoomCode,
   onCreateNewRoom,
@@ -1191,122 +1197,330 @@ export default function SettingsView({
           </div>
 
           {/* Manage Channels list */}
-          <div className="glass-panel p-5 rounded space-y-3 border border-[#2A2D31]">
-            <h4 className="font-bold text-gray-100 text-sm flex items-center gap-2">
-              <Settings className="text-[#5865F2] w-4.5 h-4.5" /> Manage Channels
-            </h4>
+          <div className="glass-panel p-5 rounded space-y-4 border border-[#2A2D31]">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-gray-100 text-sm flex items-center gap-2">
+                <Settings className="text-[#5865F2] w-4.5 h-4.5" /> Manage Channels & Order
+              </h4>
+              <span className="text-[10px] text-gray-500 font-medium">
+                Use ▲ / ▼ or drag to arrange
+              </span>
+            </div>
 
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 no-scrollbar">
-              {channels.map((chan) => {
-                const isEditingPin = editingPinChannelId === chan.id;
-                const hasPin = !!chan.pin;
+            <div className="space-y-4 max-h-72 overflow-y-auto pr-1 no-scrollbar">
+              {/* Text Channels Group */}
+              {(() => {
+                const textList = channels.filter((c) => c.type === "text");
+                const voiceList = channels.filter((c) => c.type === "voice");
+
                 return (
-                  <div
-                    key={chan.id}
-                    className="flex flex-col gap-2 p-2 bg-[#121417] border border-[#2A2D31] rounded"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 min-w-0">
-                        <span className="text-xs text-[#8E9297] font-bold">
-                          {chan.type === "text" ? "#" : "🔊"}
-                        </span>
-                        <span className="text-xs text-gray-300 font-semibold truncate">
-                          {chan.name}
-                        </span>
-                        {hasPin && (
-                          <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10" title={`Locked with PIN: ${chan.pin}`} />
-                        )}
-                      </div>
-
-                      {isCreatorOrMod ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isEditingPin) {
-                                setEditingPinChannelId(null);
-                              } else {
-                                setEditingPinChannelId(chan.id);
-                                setPinValue(chan.pin || "");
-                              }
-                            }}
-                            className={`text-xs transition p-1.5 rounded cursor-pointer ${
-                              hasPin
-                                ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                                : "text-gray-400 hover:text-gray-200 hover:bg-gray-500/10"
-                            }`}
-                            title={hasPin ? `Modify PIN (Current: ${chan.pin}) / Unlock` : "Lock with PIN"}
-                          >
-                            <Lock className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onRenameChannel(chan.id, chan.name)}
-                            className="text-xs text-indigo-400 hover:text-indigo-300 transition p-1.5 hover:bg-[#1E2023] rounded cursor-pointer"
-                            title="Rename"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onDeleteChannel(chan.id, chan.name)}
-                            className="text-xs text-rose-400 hover:text-rose-300 transition p-1.5 hover:bg-rose-500/10 rounded cursor-pointer"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                  <>
+                    {textList.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1">
+                          Text Channels ({textList.length})
                         </div>
-                      ) : (
-                        <span className="text-[8px] text-gray-500 bg-[#121417] px-2 py-1 rounded">
-                          {hasPin ? "PIN Protected" : "Public"}
-                        </span>
-                      )}
-                    </div>
+                        {textList.map((chan, idx) => {
+                          const isEditingPin = editingPinChannelId === chan.id;
+                          const hasPin = !!chan.pin;
+                          const isFirst = idx === 0;
+                          const isLast = idx === textList.length - 1;
 
-                    {isEditingPin && (
-                      <div className="flex items-center gap-2 mt-1 pt-1.5 border-t border-[#2A2D31]/50">
-                        <input
-                          type="text"
-                          placeholder="PIN (e.g. 1234)"
-                          value={pinValue}
-                          onChange={(e) => setPinValue(e.target.value)}
-                          maxLength={10}
-                          className="flex-1 bg-[#0F1113] border border-[#2A2D31] rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-[#5865F2]"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await onSetChannelPin(chan.id, pinValue.trim());
-                            setEditingPinChannelId(null);
-                          }}
-                          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold cursor-pointer transition"
-                        >
-                          Save
-                        </button>
-                        {hasPin && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await onSetChannelPin(chan.id, "");
-                              setEditingPinChannelId(null);
-                            }}
-                            className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold cursor-pointer transition"
-                          >
-                            Remove
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setEditingPinChannelId(null)}
-                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-[10px] font-bold cursor-pointer transition"
-                        >
-                          Cancel
-                        </button>
+                          return (
+                            <div
+                              key={chan.id}
+                              className="flex flex-col gap-2 p-2 bg-[#121417] border border-[#2A2D31] rounded hover:border-gray-700 transition"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                  <span className="text-[10px] bg-[#1E2023] text-gray-400 font-mono px-1.5 py-0.5 rounded border border-[#2A2D31]/40 shrink-0">
+                                    #{idx + 1}
+                                  </span>
+                                  <span className="text-xs text-indigo-400 font-bold shrink-0">#</span>
+                                  <span className="text-xs text-gray-200 font-semibold truncate">
+                                    {chan.name}
+                                  </span>
+                                  {hasPin && (
+                                    <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0" title={`Locked with PIN: ${chan.pin}`} />
+                                  )}
+                                </div>
+
+                                {isCreatorOrMod ? (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {onMoveChannel && (
+                                      <div className="flex items-center bg-[#1A1D21] p-0.5 rounded border border-[#2A2D31]/50 mr-1">
+                                        <button
+                                          type="button"
+                                          disabled={isFirst}
+                                          onClick={() => onMoveChannel(chan.id, "up")}
+                                          className={`p-1 rounded transition ${
+                                            isFirst
+                                              ? "text-gray-600 cursor-not-allowed opacity-30"
+                                              : "text-gray-300 hover:text-white hover:bg-[#2A2D31] cursor-pointer"
+                                          }`}
+                                          title="Move Up"
+                                        >
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isLast}
+                                          onClick={() => onMoveChannel(chan.id, "down")}
+                                          className={`p-1 rounded transition ${
+                                            isLast
+                                              ? "text-gray-600 cursor-not-allowed opacity-30"
+                                              : "text-gray-300 hover:text-white hover:bg-[#2A2D31] cursor-pointer"
+                                          }`}
+                                          title="Move Down"
+                                        >
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isEditingPin) {
+                                          setEditingPinChannelId(null);
+                                        } else {
+                                          setEditingPinChannelId(chan.id);
+                                          setPinValue(chan.pin || "");
+                                        }
+                                      }}
+                                      className={`text-xs transition p-1.5 rounded cursor-pointer ${
+                                        hasPin
+                                          ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                          : "text-gray-400 hover:text-gray-200 hover:bg-gray-500/10"
+                                      }`}
+                                      title={hasPin ? `Modify PIN (Current: ${chan.pin}) / Unlock` : "Lock with PIN"}
+                                    >
+                                      <Lock className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onRenameChannel(chan.id, chan.name)}
+                                      className="text-xs text-indigo-400 hover:text-indigo-300 transition p-1.5 hover:bg-[#1E2023] rounded cursor-pointer"
+                                      title="Rename"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onDeleteChannel(chan.id, chan.name)}
+                                      className="text-xs text-rose-400 hover:text-rose-300 transition p-1.5 hover:bg-rose-500/10 rounded cursor-pointer"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[8px] text-gray-500 bg-[#121417] px-2 py-1 rounded">
+                                    {hasPin ? "PIN Protected" : "Public"}
+                                  </span>
+                                )}
+                              </div>
+
+                              {isEditingPin && (
+                                <div className="flex items-center gap-2 mt-1 pt-1.5 border-t border-[#2A2D31]/50">
+                                  <input
+                                    type="text"
+                                    placeholder="PIN (e.g. 1234)"
+                                    value={pinValue}
+                                    onChange={(e) => setPinValue(e.target.value)}
+                                    maxLength={10}
+                                    className="flex-1 bg-[#0F1113] border border-[#2A2D31] rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-[#5865F2]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await onSetChannelPin(chan.id, pinValue.trim());
+                                      setEditingPinChannelId(null);
+                                    }}
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold cursor-pointer transition"
+                                  >
+                                    Save
+                                  </button>
+                                  {hasPin && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await onSetChannelPin(chan.id, "");
+                                        setEditingPinChannelId(null);
+                                      }}
+                                      className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold cursor-pointer transition"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPinChannelId(null)}
+                                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-[10px] font-bold cursor-pointer transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
-                  </div>
+
+                    {voiceList.length > 0 && (
+                      <div className="space-y-1.5 pt-2 border-t border-[#2A2D31]/40">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1">
+                          Voice Rooms ({voiceList.length})
+                        </div>
+                        {voiceList.map((chan, idx) => {
+                          const isEditingPin = editingPinChannelId === chan.id;
+                          const hasPin = !!chan.pin;
+                          const isFirst = idx === 0;
+                          const isLast = idx === voiceList.length - 1;
+
+                          return (
+                            <div
+                              key={chan.id}
+                              className="flex flex-col gap-2 p-2 bg-[#121417] border border-[#2A2D31] rounded hover:border-gray-700 transition"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                  <span className="text-[10px] bg-[#1E2023] text-gray-400 font-mono px-1.5 py-0.5 rounded border border-[#2A2D31]/40 shrink-0">
+                                    #{idx + 1}
+                                  </span>
+                                  <span className="text-xs text-emerald-400 font-bold shrink-0">🔊</span>
+                                  <span className="text-xs text-gray-200 font-semibold truncate">
+                                    {chan.name}
+                                  </span>
+                                  {hasPin && (
+                                    <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0" title={`Locked with PIN: ${chan.pin}`} />
+                                  )}
+                                </div>
+
+                                {isCreatorOrMod ? (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {onMoveChannel && (
+                                      <div className="flex items-center bg-[#1A1D21] p-0.5 rounded border border-[#2A2D31]/50 mr-1">
+                                        <button
+                                          type="button"
+                                          disabled={isFirst}
+                                          onClick={() => onMoveChannel(chan.id, "up")}
+                                          className={`p-1 rounded transition ${
+                                            isFirst
+                                              ? "text-gray-600 cursor-not-allowed opacity-30"
+                                              : "text-gray-300 hover:text-white hover:bg-[#2A2D31] cursor-pointer"
+                                          }`}
+                                          title="Move Up"
+                                        >
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isLast}
+                                          onClick={() => onMoveChannel(chan.id, "down")}
+                                          className={`p-1 rounded transition ${
+                                            isLast
+                                              ? "text-gray-600 cursor-not-allowed opacity-30"
+                                              : "text-gray-300 hover:text-white hover:bg-[#2A2D31] cursor-pointer"
+                                          }`}
+                                          title="Move Down"
+                                        >
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isEditingPin) {
+                                          setEditingPinChannelId(null);
+                                        } else {
+                                          setEditingPinChannelId(chan.id);
+                                          setPinValue(chan.pin || "");
+                                        }
+                                      }}
+                                      className={`text-xs transition p-1.5 rounded cursor-pointer ${
+                                        hasPin
+                                          ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                          : "text-gray-400 hover:text-gray-200 hover:bg-gray-500/10"
+                                      }`}
+                                      title={hasPin ? `Modify PIN (Current: ${chan.pin}) / Unlock` : "Lock with PIN"}
+                                    >
+                                      <Lock className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onRenameChannel(chan.id, chan.name)}
+                                      className="text-xs text-indigo-400 hover:text-indigo-300 transition p-1.5 hover:bg-[#1E2023] rounded cursor-pointer"
+                                      title="Rename"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onDeleteChannel(chan.id, chan.name)}
+                                      className="text-xs text-rose-400 hover:text-rose-300 transition p-1.5 hover:bg-rose-500/10 rounded cursor-pointer"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[8px] text-gray-500 bg-[#121417] px-2 py-1 rounded">
+                                    {hasPin ? "PIN Protected" : "Public"}
+                                  </span>
+                                )}
+                              </div>
+
+                              {isEditingPin && (
+                                <div className="flex items-center gap-2 mt-1 pt-1.5 border-t border-[#2A2D31]/50">
+                                  <input
+                                    type="text"
+                                    placeholder="PIN (e.g. 1234)"
+                                    value={pinValue}
+                                    onChange={(e) => setPinValue(e.target.value)}
+                                    maxLength={10}
+                                    className="flex-1 bg-[#0F1113] border border-[#2A2D31] rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-[#5865F2]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await onSetChannelPin(chan.id, pinValue.trim());
+                                      setEditingPinChannelId(null);
+                                    }}
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold cursor-pointer transition"
+                                  >
+                                    Save
+                                  </button>
+                                  {hasPin && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await onSetChannelPin(chan.id, "");
+                                        setEditingPinChannelId(null);
+                                      }}
+                                      className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold cursor-pointer transition"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPinChannelId(null)}
+                                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-[10px] font-bold cursor-pointer transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 );
-              })}
+              })()}
             </div>
           </div>
         </div>

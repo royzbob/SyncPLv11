@@ -26,6 +26,11 @@ import {
   Wifi,
   Users,
   Banknote,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
+  Check,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 
@@ -52,6 +57,7 @@ interface ActiveRoomSidebarProps {
   isCreatorOrMod: boolean;
   onKickVoiceUser?: (userId: string, username: string) => void;
   onAddChannelClick: (type: "text" | "voice") => void;
+  onMoveChannel?: (id: string, direction: "up" | "down") => Promise<void>;
   onCopyRoomCode: () => void;
   isChatSidePanelOpen?: boolean;
   globalVolume: number;
@@ -87,6 +93,7 @@ export default function ActiveRoomSidebar({
   isCreatorOrMod,
   onKickVoiceUser,
   onAddChannelClick,
+  onMoveChannel,
   onCopyRoomCode,
   isChatSidePanelOpen = false,
   globalVolume,
@@ -108,6 +115,10 @@ export default function ActiveRoomSidebar({
   });
 
   const [activeUserPopover, setActiveUserPopover] = useState<string | null>(null);
+  const [isReorderingText, setIsReorderingText] = useState(false);
+  const [isReorderingVoice, setIsReorderingVoice] = useState(false);
+  const [draggedChanId, setDraggedChanId] = useState<string | null>(null);
+  const [dragOverChanId, setDragOverChanId] = useState<string | null>(null);
 
   const handleThemeChange = (theme: "classic-dark" | "terminal-green" | "high-contrast-blue") => {
     setVoiceTheme(theme);
@@ -313,39 +324,134 @@ export default function ActiveRoomSidebar({
               Text Channels
             </span>
             {isCreatorOrMod && (
-              <button
-                onClick={() => onAddChannelClick("text")}
-                className="text-gray-500 hover:text-white transition cursor-pointer"
-                title="Create Text Channel"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                {textChans.length > 1 && onMoveChannel && (
+                  <button
+                    onClick={() => setIsReorderingText(!isReorderingText)}
+                    className={`transition cursor-pointer p-0.5 rounded ${
+                      isReorderingText
+                        ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                        : "text-gray-500 hover:text-white"
+                    }`}
+                    title={isReorderingText ? "Finish Reordering" : "Reorder Channels"}
+                  >
+                    {isReorderingText ? <Check className="w-3.5 h-3.5" /> : <ArrowUpDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+                <button
+                  onClick={() => onAddChannelClick("text")}
+                  className="text-gray-500 hover:text-white transition cursor-pointer p-0.5"
+                  title="Create Text Channel"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
 
           <div className="space-y-1">
-            {textChans.map((chan) => {
+            {textChans.map((chan, idx) => {
               const isSelected = (activeTab === "chat" || isChatSidePanelOpen) && activeChannelName === chan.name;
+              const isFirst = idx === 0;
+              const isLast = idx === textChans.length - 1;
+              const isBeingDragged = draggedChanId === chan.id;
+              const isDraggedOver = dragOverChanId === chan.id;
+
               return (
-                <button
+                <div
                   key={chan.id}
-                  onClick={() => {
-                    onSelectChannel(chan.name, "text");
+                  draggable={isCreatorOrMod && (isReorderingText || true)}
+                  onDragStart={(e) => {
+                    setDraggedChanId(chan.id);
+                    e.dataTransfer.setData("text/plain", chan.id);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-semibold transition-all duration-150 border ${
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedChanId && draggedChanId !== chan.id) {
+                      setDragOverChanId(chan.id);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverChanId === chan.id) setDragOverChanId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverChanId(null);
+                    setDraggedChanId(null);
+                    const sourceId = e.dataTransfer.getData("text/plain");
+                    if (sourceId && sourceId !== chan.id && onMoveChannel) {
+                      const sourceIdx = textChans.findIndex((c) => c.id === sourceId);
+                      if (sourceIdx !== -1) {
+                        const dir = sourceIdx < idx ? "down" : "up";
+                        onMoveChannel(sourceId, dir);
+                      }
+                    }
+                  }}
+                  className={`group relative flex items-center justify-between px-2 py-1.5 rounded text-xs font-semibold transition-all duration-150 border ${
+                    isDraggedOver ? "border-indigo-500 bg-indigo-500/10" : ""
+                  } ${
+                    isBeingDragged ? "opacity-40" : "opacity-100"
+                  } ${
                     isSelected
                       ? "bg-[#2A2D31] text-white border-[#2A2D31]"
                       : "text-[#8E9297] hover:bg-[#1E2023] hover:text-white border-transparent"
                   }`}
                 >
-                  <div className="flex items-center space-x-2 truncate">
-                    <span className="text-indigo-400/50 font-black text-sm">#</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectChannel(chan.name, "text");
+                    }}
+                    className="flex items-center space-x-2 truncate flex-1 text-left cursor-pointer"
+                  >
+                    {isReorderingText && (
+                      <GripVertical className="w-3.5 h-3.5 text-gray-500 shrink-0 cursor-grab" />
+                    )}
+                    <span className="text-indigo-400/50 font-black text-sm shrink-0">#</span>
                     <span className="truncate">{chan.name}</span>
-                  </div>
-                  {chan.pin && (
-                    <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0 ml-1.5" title="PIN Protected" />
+                    {chan.pin && (
+                      <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0 ml-1" title="PIN Protected" />
+                    )}
+                  </button>
+
+                  {/* Reordering Controls */}
+                  {isCreatorOrMod && onMoveChannel && (
+                    <div className={`items-center gap-0.5 shrink-0 ${isReorderingText ? "flex" : "hidden group-hover:flex"}`}>
+                      <button
+                        type="button"
+                        disabled={isFirst}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMoveChannel(chan.id, "up");
+                        }}
+                        className={`p-0.5 rounded transition ${
+                          isFirst
+                            ? "text-gray-600 cursor-not-allowed opacity-30"
+                            : "text-gray-400 hover:text-white hover:bg-[#32353B] cursor-pointer"
+                        }`}
+                        title="Move Up"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLast}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMoveChannel(chan.id, "down");
+                        }}
+                        className={`p-0.5 rounded transition ${
+                          isLast
+                            ? "text-gray-600 cursor-not-allowed opacity-30"
+                            : "text-gray-400 hover:text-white hover:bg-[#32353B] cursor-pointer"
+                        }`}
+                        title="Move Down"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -358,29 +464,78 @@ export default function ActiveRoomSidebar({
               Voice Rooms
             </span>
             {isCreatorOrMod && (
-              <button
-                onClick={() => onAddChannelClick("voice")}
-                className="text-gray-500 hover:text-white transition cursor-pointer"
-                title="Create Voice Channel"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                {voiceChans.length > 1 && onMoveChannel && (
+                  <button
+                    onClick={() => setIsReorderingVoice(!isReorderingVoice)}
+                    className={`transition cursor-pointer p-0.5 rounded ${
+                      isReorderingVoice
+                        ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                        : "text-gray-500 hover:text-white"
+                    }`}
+                    title={isReorderingVoice ? "Finish Reordering" : "Reorder Voice Rooms"}
+                  >
+                    {isReorderingVoice ? <Check className="w-3.5 h-3.5" /> : <ArrowUpDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+                <button
+                  onClick={() => onAddChannelClick("voice")}
+                  className="text-gray-500 hover:text-white transition cursor-pointer p-0.5"
+                  title="Create Voice Channel"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
 
           <div className="space-y-1">
-            {voiceChans.map((chan) => {
+            {voiceChans.map((chan, idx) => {
               const isConnected = activeVoiceChannel === chan.name;
               const chanUsers = voiceUsers.filter((v) => v.channel === chan.name);
               const count = chanUsers.length;
               const isAi =
                 chan.name.includes("🤖") || chan.name.toLowerCase().includes("ai");
+              const isFirst = idx === 0;
+              const isLast = idx === voiceChans.length - 1;
+              const isBeingDragged = draggedChanId === chan.id;
+              const isDraggedOver = dragOverChanId === chan.id;
 
               return (
                 <div key={chan.id} className="space-y-0.5">
-                  <button
-                    onClick={() => onToggleVoiceRoom(chan.name)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-semibold transition-all duration-150 border cursor-pointer ${
+                  <div
+                    draggable={isCreatorOrMod && (isReorderingVoice || true)}
+                    onDragStart={(e) => {
+                      setDraggedChanId(chan.id);
+                      e.dataTransfer.setData("text/plain", chan.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedChanId && draggedChanId !== chan.id) {
+                        setDragOverChanId(chan.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverChanId === chan.id) setDragOverChanId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOverChanId(null);
+                      setDraggedChanId(null);
+                      const sourceId = e.dataTransfer.getData("text/plain");
+                      if (sourceId && sourceId !== chan.id && onMoveChannel) {
+                        const sourceIdx = voiceChans.findIndex((c) => c.id === sourceId);
+                        if (sourceIdx !== -1) {
+                          const dir = sourceIdx < idx ? "down" : "up";
+                          onMoveChannel(sourceId, dir);
+                        }
+                      }
+                    }}
+                    className={`group relative flex items-center justify-between px-2 py-1.5 rounded text-xs font-semibold transition-all duration-150 border ${
+                      isDraggedOver ? "border-emerald-500 bg-emerald-500/10" : ""
+                    } ${
+                      isBeingDragged ? "opacity-40" : "opacity-100"
+                    } ${
                       isConnected
                         ? isAi
                           ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/10 hover:bg-indigo-500/15"
@@ -388,7 +543,14 @@ export default function ActiveRoomSidebar({
                         : "text-[#8E9297] hover:bg-[#1E2023]/60 hover:text-white border-transparent"
                     }`}
                   >
-                    <div className="flex items-center space-x-2 truncate">
+                    <button
+                      type="button"
+                      onClick={() => onToggleVoiceRoom(chan.name)}
+                      className="flex items-center space-x-2 truncate flex-1 text-left cursor-pointer"
+                    >
+                      {isReorderingVoice && (
+                        <GripVertical className="w-3.5 h-3.5 text-gray-500 shrink-0 cursor-grab" />
+                      )}
                       {isAi ? (
                         <Bot className={`w-3.5 h-3.5 ${isConnected ? "animate-pulse text-indigo-400" : "text-gray-500"}`} />
                       ) : (
@@ -398,11 +560,51 @@ export default function ActiveRoomSidebar({
                       {chan.pin && (
                         <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0" title="PIN Protected" />
                       )}
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {isCreatorOrMod && onMoveChannel && (
+                        <div className={`items-center gap-0.5 shrink-0 ${isReorderingVoice ? "flex" : "hidden group-hover:flex"}`}>
+                          <button
+                            type="button"
+                            disabled={isFirst}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMoveChannel(chan.id, "up");
+                            }}
+                            className={`p-0.5 rounded transition ${
+                              isFirst
+                                ? "text-gray-600 cursor-not-allowed opacity-30"
+                                : "text-gray-400 hover:text-white hover:bg-[#32353B] cursor-pointer"
+                            }`}
+                            title="Move Up"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isLast}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMoveChannel(chan.id, "down");
+                            }}
+                            className={`p-0.5 rounded transition ${
+                              isLast
+                                ? "text-gray-600 cursor-not-allowed opacity-30"
+                                : "text-gray-400 hover:text-white hover:bg-[#32353B] cursor-pointer"
+                            }`}
+                            title="Move Down"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      <span className="text-[10px] bg-[#1E2023] px-2 py-0.5 rounded-full text-gray-400 font-medium border border-[#2A2D31]/30 shrink-0">
+                        {count}
+                      </span>
                     </div>
-                    <span className="text-[10px] bg-[#1E2023] px-2 py-0.5 rounded-full text-gray-400 font-medium border border-[#2A2D31]/30">
-                      {count}
-                    </span>
-                  </button>
+                  </div>
 
                   {/* Render players joined underneath this voice room */}
                   {count > 0 && (

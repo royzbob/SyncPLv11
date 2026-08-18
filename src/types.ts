@@ -74,6 +74,7 @@ export interface Channel {
   groupId: string;
   createdAt: string;
   pin?: string;
+  order?: number;
 }
 
 export interface ChatMessage {
