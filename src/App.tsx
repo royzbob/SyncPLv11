@@ -2697,6 +2697,10 @@ export default function App() {
     }
   };
 
+  // Track confirmed presence in voice channel to prevent race condition false-disconnects
+  const confirmedVoicePresenceRef = useRef<boolean>(false);
+  const voiceJoinTimeRef = useRef<number>(0);
+
   // Voice Rooms Operations & Simulation
   const handleToggleVoiceRoom = async (roomName: string) => {
     if (activeVoiceChannel === roomName) {
@@ -2708,6 +2712,8 @@ export default function App() {
       await handleDisconnectVoice();
     }
 
+    voiceJoinTimeRef.current = Date.now();
+    confirmedVoicePresenceRef.current = false;
     setActiveVoiceChannel(roomName);
     triggerToast("Voice Connected", `Connected voice Desk: ${roomName}`, "success");
 
@@ -2734,6 +2740,7 @@ export default function App() {
   };
 
   const handleDisconnectVoice = async () => {
+    confirmedVoicePresenceRef.current = false;
     if (!currentUser) return;
     try {
       const voiceDocRef = doc(db, "voice_users", currentUser.uid);
@@ -2785,14 +2792,21 @@ export default function App() {
 
   // Monitor if local user was disconnected/kicked from voice_users by an admin
   useEffect(() => {
-    if (!currentUser || !activeVoiceChannel) return;
+    if (!currentUser || !activeVoiceChannel) {
+      confirmedVoicePresenceRef.current = false;
+      return;
+    }
 
     // Skip synthetic AI channels
     const isAi = activeVoiceChannel.includes("🤖") || activeVoiceChannel.toLowerCase().includes("ai");
     if (isAi) return;
 
-    const myVoiceDoc = voiceUsers.find((v) => v.id === currentUser.uid || v.userId === currentUser.uid);
-    if (!myVoiceDoc) {
+    const myVoiceDoc = voiceUsers.find((v) => (v.id === currentUser.uid || v.userId === currentUser.uid) && v.channel === activeVoiceChannel);
+    if (myVoiceDoc) {
+      confirmedVoicePresenceRef.current = true;
+    } else if (confirmedVoicePresenceRef.current && (Date.now() - voiceJoinTimeRef.current > 3000)) {
+      // User was active and confirmed, but their document was subsequently deleted by an admin
+      confirmedVoicePresenceRef.current = false;
       setActiveVoiceChannel(null);
       if (webrtcVoiceRef.current) {
         webrtcVoiceRef.current.destroy();
@@ -2842,7 +2856,7 @@ export default function App() {
       );
       const targetVoice = screenshareVoice?.name || channels.find((c) => c.type === "voice")?.name || "🎥 Live Screenshare";
 
-      handleToggleVoiceRoomWithLockCheck(targetVoice);
+      await handleToggleVoiceRoom(targetVoice);
       triggerToast("Connecting Stream Channel", `Joined #${targetVoice} for screenshare...`, "info");
       setTimeout(async () => {
         if (webrtcVoiceRef.current) {
@@ -2859,7 +2873,7 @@ export default function App() {
             console.warn("Screen share start error:", err);
           }
         }
-      }, 800);
+      }, 500);
       return;
     }
 
