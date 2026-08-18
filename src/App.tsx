@@ -56,7 +56,7 @@ import {
 import { auth, db } from "./lib/firebase";
 import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule, PayoutRecord, AccountType } from "./types";
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString, DEFAULT_STRATEGIES } from "./utils/helpers";
-import { playJoinSound, playLeaveSound } from "./utils/audio";
+import { playJoinSound, playLeaveSound, playChatMessageSound, ChatNotificationSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
 
 const isMobileOrTablet = typeof window !== "undefined" && (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 1024);
@@ -688,6 +688,68 @@ export default function App() {
     triggerToast("Strategy Removed", `"${strategyToDelete}" removed.`, "info");
   };
 
+  // Chat Notification Audio Preferences
+  const [chatSoundEnabled, setChatSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("syncpl_chat_sound_enabled") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [chatSoundType, setChatSoundType] = useState<ChatNotificationSound>(() => {
+    try {
+      return (localStorage.getItem("syncpl_chat_sound_type") as ChatNotificationSound) || "chime";
+    } catch {
+      return "chime";
+    }
+  });
+  const [chatSoundVolume, setChatSoundVolume] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem("syncpl_chat_sound_vol");
+      return stored ? parseFloat(stored) : 0.7;
+    } catch {
+      return 0.7;
+    }
+  });
+
+  const chatSoundEnabledRef = useRef(chatSoundEnabled);
+  chatSoundEnabledRef.current = chatSoundEnabled;
+  const chatSoundTypeRef = useRef(chatSoundType);
+  chatSoundTypeRef.current = chatSoundType;
+  const chatSoundVolumeRef = useRef(chatSoundVolume);
+  chatSoundVolumeRef.current = chatSoundVolume;
+
+  const handleToggleChatSound = (enabled: boolean) => {
+    setChatSoundEnabled(enabled);
+    try {
+      localStorage.setItem("syncpl_chat_sound_enabled", String(enabled));
+    } catch (e) {
+      console.warn(e);
+    }
+    triggerToast("Chat Audio Updated", enabled ? "Chat message sounds enabled" : "Chat message sounds muted", "info");
+  };
+
+  const handleChangeChatSoundType = (type: ChatNotificationSound) => {
+    setChatSoundType(type);
+    try {
+      localStorage.setItem("syncpl_chat_sound_type", type);
+    } catch (e) {
+      console.warn(e);
+    }
+    if (type !== "off" && chatSoundEnabled) {
+      playChatMessageSound(chatSoundVolume, type);
+    }
+  };
+
+  const handleChangeChatSoundVolume = (vol: number) => {
+    setChatSoundVolume(vol);
+    try {
+      localStorage.setItem("syncpl_chat_sound_vol", String(vol));
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
   // Voice Customizer
   const [voiceName, setVoiceName] = useState("Kore");
   const [vocalPrompt, setVocalPrompt] = useState("Speak critically like a strict hedge fund risk analyst");
@@ -1144,6 +1206,7 @@ export default function App() {
     unsubscribers.push(unsubChannels);
 
     // Observe chat messages
+    let isInitialChatSnapshot = true;
     const chatQuery = query(collection(db, "chat_messages"), where("groupId", "==", activeRoom.id));
     const unsubChat = onSnapshot(chatQuery, (snapshot) => {
       const map = new Map<string, ChatMessage>();
@@ -1152,30 +1215,49 @@ export default function App() {
         map.set(d.id, { id: d.id, ...data } as ChatMessage);
       });
 
-      // Browser Push Notifications on newly broadcasted trade logs or settlements
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          const msg = change.doc.data();
-          if (msg.timestamp && new Date(msg.timestamp).getTime() > Date.now() - 15000) {
-            const text = msg.text || "";
-            const isTradeLog =
-              msg.isEmbed === true ||
-              msg.channel === "pnl-flex" ||
-              text.includes("logged a verified trade") ||
-              text.includes("🏁 POSITION CLOSED") ||
-              text.includes("🚨 LIVE POSITION DEPLOYED");
+      // Browser Push Notifications & Audio Chime on newly received messages
+      if (!isInitialChatSnapshot) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "added") {
+            const msg = change.doc.data() as ChatMessage;
+            const isFromOtherUser = msg.userId ? msg.userId !== currentUser.uid : (msg.username !== profile?.username);
+            const isRecent = msg.timestamp && new Date(msg.timestamp).getTime() > Date.now() - 30000;
 
-            if (isTradeLog) {
-              if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("Desk Trade Alert", {
-                  body: text || `${msg.username || "Trader"} posted a trade update.`,
-                  icon: "/app_icon.png"
-                });
+            if (isFromOtherUser && isRecent) {
+              // 1. Play synthesized chat notification sound
+              if (chatSoundEnabledRef.current) {
+                playChatMessageSound(chatSoundVolumeRef.current, chatSoundTypeRef.current);
+              }
+
+              // 2. Desktop Push Notifications
+              const text = msg.text || "";
+              const isTradeLog =
+                msg.isEmbed === true ||
+                msg.channel === "pnl-flex" ||
+                text.includes("logged a verified trade") ||
+                text.includes("🏁 POSITION CLOSED") ||
+                text.includes("🚨 LIVE POSITION DEPLOYED");
+
+              if (isTradeLog) {
+                if ("Notification" in window && Notification.permission === "granted") {
+                  new Notification("Desk Trade Alert", {
+                    body: text || `${msg.username || "Trader"} posted a trade update.`,
+                    icon: "/app_icon.png"
+                  });
+                }
+              } else if (document.hidden) {
+                if ("Notification" in window && Notification.permission === "granted") {
+                  new Notification(`New message from ${msg.username || "Trader"}`, {
+                    body: text || (msg.imageUrl ? "Sent an image attachment" : "New chat message"),
+                    icon: "/app_icon.png"
+                  });
+                }
               }
             }
           }
-        }
-      });
+        });
+      }
+      isInitialChatSnapshot = false;
 
       const sorted = Array.from(map.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       setChatMessages(sorted);
@@ -3651,6 +3733,12 @@ export default function App() {
                       onUpdateRoomMonetization={handleUpdateRoomMonetization}
                       onUpdateStripeConnect={handleUpdateStripeConnect}
                       onUpdateDiscordWebhook={handleUpdateDiscordWebhook}
+                      chatSoundEnabled={chatSoundEnabled}
+                      onToggleChatSound={handleToggleChatSound}
+                      chatSoundType={chatSoundType}
+                      onChangeChatSoundType={handleChangeChatSoundType}
+                      chatSoundVolume={chatSoundVolume}
+                      onChangeChatSoundVolume={handleChangeChatSoundVolume}
                       isRoomOwner={activeRoom.creatorId === currentUser?.uid}
                       currentUser={currentUser}
                       triggerToast={triggerToast}

@@ -35,10 +35,14 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
+  Bell,
+  BellRing,
+  VolumeX,
 } from "lucide-react";
 import { Channel, Room, UserProfile } from "../types";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { playChatMessageSound, ChatNotificationSound } from "../utils/audio";
 import BroadcastUpdateModal from "./BroadcastUpdateModal";
 import { AppUpdateData } from "./WebUpdateNotifier";
 
@@ -66,6 +70,12 @@ interface SettingsViewProps {
   setVoiceName: (val: string) => void;
   vocalPrompt: string;
   setVocalPrompt: (val: string) => void;
+  chatSoundEnabled?: boolean;
+  onToggleChatSound?: (enabled: boolean) => void;
+  chatSoundType?: ChatNotificationSound;
+  onChangeChatSoundType?: (type: ChatNotificationSound) => void;
+  chatSoundVolume?: number;
+  onChangeChatSoundVolume?: (vol: number) => void;
   subscriptionState: {
     isPremium: boolean;
     daysRemaining: number;
@@ -135,6 +145,12 @@ export default function SettingsView({
   setVoiceName,
   vocalPrompt,
   setVocalPrompt,
+  chatSoundEnabled = true,
+  onToggleChatSound,
+  chatSoundType = "chime",
+  onChangeChatSoundType,
+  chatSoundVolume = 0.7,
+  onChangeChatSoundVolume,
   subscriptionState,
   stripeConfig,
   onSubscribe,
@@ -1599,6 +1615,109 @@ export default function SettingsView({
                 <RefreshCw className="w-4 h-4" />
               </button>
             </div>
+          </div>
+
+          {/* Chat & Room Notification Sound Alerts */}
+          <div className="glass-panel p-5 rounded space-y-4 border border-[#2A2D31] shadow-lg">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-gray-100 text-sm flex items-center gap-2">
+                {chatSoundEnabled ? (
+                  <BellRing className="text-emerald-400 w-4.5 h-4.5 animate-pulse" />
+                ) : (
+                  <VolumeX className="text-gray-500 w-4.5 h-4.5" />
+                )}
+                Chat Sound Alerts
+              </h4>
+              <button
+                type="button"
+                onClick={() => onToggleChatSound && onToggleChatSound(!chatSoundEnabled)}
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer border ${
+                  chatSoundEnabled
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
+                    : "bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700"
+                }`}
+              >
+                {chatSoundEnabled ? "Sounds Active" : "Sounds Muted"}
+              </button>
+            </div>
+            <p className="text-xs text-[#8E9297] leading-relaxed">
+              Plays a crisp synthetic notification tone when room members send chats or post trade settlements.
+            </p>
+
+            {/* Sound Tone Presets */}
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold text-[#8E9297] uppercase tracking-wider">
+                Sound Effect Preset
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "chime", label: "Harmonic Chime", icon: "🔔", desc: "Two-tone chord" },
+                  { id: "pop", label: "Message Pop", icon: "💬", desc: "Modern bubble" },
+                  { id: "ping", label: "Crystal Ping", icon: "💎", desc: "Crisp resonance" },
+                  { id: "tap", label: "Woody Tap", icon: "🪵", desc: "Subtle tick" },
+                ].map((s) => {
+                  const isSelected = chatSoundType === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => onChangeChatSoundType && onChangeChatSoundType(s.id as ChatNotificationSound)}
+                      className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between cursor-pointer ${
+                        isSelected
+                          ? "bg-indigo-500/10 border-indigo-500/40 text-white shadow-sm ring-1 ring-indigo-500/30"
+                          : "bg-[#121417] border-[#2A2D31] text-gray-400 hover:text-gray-200 hover:border-gray-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
+                          <span>{s.icon}</span> {s.label}
+                        </span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                      </div>
+                      <span className="text-[10px] text-gray-500 font-medium">{s.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Volume Slider */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex justify-between items-center text-[10px] font-bold text-[#8E9297] uppercase tracking-wider">
+                <span className="flex items-center gap-1">
+                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                  Alert Volume
+                </span>
+                <span className="font-mono text-indigo-400 font-bold">
+                  {Math.round(chatSoundVolume * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={chatSoundVolume}
+                disabled={!chatSoundEnabled}
+                onChange={(e) => onChangeChatSoundVolume && onChangeChatSoundVolume(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-[#121417] rounded-lg appearance-none cursor-pointer accent-indigo-500 disabled:opacity-40"
+              />
+            </div>
+
+            {/* Test Notification Button */}
+            <button
+              type="button"
+              onClick={() => {
+                playChatMessageSound(chatSoundVolume, chatSoundType);
+                if (triggerToast) {
+                  triggerToast("Notification Test", `Playing "${chatSoundType}" alert tone.`, "info");
+                }
+              }}
+              className="w-full bg-[#1E2023] hover:bg-[#24272C] border border-[#2A2D31] hover:border-indigo-500/30 text-gray-200 font-bold text-xs py-2.5 px-3 rounded-lg transition flex items-center justify-center gap-2 cursor-pointer shadow"
+            >
+              <Play className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Test Chat Notification Sound</span>
+            </button>
           </div>
 
           {/* Co-Pilot Voice Engine Settings */}

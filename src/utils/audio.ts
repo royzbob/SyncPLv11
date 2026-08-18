@@ -92,3 +92,112 @@ export function playLeaveSound(volumeLevel: number = 0.8) {
   osc.start(now);
   osc.stop(now + 0.4);
 }
+
+export type ChatNotificationSound = "chime" | "pop" | "ping" | "tap" | "off";
+
+/**
+ * Plays an instant, crisp notification sound when a new chat message arrives.
+ */
+export function playChatMessageSound(
+  volumeLevel: number = 0.7,
+  soundType: ChatNotificationSound = "chime"
+) {
+  if (soundType === "off" || volumeLevel <= 0) return;
+
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const gainNode = ctx.createGain();
+    const effectiveVol = Math.max(0, Math.min(1, volumeLevel));
+
+    if (soundType === "pop") {
+      // Modern messaging bubble pop
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+
+      // Pitch sweep downward quickly
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.08);
+
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.18 * effectiveVol, now + 0.015);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.14);
+    } else if (soundType === "ping") {
+      // High crisp crystal ping
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      osc1.type = "sine";
+      osc2.type = "triangle";
+
+      osc1.frequency.setValueAtTime(1318.51, now); // E6
+      osc2.frequency.setValueAtTime(2637.02, now); // E7 harmonic
+
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.14 * effectiveVol, now + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.32);
+      osc2.stop(now + 0.32);
+    } else if (soundType === "tap") {
+      // Subtle wooden marimba tap
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.15 * effectiveVol, now + 0.008);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.09);
+    } else {
+      // Default: "chime" - Elegant warm two-tone harmonic chord (A5 -> C#6)
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      osc1.type = "sine";
+      osc2.type = "sine";
+
+      // 1st note (A5 880Hz), 2nd note (C#6 1108Hz)
+      osc1.frequency.setValueAtTime(880, now);
+      osc1.frequency.setValueAtTime(1108.73, now + 0.06);
+
+      osc2.frequency.setValueAtTime(884, now);
+      osc2.frequency.setValueAtTime(1113.73, now + 0.06);
+
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.14 * effectiveVol, now + 0.02);
+      gainNode.gain.setValueAtTime(0.14 * effectiveVol, now + 0.12);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.3);
+      osc2.stop(now + 0.3);
+    }
+  } catch (err) {
+    console.warn("Could not play chat notification sound:", err);
+  }
+}
+
