@@ -38,6 +38,7 @@ export interface UserProfile {
   discordWebhookUrl?: string;
   marketPresence?: "active" | "idle" | "dnd" | "offline";
   customStatus?: string;
+  lastActiveAt?: string;
 }
 
 export type AccountType = "funded" | "live" | "practice" | "eval";
@@ -86,6 +87,7 @@ export interface ChatMessage {
   text: string;
   channel: string;
   timestamp: string;
+  imageUrl?: string;
   isEmbed?: boolean;
   amount?: number;
   asset?: string;

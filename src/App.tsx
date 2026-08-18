@@ -1275,6 +1275,112 @@ export default function App() {
     };
   }, [currentUser?.uid, activeRoom?.id]);
 
+  // Helper to compute realistic presence based on lastActiveAt & marketPresence
+  const getComputedPresence = (
+    user: any,
+    isSelf: boolean = false
+  ): "active" | "idle" | "dnd" | "offline" => {
+    if (isSelf) {
+      if (profile?.marketPresence === "offline" || profile?.marketPresence === "dnd") {
+        return profile.marketPresence;
+      }
+      return typeof document !== "undefined" && document.visibilityState === "visible"
+        ? "active"
+        : "idle";
+    }
+    if (!user) return "offline";
+    if (user.marketPresence === "offline" || user.marketPresence === "dnd") {
+      return user.marketPresence;
+    }
+    if (!user.lastActiveAt) {
+      return "offline";
+    }
+    const lastTime = new Date(user.lastActiveAt).getTime();
+    if (isNaN(lastTime)) return "offline";
+    const diff = Date.now() - lastTime;
+    if (diff > 150000) {
+      // Greater than 2.5 minutes without heartbeat -> accurately offline
+      return "offline";
+    }
+    if (diff > 75000) {
+      return "idle";
+    }
+    return user.marketPresence || "active";
+  };
+
+  // Real presence heartbeat and active status synchronization
+  const lastHeartbeatPingRef = useRef<number>(0);
+  useEffect(() => {
+    if (!currentUser || !activeRoom) return;
+
+    const syncPresenceHeartbeat = async (status: "active" | "idle" | "offline" = "active") => {
+      try {
+        const publicRef = doc(db, "users", currentUser.uid);
+        await setDoc(
+          publicRef,
+          {
+            uid: currentUser.uid,
+            username: profile?.username || "Trader",
+            avatarColor: profile?.avatarColor || "indigo",
+            avatarType: profile?.avatarType || "emoji",
+            avatarVal: profile?.avatarVal || "🐂",
+            activeGroupId: activeRoom.id,
+            marketPresence: status,
+            lastActiveAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        // quiet presence heartbeat
+      }
+    };
+
+    // Initial ping on connection
+    syncPresenceHeartbeat("active");
+
+    // Recurring 35-second heartbeat
+    const heartbeatTimer = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        syncPresenceHeartbeat("active");
+      } else {
+        syncPresenceHeartbeat("idle");
+      }
+    }, 35000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncPresenceHeartbeat("active");
+      } else {
+        syncPresenceHeartbeat("idle");
+      }
+    };
+
+    const onUserActivity = () => {
+      const now = Date.now();
+      if (now - lastHeartbeatPingRef.current > 30000) {
+        lastHeartbeatPingRef.current = now;
+        syncPresenceHeartbeat("active");
+      }
+    };
+
+    const onBeforeUnload = () => {
+      syncPresenceHeartbeat("offline");
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("pointerdown", onUserActivity);
+    window.addEventListener("keydown", onUserActivity);
+
+    return () => {
+      clearInterval(heartbeatTimer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pointerdown", onUserActivity);
+      window.removeEventListener("keydown", onUserActivity);
+    };
+  }, [currentUser?.uid, activeRoom?.id, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal]);
+
   // Dynamically derive room traders with live presence, status, and custom settings (Optimized Memo)
   const traders = useMemo(() => {
     if (!activeRoom) return [];
@@ -1292,8 +1398,9 @@ export default function App() {
       avatarVal: profile?.avatarVal || "🐂",
       groupIds: profile?.groupIds || [],
       activeGroupId: activeRoom.id,
-      marketPresence: myPublicInfo?.marketPresence || "active",
+      marketPresence: getComputedPresence(myPublicInfo, true),
       customStatus: myPublicInfo?.customStatus || "",
+      lastActiveAt: myPublicInfo?.lastActiveAt || new Date().toISOString(),
     } as any);
     addedUsernames.add(myUsername.toLowerCase());
 
@@ -1309,8 +1416,9 @@ export default function App() {
             avatarVal: user.avatarVal || "🐂",
             groupIds: user.groupIds || [activeRoom.id],
             activeGroupId: activeRoom.id,
-            marketPresence: user.marketPresence || "active",
+            marketPresence: getComputedPresence(user, false),
             customStatus: user.customStatus || "",
+            lastActiveAt: user.lastActiveAt,
           } as any);
           addedUsernames.add(lowerName);
         }
@@ -1330,8 +1438,9 @@ export default function App() {
             avatarVal: matchedUser.avatarVal || "📈",
             groupIds: matchedUser.groupIds || [activeRoom.id],
             activeGroupId: matchedUser.activeGroupId || activeRoom.id,
-            marketPresence: matchedUser.marketPresence || "offline",
+            marketPresence: getComputedPresence(matchedUser, false),
             customStatus: matchedUser.customStatus || "",
+            lastActiveAt: matchedUser.lastActiveAt,
           } as any);
         } else {
           derivedTraders.push({
@@ -1347,6 +1456,20 @@ export default function App() {
         }
         addedUsernames.add(lowerName);
       }
+    });
+
+    // Sort traders: Active first, then AFK/Idle, then Offline, then alphabetically
+    const presenceRank: Record<string, number> = {
+      active: 1,
+      idle: 2,
+      dnd: 3,
+      offline: 4,
+    };
+    derivedTraders.sort((a, b) => {
+      const rankA = presenceRank[a.marketPresence || "offline"] || 4;
+      const rankB = presenceRank[b.marketPresence || "offline"] || 4;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.username.localeCompare(b.username);
     });
 
     return derivedTraders;
@@ -2615,20 +2738,24 @@ export default function App() {
   };
 
   // Chat dispatching
-  const handleSendChatMessage = async (text: string) => {
+  const handleSendChatMessage = async (text: string, imageUrl?: string) => {
     if (!currentUser || !activeRoom) return;
     const chatCol = collection(db, "chat_messages");
-    await addDoc(chatCol, {
+    const msgPayload: any = {
       userId: currentUser.uid,
       username: profile?.username || "Trader",
       avatarColor: profile?.avatarColor || "indigo",
       avatarType: profile?.avatarType || "emoji",
       avatarVal: profile?.avatarVal || "🐂",
       groupId: activeRoom.id,
-      text,
+      text: text || "",
       channel: activeChannelName,
       timestamp: new Date().toISOString(),
-    });
+    };
+    if (imageUrl) {
+      msgPayload.imageUrl = imageUrl;
+    }
+    await addDoc(chatCol, msgPayload);
   };
 
   const handleDeleteChatMessage = async (id: string) => {
