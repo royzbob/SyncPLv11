@@ -1608,7 +1608,8 @@ export default function App() {
         { name: "market-alpha", type: "text", groupId: roomId, createdAt: new Date().toISOString(), order: 2 },
         { name: "voice-general-chat", type: "text", groupId: roomId, createdAt: new Date().toISOString(), order: 3 },
         { name: "Voice Desk 1", type: "voice", groupId: roomId, createdAt: new Date().toISOString(), order: 0 },
-        { name: "🤖 AI Risk Assistant", type: "voice", groupId: roomId, createdAt: new Date().toISOString(), order: 1 },
+        { name: "🎥 Live Screenshare", type: "voice", groupId: roomId, createdAt: new Date().toISOString(), order: 1 },
+        { name: "🤖 AI Risk Assistant", type: "voice", groupId: roomId, createdAt: new Date().toISOString(), order: 2 },
       ];
       for (const item of defaults) {
         await addDoc(channelsCol, item);
@@ -2831,9 +2832,18 @@ export default function App() {
 
   const handleToggleScreenShare = async () => {
     if (!activeVoiceChannel) {
-      const defaultVoice = channels.find((c) => c.type === "voice")?.name || "General Trading";
-      handleToggleVoiceRoomWithLockCheck(defaultVoice);
-      triggerToast("Joining Voice Desk", `Connecting to #${defaultVoice} to start your screen share...`, "info");
+      // Prioritize dedicated screenshare room so it doesn't interrupt Voice Desk 1
+      const screenshareVoice = channels.find(
+        (c) =>
+          c.type === "voice" &&
+          (c.name.toLowerCase().includes("screen") ||
+            c.name.toLowerCase().includes("stream") ||
+            c.name.toLowerCase().includes("live"))
+      );
+      const targetVoice = screenshareVoice?.name || channels.find((c) => c.type === "voice")?.name || "🎥 Live Screenshare";
+
+      handleToggleVoiceRoomWithLockCheck(targetVoice);
+      triggerToast("Connecting Stream Channel", `Joined #${targetVoice} for screenshare...`, "info");
       setTimeout(async () => {
         if (webrtcVoiceRef.current) {
           try {
