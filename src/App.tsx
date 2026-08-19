@@ -1209,6 +1209,24 @@ export default function App() {
 
     const unsubscribers: (() => void)[] = [];
 
+    // Observe active room document in real-time (for changes in monetization, isPaid, price, subscribers)
+    const roomDocRef = doc(db, "rooms", activeRoom.id);
+    const unsubRoomDoc = onSnapshot(roomDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const updatedRoomData = { id: snapshot.id, ...snapshot.data() } as Room;
+        setActiveRoom((prev) => {
+          if (!prev || prev.id !== updatedRoomData.id) return prev;
+          return { ...prev, ...updatedRoomData };
+        });
+        setRooms((prevRooms) =>
+          prevRooms.map((r) => (r.id === updatedRoomData.id ? { ...r, ...updatedRoomData } : r))
+        );
+      }
+    }, (err) => {
+      console.warn("Room doc onSnapshot notice:", err);
+    });
+    unsubscribers.push(unsubRoomDoc);
+
     // Observe channels
     const channelsQuery = query(collection(db, "channels"), where("groupId", "==", activeRoom.id));
     const unsubChannels = onSnapshot(channelsQuery, async (snapshot) => {
@@ -2092,8 +2110,28 @@ export default function App() {
   };
 
   const isRoomLocked = useMemo(() => {
-    return false;
-  }, []);
+    if (!activeRoom) return false;
+    // If the room is not set to paid, it is open to everyone
+    if (!activeRoom.isPaid) return false;
+
+    // Room creator / owner always has full access
+    const isOwner = currentUser?.uid && (
+      activeRoom.creatorId === currentUser.uid ||
+      activeRoom.creatorId === currentUser.email ||
+      (activeRoom.creatorName && profile?.username && activeRoom.creatorName.toLowerCase() === profile.username.toLowerCase())
+    );
+    if (isOwner) return false;
+
+    // Super admin app owner has universal access across all desks
+    if (currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com") return false;
+
+    // Check if current user is an active subscriber of this workspace
+    const subscribers = activeRoom.subscribers || [];
+    if (currentUser?.uid && subscribers.includes(currentUser.uid)) return false;
+
+    // Otherwise, the paywall modal will pop up to purchase monthly access!
+    return true;
+  }, [activeRoom, currentUser, profile]);
 
   const handleUpdateSubscriptionTier = async (tier: "free" | "pro" | "elite") => {
     if (!currentUser) return;
@@ -2196,15 +2234,21 @@ export default function App() {
         subscribers: updatedSubscribers
       });
 
-      // Update Creator's MRR profile in Firestore
-      const creatorProfileRef = doc(db, "users", activeRoom.creatorId, "profile", "info");
-      const creatorSnap = await getDoc(creatorProfileRef);
-      if (creatorSnap.exists()) {
-        const creatorData = creatorSnap.data();
-        const currentMRR = creatorData.earningsMRR || 0;
-        await updateDoc(creatorProfileRef, {
-          earningsMRR: currentMRR + (activeRoom.monthlyPrice || 14.99)
-        });
+      // Update Creator's MRR profile in Firestore (wrapped safely)
+      if (activeRoom.creatorId && activeRoom.creatorId !== currentUser.uid) {
+        try {
+          const creatorProfileRef = doc(db, "users", activeRoom.creatorId, "profile", "info");
+          const creatorSnap = await getDoc(creatorProfileRef);
+          if (creatorSnap.exists()) {
+            const creatorData = creatorSnap.data();
+            const currentMRR = creatorData.earningsMRR || 0;
+            await updateDoc(creatorProfileRef, {
+              earningsMRR: currentMRR + (activeRoom.monthlyPrice || 14.99)
+            });
+          }
+        } catch (creatorErr) {
+          console.warn("Creator MRR update notice:", creatorErr);
+        }
       }
 
       // Add a message in the chat room to notify about the new premium subscriber!
