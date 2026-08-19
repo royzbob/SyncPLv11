@@ -153,6 +153,30 @@ export default function WorkspaceMonetizationSection({
   const [isGeneratingPaymentLink, setIsGeneratingPaymentLink] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
+  // Sync state with activeRoom prop whenever room data updates
+  useEffect(() => {
+    if (activeRoom) {
+      setIsPaid(Boolean(activeRoom.isPaid));
+      if (typeof activeRoom.monthlyPrice === "number") {
+        setMonthlyPrice(activeRoom.monthlyPrice);
+      }
+      setStripePaymentLink(activeRoom.stripePaymentLink || "");
+      setPaypalLink(activeRoom.paypalLink || "");
+      setVenmoUsername(activeRoom.venmoUsername || "");
+      setCashappTag(activeRoom.cashappTag || "");
+      setCustomPaymentInstructions(activeRoom.customPaymentInstructions || "");
+    }
+  }, [
+    activeRoom?.id,
+    activeRoom?.isPaid,
+    activeRoom?.monthlyPrice,
+    activeRoom?.stripePaymentLink,
+    activeRoom?.paypalLink,
+    activeRoom?.venmoUsername,
+    activeRoom?.cashappTag,
+    activeRoom?.customPaymentInstructions
+  ]);
+
   // Direct Invoicing State
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
   const [invoiceEmail, setInvoiceEmail] = useState<string>("");
@@ -348,6 +372,31 @@ export default function WorkspaceMonetizationSection({
       }
     } finally {
       setIsSendingInvoice(false);
+    }
+  };
+
+  const handleTogglePaidMembership = async (overrideValue?: boolean) => {
+    const nextIsPaid = typeof overrideValue === "boolean" ? overrideValue : !isPaid;
+    setIsPaid(nextIsPaid);
+    if (!onUpdateRoomMonetization) return;
+
+    setIsSaving(true);
+    try {
+      await onUpdateRoomMonetization(
+        nextIsPaid,
+        Number(monthlyPrice) || 0,
+        paypalLink.trim(),
+        venmoUsername.trim(),
+        cashappTag.trim(),
+        stripePaymentLink.trim(),
+        customPaymentInstructions.trim()
+      );
+    } catch (err: any) {
+      if (triggerToast) {
+        triggerToast("Save Error", err?.message || "Failed to update workspace access mode", "error");
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -584,16 +633,19 @@ export default function WorkspaceMonetizationSection({
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
                 Access Gate
               </div>
-              <div className={`text-xs font-bold ${isPaid ? "text-emerald-400" : "text-gray-400"}`}>
+              <div className={`text-xs font-bold flex items-center justify-end gap-1.5 ${isPaid ? "text-emerald-400" : "text-gray-300"}`}>
                 {isPaid ? "Paid Monthly Membership" : "Free Public Workspace"}
+                {isSaving && <RefreshCw className="w-3 h-3 animate-spin text-indigo-400" />}
               </div>
             </div>
             <button
               type="button"
-              onClick={() => setIsPaid(!isPaid)}
-              className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+              disabled={isSaving}
+              onClick={() => handleTogglePaidMembership(!isPaid)}
+              className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer disabled:opacity-50 ${
                 isPaid ? "bg-emerald-500" : "bg-gray-700"
               }`}
+              title={isPaid ? "Click to disable paid membership (Make Free)" : "Click to enable paid membership"}
             >
               <div
                 className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${

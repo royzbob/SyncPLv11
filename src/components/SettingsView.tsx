@@ -392,15 +392,6 @@ export default function SettingsView({
     }
   }, [profile]);
 
-  // Room monetization state
-  const [roomIsPaid, setRoomIsPaid] = useState(activeRoom?.isPaid || false);
-  const [roomMonthlyPrice, setRoomMonthlyPrice] = useState(activeRoom?.monthlyPrice || 14.99);
-  const [roomPaypalLink, setRoomPaypalLink] = useState(activeRoom?.paypalLink || "");
-  const [roomVenmoUsername, setRoomVenmoUsername] = useState(activeRoom?.venmoUsername || "");
-  const [roomCashappTag, setRoomCashappTag] = useState(activeRoom?.cashappTag || "");
-  const [roomStripePaymentLink, setRoomStripePaymentLink] = useState(activeRoom?.stripePaymentLink || "");
-  const [roomCustomPaymentInstructions, setRoomCustomPaymentInstructions] = useState(activeRoom?.customPaymentInstructions || "");
-
   // Stripe Express onboarding modal simulator state
   const [isStripeOnboardingOpen, setIsStripeOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
@@ -418,16 +409,6 @@ export default function SettingsView({
       setDiscordWebhookUrl(profile.discordWebhookUrl || "");
     }
   }, [profile?.discordWebhookUrl]);
-
-  useEffect(() => {
-    setRoomIsPaid(activeRoom?.isPaid || false);
-    setRoomMonthlyPrice(activeRoom?.monthlyPrice || 14.99);
-    setRoomPaypalLink(activeRoom?.paypalLink || "");
-    setRoomVenmoUsername(activeRoom?.venmoUsername || "");
-    setRoomCashappTag(activeRoom?.cashappTag || "");
-    setRoomStripePaymentLink(activeRoom?.stripePaymentLink || "");
-    setRoomCustomPaymentInstructions(activeRoom?.customPaymentInstructions || "");
-  }, [activeRoom]);
 
   // Actual network ping telemetry state
   const [mainNodePing, setMainNodePing] = useState<number>(12);

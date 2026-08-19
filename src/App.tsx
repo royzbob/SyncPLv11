@@ -2406,21 +2406,36 @@ export default function App() {
     customPaymentInstructions?: string
   ) => {
     if (!currentUser || !activeRoom) return;
+
+    const updatedFields = {
+      isPaid: Boolean(isPaid),
+      monthlyPrice: Number(price) || 0,
+      paypalLink: paypalLink || "",
+      venmoUsername: venmoUsername || "",
+      cashappTag: cashappTag || "",
+      stripePaymentLink: stripePaymentLink || "",
+      customPaymentInstructions: customPaymentInstructions || ""
+    };
+
+    // Immediate optimistic local update
+    setActiveRoom((prev) => (prev ? { ...prev, ...updatedFields } : prev));
+    setRooms((prevRooms) =>
+      prevRooms.map((r) => (r.id === activeRoom.id ? { ...r, ...updatedFields } : r))
+    );
+
     try {
       const roomRef = doc(db, "rooms", activeRoom.id);
-      await updateDoc(roomRef, {
-        isPaid,
-        monthlyPrice: price,
-        paypalLink: paypalLink || "",
-        venmoUsername: venmoUsername || "",
-        cashappTag: cashappTag || "",
-        stripePaymentLink: stripePaymentLink || "",
-        customPaymentInstructions: customPaymentInstructions || ""
-      });
-      triggerToast("Workspace Monetized", `Room settings published: ${isPaid ? "Paid ($" + price.toFixed(2) + "/mo)" : "Free"}`, "success");
+      await setDoc(roomRef, updatedFields, { merge: true });
+      triggerToast(
+        isPaid ? "Workspace Monetized" : "Free Access Enabled",
+        isPaid
+          ? `Workspace is now a Paid Desk ($${price.toFixed(2)}/mo).`
+          : "Workspace is now open as a Free Public Desk.",
+        "success"
+      );
     } catch (err: any) {
-      console.error(err);
-      triggerToast("Update Failed", err.message, "error");
+      console.error("Failed to update workspace monetization:", err);
+      triggerToast("Update Failed", err.message || "Failed to update room settings in Firestore.", "error");
     }
   };
 
