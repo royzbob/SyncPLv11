@@ -264,6 +264,49 @@ export default function WorkspaceMonetizationSection({
     }
   };
 
+  // Dynamic live Stripe Checkout launcher matching the exact current monthly price
+  const [isLaunchingCheckout, setIsLaunchingCheckout] = useState<boolean>(false);
+
+  const handleLaunchDynamicCheckout = async () => {
+    setIsLaunchingCheckout(true);
+    try {
+      const response = await fetch(getApiUrl("/api/payment/create-workspace-checkout-session"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId: activeRoom.id,
+          subscriberId: currentUser?.uid || "owner_preview",
+          subscriberEmail: currentUser?.email || "deskowner@syncpl.com",
+          monthlyPrice: Number(monthlyPrice) || 29,
+          creatorId: currentUser?.uid || ""
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Failed to create Stripe checkout session");
+      }
+
+      if (data.url) {
+        window.open(data.url, "_blank");
+        if (triggerToast) {
+          triggerToast(
+            "Stripe Checkout Launched",
+            `Opening live Stripe Checkout for $${Number(monthlyPrice).toFixed(2)}/mo in a new tab.`,
+            "success"
+          );
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (triggerToast) {
+        triggerToast("Checkout Failed", err.message || "Ensure STRIPE_SECRET_KEY is configured.", "error");
+      }
+    } finally {
+      setIsLaunchingCheckout(false);
+    }
+  };
+
   // Direct Invoicing via Stripe
   const handleSendStripeMemberInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -731,26 +774,30 @@ export default function WorkspaceMonetizationSection({
                 />
 
                 {stripePaymentLink && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleCopyPaymentLink}
-                      className="p-2 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-gray-300 hover:text-white rounded-lg transition cursor-pointer"
-                      title="Copy Payment Link"
-                    >
-                      {copiedLink ? <CheckCheck className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                    <a
-                      href={stripePaymentLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 bg-[#635BFF] hover:bg-[#5249EC] text-white rounded-lg transition"
-                      title="Open Checkout in New Tab"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </>
+                  <button
+                    type="button"
+                    onClick={handleCopyPaymentLink}
+                    className="p-2 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-gray-300 hover:text-white rounded-lg transition cursor-pointer"
+                    title="Copy Payment Link"
+                  >
+                    {copiedLink ? <CheckCheck className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
                 )}
+
+                <button
+                  type="button"
+                  disabled={isLaunchingCheckout}
+                  onClick={handleLaunchDynamicCheckout}
+                  className="bg-[#635BFF] hover:bg-[#5249EC] text-white text-xs font-bold px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50 shrink-0"
+                  title="Open Live Stripe Hosted Checkout for current membership fee"
+                >
+                  {isLaunchingCheckout ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  )}
+                  <span>Open Checkout (${Number(monthlyPrice || 29).toFixed(2)}/mo)</span>
+                </button>
               </div>
             </div>
 

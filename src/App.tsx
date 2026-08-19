@@ -2058,12 +2058,6 @@ export default function App() {
   const handleDirectWorkspaceStripeCheckout = async () => {
     if (!currentUser || !activeRoom) return;
     try {
-      if (activeRoom.stripePaymentLink) {
-        window.open(activeRoom.stripePaymentLink, "_blank");
-        triggerToast("Stripe Checkout", "Opening Stripe Payment Link in a new window.", "success");
-        return;
-      }
-
       const response = await fetch(getApiUrl("/api/payment/create-workspace-checkout-session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2079,13 +2073,21 @@ export default function App() {
       const data = await response.json();
       if (data.url) {
         window.open(data.url, "_blank");
-        triggerToast("Stripe Checkout", "Opening Stripe Hosted Checkout in a new window.", "success");
+        triggerToast("Stripe Checkout", `Opening Stripe Checkout for $${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo in a new window.`, "success");
+      } else if (activeRoom.stripePaymentLink) {
+        window.open(activeRoom.stripePaymentLink, "_blank");
+        triggerToast("Stripe Checkout", "Opening Stripe Payment Link in a new window.", "success");
       } else {
         throw new Error(data.error || "Could not start Stripe checkout.");
       }
     } catch (err: any) {
       console.error(err);
-      triggerToast("Checkout Error", err.message || "Failed to launch Stripe Checkout.", "error");
+      if (activeRoom.stripePaymentLink) {
+        window.open(activeRoom.stripePaymentLink, "_blank");
+        triggerToast("Stripe Checkout", "Opening Stripe Payment Link in a new window.", "success");
+      } else {
+        triggerToast("Checkout Error", err.message || "Failed to launch Stripe Checkout.", "error");
+      }
     }
   };
 

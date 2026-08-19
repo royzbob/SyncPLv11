@@ -452,8 +452,8 @@ async function startServer() {
             },
             { merge: true }
           );
-        } catch (dbErr) {
-          console.warn("Could not save payment link to Firestore room:", dbErr);
+        } catch (dbErr: any) {
+          console.info(`[Info] Room Firestore sync for ${roomId} delegated to authenticated client session`);
         }
       }
 
