@@ -45,6 +45,7 @@ import { db } from "../lib/firebase";
 import { playChatMessageSound, ChatNotificationSound } from "../utils/audio";
 import BroadcastUpdateModal from "./BroadcastUpdateModal";
 import { AppUpdateData } from "./WebUpdateNotifier";
+import WorkspaceMonetizationSection from "./WorkspaceMonetizationSection";
 
 interface SettingsViewProps {
   profile: UserProfile | null;
@@ -1778,6 +1779,19 @@ export default function SettingsView({
           </div>
         </div>
       </div>
+
+      {/* Course & Private Workspace Monetization Panel (Exclusively for Workspace Owners) */}
+      {isRoomOwner && (
+        <WorkspaceMonetizationSection
+          activeRoom={activeRoom}
+          isRoomOwner={isRoomOwner}
+          profile={profile}
+          currentUser={currentUser}
+          onUpdateRoomMonetization={onUpdateRoomMonetization}
+          onOpenStripeConnectOnboarding={() => setIsStripeOnboardingOpen(true)}
+          triggerToast={triggerToast}
+        />
+      )}
 
       {/* Subscription & Premium Billing Panel */}
       <div className="glass-panel p-6 rounded-xl border border-[#2A2D31] space-y-6 shadow-xl relative overflow-hidden bg-gradient-to-r from-[#121417] to-[#1e2023]">

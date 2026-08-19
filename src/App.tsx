@@ -63,6 +63,7 @@ import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, 
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString, DEFAULT_STRATEGIES } from "./utils/helpers";
 import { playJoinSound, playLeaveSound, playChatMessageSound, ChatNotificationSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
+import { getApiUrl } from "./utils/api";
 
 const isMobileOrTablet = typeof window !== "undefined" && (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 1024);
 
@@ -2009,11 +2010,7 @@ export default function App() {
 
   const handleManageBilling = async () => {
     if (!stripeConfig.stripeConfigured) {
-      triggerToast("Billing Error", "Stripe configuration is missing on the server.", "error");
-      return;
-    }
-    if (!profile?.stripeCustomerId) {
-      triggerToast("No Active Plan", "We couldn't locate an active Stripe Customer ID for your account. Please complete checkout first.", "info");
+      triggerToast("Billing Error", "Stripe configuration is missing on the server. Set STRIPE_SECRET_KEY in your settings.", "error");
       return;
     }
 
@@ -2024,10 +2021,20 @@ export default function App() {
         body: JSON.stringify({ 
           stripeCustomerId: profile?.stripeCustomerId || "", 
           userId: currentUser?.uid, 
-          userEmail: currentUser?.email 
+          userEmail: currentUser?.email || profile?.email || ""
         }),
       });
       const data = await response.json();
+      if (data.customerId && currentUser) {
+        try {
+          await setDoc(doc(db, "users", currentUser.uid, "profile", "info"), {
+            stripeCustomerId: data.customerId,
+          }, { merge: true });
+        } catch (dbErr) {
+          console.warn("Client profile update notice:", dbErr);
+        }
+      }
+
       if (data.url) {
         // Stripe Customer Portal pages prevent loading inside an iframe due to security headers.
         // We open the billing portal in a new tab instead.
@@ -2038,7 +2045,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      triggerToast("Portal Failed", err.message || "Failed to load billing portal.", "error");
+      triggerToast("Portal Status", err.message || "Failed to load billing portal.", "info");
     }
   };
 
@@ -2047,6 +2054,40 @@ export default function App() {
   const [paymentStep, setPaymentStep] = useState("");
   const [selectedPaywallChannel, setSelectedPaywallChannel] = useState<"sandbox" | "paypal" | "venmo" | "cashapp" | "stripe" | "custom">("sandbox");
   const [p2pPaymentProof, setP2pPaymentProof] = useState("");
+
+  const handleDirectWorkspaceStripeCheckout = async () => {
+    if (!currentUser || !activeRoom) return;
+    try {
+      if (activeRoom.stripePaymentLink) {
+        window.open(activeRoom.stripePaymentLink, "_blank");
+        triggerToast("Stripe Checkout", "Opening Stripe Payment Link in a new window.", "success");
+        return;
+      }
+
+      const response = await fetch(getApiUrl("/api/payment/create-workspace-checkout-session"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId: activeRoom.id,
+          subscriberId: currentUser.uid,
+          subscriberEmail: currentUser.email || profile?.email || "",
+          monthlyPrice: activeRoom.monthlyPrice || 29,
+          creatorId: activeRoom.creatorId || ""
+        })
+      });
+
+      const data = await response.json();
+      if (data.url) {
+        window.open(data.url, "_blank");
+        triggerToast("Stripe Checkout", "Opening Stripe Hosted Checkout in a new window.", "success");
+      } else {
+        throw new Error(data.error || "Could not start Stripe checkout.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Checkout Error", err.message || "Failed to launch Stripe Checkout.", "error");
+    }
+  };
 
   const isRoomLocked = useMemo(() => {
     return false;
@@ -3735,15 +3776,13 @@ export default function App() {
                                               <p className="text-[11px] text-gray-400">
                                                 Click below to pay safely using Stripe Credit Card Checkout.
                                               </p>
-                                              <a
-                                                href={activeRoom.stripePaymentLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                referrerPolicy="no-referrer"
-                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249EC] text-white text-xs font-black py-2 rounded-lg transition"
+                                              <button
+                                                type="button"
+                                                onClick={handleDirectWorkspaceStripeCheckout}
+                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249EC] text-white text-xs font-black py-2 rounded-lg transition cursor-pointer"
                                               >
-                                                <ExternalLink className="w-3.5 h-3.5" /> Secure Stripe Checkout
-                                              </a>
+                                                <ExternalLink className="w-3.5 h-3.5" /> Secure Stripe Checkout (${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo)
+                                              </button>
                                             </div>
                                           )}
 
