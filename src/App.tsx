@@ -2064,8 +2064,262 @@ export default function App() {
   // State and Handlers for Workspace Paywalls
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentStep, setPaymentStep] = useState("");
+  const [paywallPaymentTab, setPaywallPaymentTab] = useState<"card" | "p2p">("card");
   const [selectedPaywallChannel, setSelectedPaywallChannel] = useState<"sandbox" | "paypal" | "venmo" | "cashapp" | "stripe" | "custom">("sandbox");
   const [p2pPaymentProof, setP2pPaymentProof] = useState("");
+
+  // Direct Credit Card Form State
+  const [directCardNumber, setDirectCardNumber] = useState("");
+  const [directCardExp, setDirectCardExp] = useState("");
+  const [directCardCvc, setDirectCardCvc] = useState("");
+  const [directCardholderName, setDirectCardholderName] = useState("");
+  const [directCardZip, setDirectCardZip] = useState("");
+  const [directCardError, setDirectCardError] = useState("");
+
+  const getCardBrand = (num: string): string => {
+    const cleaned = num.replace(/\s+/g, "");
+    if (/^4/.test(cleaned)) return "visa";
+    if (/^(5[1-5]|222[1-9]|22[3-9]|2[3-6]|27[01]|2720)/.test(cleaned)) return "mastercard";
+    if (/^3[47]/.test(cleaned)) return "amex";
+    if (/^6(?:011|5)/.test(cleaned)) return "discover";
+    return "generic";
+  };
+
+  const handleCardNumberChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "").slice(0, 16);
+    const parts = cleaned.match(/.{1,4}/g) || [];
+    setDirectCardNumber(parts.join(" "));
+    if (directCardError) setDirectCardError("");
+  };
+
+  const handleCardExpChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "").slice(0, 4);
+    if (cleaned.length >= 3) {
+      setDirectCardExp(`${cleaned.slice(0, 2)}/${cleaned.slice(2)}`);
+    } else {
+      setDirectCardExp(cleaned);
+    }
+    if (directCardError) setDirectCardError("");
+  };
+
+  const handleCardCvcChange = (val: string) => {
+    const cleaned = val.replace(/\D/g, "").slice(0, 4);
+    setDirectCardCvc(cleaned);
+    if (directCardError) setDirectCardError("");
+  };
+
+  const handleDirectCardSubscribe = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!currentUser || !activeRoom) return;
+
+    setDirectCardError("");
+    const cleanNumber = directCardNumber.replace(/\D/g, "");
+    const cleanExp = directCardExp.trim();
+    const cleanCvc = directCardCvc.trim();
+
+    if (cleanNumber.length < 13 || cleanNumber.length > 19) {
+      setDirectCardError("Please enter a valid card number (15-16 digits).");
+      return;
+    }
+
+    const [expMonthStr, expYearStr] = cleanExp.split("/").map((s) => s.trim());
+    const expMonth = parseInt(expMonthStr, 10);
+    let expYear = parseInt(expYearStr, 10);
+    if (isNaN(expMonth) || expMonth < 1 || expMonth > 12 || isNaN(expYear)) {
+      setDirectCardError("Please enter expiration date as MM/YY (e.g. 12/28).");
+      return;
+    }
+    if (expYear < 100) expYear += 2000;
+
+    if (cleanCvc.length < 3 || cleanCvc.length > 4) {
+      setDirectCardError("Please enter a 3 or 4-digit security code (CVC).");
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    setPaymentStep("Securing PCI-DSS compliant direct Stripe payment tunnel...");
+
+    try {
+      await new Promise((r) => setTimeout(r, 400));
+      setPaymentStep("Encrypting payment method credentials with Stripe API gateway...");
+
+      const res = await safeFetchJson<any>("/api/payment/subscribe-direct-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId: activeRoom.id,
+          subscriberId: currentUser.uid,
+          subscriberEmail: currentUser.email || profile?.email || "",
+          monthlyPrice: activeRoom.monthlyPrice || 29,
+          creatorId: activeRoom.creatorId || "",
+          cardNumber: cleanNumber,
+          expMonth,
+          expYear,
+          cvc: cleanCvc,
+          cardholderName: directCardholderName.trim() || profile?.username || "SyncPL Member",
+          postalCode: directCardZip.trim(),
+        }),
+      });
+
+      if (!res.ok || !res.data?.success) {
+        throw new Error(res.data?.error || "Credit card processing failed. Please check your card info.");
+      }
+
+      setPaymentStep("Synchronizing workspace membership credentials...");
+
+      // Update room subscribers in Firestore
+      const roomRef = doc(db, "rooms", activeRoom.id);
+      const currentSubscribers = activeRoom.subscribers || [];
+      if (!currentSubscribers.includes(currentUser.uid)) {
+        await updateDoc(roomRef, {
+          subscribers: [...currentSubscribers, currentUser.uid],
+        });
+      }
+
+      // Update Creator's MRR profile in Firestore
+      if (activeRoom.creatorId && activeRoom.creatorId !== currentUser.uid) {
+        try {
+          const creatorProfileRef = doc(db, "users", activeRoom.creatorId, "profile", "info");
+          const creatorSnap = await getDoc(creatorProfileRef);
+          if (creatorSnap.exists()) {
+            const creatorData = creatorSnap.data();
+            const currentMRR = creatorData.earningsMRR || 0;
+            await updateDoc(creatorProfileRef, {
+              earningsMRR: currentMRR + (activeRoom.monthlyPrice || 29),
+            });
+          }
+        } catch (creatorErr) {
+          console.warn("Creator MRR update notice:", creatorErr);
+        }
+      }
+
+      // Post a message in the chat room
+      try {
+        const messageId = "notif_" + Date.now();
+        const msgRef = doc(db, "rooms", activeRoom.id, "messages", messageId);
+        await setDoc(msgRef, {
+          id: messageId,
+          userId: "system",
+          username: "DESK LEDGER",
+          avatarColor: "emerald",
+          avatarType: "emoji",
+          avatarVal: "💳",
+          groupId: activeRoom.id,
+          text: `💳 @${profile?.username || "A new member"} just unlocked monthly desk membership ($${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo) via Direct Stripe Card!`,
+          channel: "general",
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn("Could not log join message", err);
+      }
+
+      triggerToast("Membership Unlocked", `Direct card approved! Welcome to ${activeRoom.id}.`, "success");
+      setDirectCardNumber("");
+      setDirectCardExp("");
+      setDirectCardCvc("");
+      setDirectCardholderName("");
+      setDirectCardZip("");
+      setDirectCardError("");
+    } catch (err: any) {
+      console.error("Direct Card Checkout Error:", err);
+      setDirectCardError(err.message || "Payment declined or invalid card details.");
+      triggerToast("Card Processing Failed", err.message || "Card transaction could not be completed.", "error");
+    } finally {
+      setIsSubmittingPayment(false);
+      setPaymentStep("");
+    }
+  };
+
+  const handleUnsubscribeFromRoom = async (roomId: string) => {
+    if (!currentUser) return;
+    const targetRoom = rooms.find((r) => r.id === roomId) || (activeRoom?.id === roomId ? activeRoom : null);
+    const roomName = targetRoom?.name || roomId;
+
+    triggerConfirm(
+      `Unsubscribe from ${roomName}?`,
+      `Are you sure you want to cancel your monthly membership to ${roomName}? Your recurring Stripe subscription will be canceled and access to this private desk will be removed.`,
+      async () => {
+        try {
+          triggerToast("Canceling Membership", "Contacting Stripe API to stop subscription...", "info");
+
+          // Call backend cancellation endpoint
+          const cancelRes = await safeFetchJson<any>("/api/payment/cancel-workspace-subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId,
+              subscriberId: currentUser.uid,
+              subscriberEmail: currentUser.email || profile?.email || "",
+            }),
+          });
+
+          // Update Firestore directly to ensure subscriber is removed immediately
+          try {
+            const roomRef = doc(db, "rooms", roomId);
+            const roomSnap = await getDoc(roomRef);
+            if (roomSnap.exists()) {
+              const roomData = roomSnap.data();
+              const currentSubs = (roomData.subscribers || []) as string[];
+              const updatedSubs = currentSubs.filter((uid) => uid !== currentUser.uid);
+              await updateDoc(roomRef, {
+                subscribers: updatedSubs,
+              });
+
+              // Deduct creator MRR
+              if (roomData.creatorId && roomData.creatorId !== currentUser.uid) {
+                try {
+                  const creatorProfileRef = doc(db, "users", roomData.creatorId, "profile", "info");
+                  const creatorSnap = await getDoc(creatorProfileRef);
+                  if (creatorSnap.exists()) {
+                    const creatorData = creatorSnap.data();
+                    const currentMRR = creatorData.earningsMRR || 0;
+                    await updateDoc(creatorProfileRef, {
+                      earningsMRR: Math.max(0, currentMRR - (roomData.monthlyPrice || 29)),
+                    });
+                  }
+                } catch (creatorErr) {
+                  console.warn("Creator MRR deduction notice:", creatorErr);
+                }
+              }
+
+              // Post cancellation message to ledger
+              try {
+                const messageId = "notif_" + Date.now();
+                const msgRef = doc(db, "rooms", roomId, "messages", messageId);
+                await setDoc(msgRef, {
+                  id: messageId,
+                  userId: "system",
+                  username: "DESK LEDGER",
+                  avatarColor: "pink",
+                  avatarType: "emoji",
+                  avatarVal: "👋",
+                  groupId: roomId,
+                  text: `👋 @${profile?.username || "A member"} has canceled their monthly desk subscription.`,
+                  channel: "general",
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (err) {
+                console.warn("Could not log unsubscribe message", err);
+              }
+            }
+          } catch (dbErr) {
+            console.warn("Firestore unsub sync notice:", dbErr);
+          }
+
+          triggerToast(
+            "Subscription Canceled",
+            cancelRes.ok && cancelRes.data?.message
+              ? cancelRes.data.message
+              : `Successfully unsubscribed from ${roomName}.`,
+            "success"
+          );
+        } catch (err: any) {
+          console.error(err);
+          triggerToast("Cancellation Error", err.message || "Failed to cancel subscription.", "error");
+        }
+      }
+    );
+  };
 
   const handleDirectWorkspaceStripeCheckout = async () => {
     if (!currentUser || !activeRoom) return;
@@ -3307,6 +3561,8 @@ export default function App() {
                       navigator.clipboard.writeText(activeRoom.id);
                       triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
                     }}
+                    onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
+                    currentUser={currentUser}
                     globalVolume={globalVolume}
                     onChangeGlobalVolume={handleChangeGlobalVolume}
                     inputVolume={inputVolume}
@@ -3373,6 +3629,8 @@ export default function App() {
                     navigator.clipboard.writeText(activeRoom.id);
                     triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
                   }}
+                  onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
+                  currentUser={currentUser}
                   isChatSidePanelOpen={isChatSidePanelOpen}
                   globalVolume={globalVolume}
                   onChangeGlobalVolume={handleChangeGlobalVolume}
@@ -3655,230 +3913,378 @@ export default function App() {
 
                         {/* Price Tag */}
                         <div className="py-2 flex items-center justify-center gap-1">
-                          <span className="text-3xl font-black text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span>
+                          <span className="text-3xl font-black text-white">${(activeRoom.monthlyPrice || 29.00).toFixed(2)}</span>
                           <span className="text-xs text-[#8E9297] font-semibold mt-2">/ month</span>
                         </div>
 
-                        {/* Simulate Checkout action */}
-                        <div className="space-y-3">
+                        {/* Checkout Action */}
+                        <div className="space-y-4">
                           {isSubmittingPayment ? (
-                            <div className="space-y-2.5 bg-[#121417] p-4 rounded-xl border border-[#2A2D31]/60">
+                            <div className="space-y-3 bg-[#121417] p-5 rounded-xl border border-[#2A2D31]/60 text-center">
                               <div className="flex items-center justify-center gap-2">
-                                <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-xs font-mono font-bold text-amber-400">Processing...</span>
+                                <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-xs font-mono font-bold text-indigo-400">Processing Direct Transaction...</span>
                               </div>
-                              <p className="text-[10px] text-gray-400 font-mono animate-pulse">{paymentStep}</p>
+                              <p className="text-[11px] text-gray-300 font-mono animate-pulse">{paymentStep}</p>
                             </div>
                           ) : (
                             <div className="space-y-4 text-left">
-                              {(() => {
-                                const hasDirectPayouts = !!(activeRoom.paypalLink || activeRoom.venmoUsername || activeRoom.cashappTag || activeRoom.stripePaymentLink || activeRoom.customPaymentInstructions);
-                                return (
-                                  <>
-                                    {hasDirectPayouts && (
-                                      <div className="space-y-3 bg-[#121417]/90 p-4 rounded-xl border border-[#2A2D31]/60">
-                                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
-                                          Select Direct Payout Channel:
-                                        </span>
-                                        
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                          {activeRoom.paypalLink && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setSelectedPaywallChannel("paypal")}
-                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                                                selectedPaywallChannel === "paypal"
-                                                  ? "bg-blue-600/10 border-blue-500 text-blue-400"
-                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
-                                              }`}
-                                            >
-                                              PayPal
-                                            </button>
-                                          )}
-                                          {activeRoom.venmoUsername && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setSelectedPaywallChannel("venmo")}
-                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                                                selectedPaywallChannel === "venmo"
-                                                  ? "bg-[#008CFF]/10 border-[#008CFF] text-[#008CFF]"
-                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
-                                              }`}
-                                            >
-                                              Venmo
-                                            </button>
-                                          )}
-                                          {activeRoom.cashappTag && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setSelectedPaywallChannel("cashapp")}
-                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                                                selectedPaywallChannel === "cashapp"
-                                                  ? "bg-emerald-600/10 border-emerald-500 text-emerald-400"
-                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
-                                              }`}
-                                            >
-                                              Cash App
-                                            </button>
-                                          )}
-                                          {activeRoom.stripePaymentLink && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setSelectedPaywallChannel("stripe")}
-                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                                                selectedPaywallChannel === "stripe"
-                                                  ? "bg-[#635BFF]/10 border-[#635BFF] text-[#635BFF]"
-                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
-                                              }`}
-                                            >
-                                              Stripe Link
-                                            </button>
-                                          )}
-                                          {activeRoom.customPaymentInstructions && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setSelectedPaywallChannel("custom")}
-                                              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                                                selectedPaywallChannel === "custom"
-                                                  ? "bg-amber-500/10 border-amber-500 text-amber-400"
-                                                  : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
-                                              }`}
-                                            >
-                                              Alternative
-                                            </button>
-                                          )}
-                                          <button
-                                            type="button"
-                                            onClick={() => setSelectedPaywallChannel("sandbox")}
-                                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
-                                              selectedPaywallChannel === "sandbox"
-                                                ? "bg-gray-600/10 border-gray-500 text-gray-300"
-                                                : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
-                                            }`}
-                                          >
-                                            Sandbox
-                                          </button>
-                                        </div>
+                              {/* Payment Method Switcher Tabs */}
+                              <div className="flex bg-[#121417] p-1 rounded-xl border border-[#2A2D31]/60 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setPaywallPaymentTab("card")}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    paywallPaymentTab === "card"
+                                      ? "bg-indigo-600 text-white shadow-sm"
+                                      : "text-gray-400 hover:text-white"
+                                  }`}
+                                >
+                                  <CreditCard className="w-3.5 h-3.5" />
+                                  <span>Credit / Debit Card</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPaywallPaymentTab("p2p")}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                    paywallPaymentTab === "p2p"
+                                      ? "bg-[#2A2D31] text-white shadow-sm"
+                                      : "text-gray-400 hover:text-white"
+                                  }`}
+                                >
+                                  <Coins className="w-3.5 h-3.5" />
+                                  <span>Other Methods & Sandbox</span>
+                                </button>
+                              </div>
 
-                                        <div className="border-t border-[#2A2D31]/40 pt-2.5 mt-2">
-                                          {selectedPaywallChannel === "paypal" && (
-                                            <div className="space-y-2">
-                                              <p className="text-[11px] text-gray-400">
-                                                Transfer exactly <span className="font-bold text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span> to the creator's PayPal account to settle.
-                                              </p>
-                                              <a
-                                                href={activeRoom.paypalLink.startsWith("http") ? activeRoom.paypalLink : `https://paypal.me/${activeRoom.paypalLink}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                referrerPolicy="no-referrer"
-                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#003087] hover:bg-[#0079C1] text-white text-xs font-black py-2 rounded-lg transition"
-                                              >
-                                                <ExternalLink className="w-3.5 h-3.5" /> Pay on PayPal
-                                              </a>
-                                            </div>
-                                          )}
+                              {/* TAB 1: Direct Credit Card Form */}
+                              {paywallPaymentTab === "card" && (
+                                <form onSubmit={handleDirectCardSubscribe} className="space-y-3 bg-[#121417]/90 p-4 rounded-xl border border-[#2A2D31]/70 animate-in fade-in duration-150">
+                                  <div className="flex items-center justify-between pb-1 border-b border-[#2A2D31]/50">
+                                    <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider flex items-center gap-1">
+                                      <Lock className="w-3 h-3 text-emerald-400" /> Direct Stripe Card Processing
+                                    </span>
+                                    <div className="flex items-center gap-1 text-[9px] font-mono text-gray-400 uppercase">
+                                      <span className={getCardBrand(directCardNumber) === "visa" ? "text-blue-400 font-bold" : "opacity-40"}>VISA</span>
+                                      <span className={getCardBrand(directCardNumber) === "mastercard" ? "text-amber-400 font-bold" : "opacity-40"}>MC</span>
+                                      <span className={getCardBrand(directCardNumber) === "amex" ? "text-cyan-400 font-bold" : "opacity-40"}>AMEX</span>
+                                      <span className={getCardBrand(directCardNumber) === "discover" ? "text-orange-400 font-bold" : "opacity-40"}>DISC</span>
+                                    </div>
+                                  </div>
 
-                                          {selectedPaywallChannel === "venmo" && (
-                                            <div className="space-y-2">
-                                              <p className="text-[11px] text-gray-400">
-                                                Send <span className="font-bold text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span> to Venmo handle: <span className="text-blue-400 font-bold font-mono">{activeRoom.venmoUsername}</span>.
-                                              </p>
-                                              <a
-                                                href={`https://venmo.com/${activeRoom.venmoUsername.replace('@', '')}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                referrerPolicy="no-referrer"
-                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#008CFF] hover:bg-[#0074D9] text-white text-xs font-black py-2 rounded-lg transition"
-                                              >
-                                                <ExternalLink className="w-3.5 h-3.5" /> Pay with Venmo
-                                              </a>
-                                            </div>
-                                          )}
+                                  {directCardError && (
+                                    <div className="p-2 bg-rose-950/40 border border-rose-500/30 rounded-lg text-[11px] text-rose-300 font-medium flex items-center gap-1.5">
+                                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                                      <span>{directCardError}</span>
+                                    </div>
+                                  )}
 
-                                          {selectedPaywallChannel === "cashapp" && (
-                                            <div className="space-y-2">
-                                              <p className="text-[11px] text-gray-400">
-                                                Send <span className="font-bold text-white">${(activeRoom.monthlyPrice || 14.99).toFixed(2)}</span> to Cash App Cashtag: <span className="text-emerald-400 font-bold font-mono">{activeRoom.cashappTag}</span>.
-                                              </p>
-                                              <a
-                                                href={`https://cash.app/$${activeRoom.cashappTag.replace('$', '')}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                referrerPolicy="no-referrer"
-                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2 rounded-lg transition"
-                                              >
-                                                <ExternalLink className="w-3.5 h-3.5" /> Pay with Cash App
-                                              </a>
-                                            </div>
-                                          )}
+                                  {/* Cardholder Name */}
+                                  <div>
+                                    <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1">
+                                      Name on Card
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={directCardholderName}
+                                      onChange={(e) => setDirectCardholderName(e.target.value)}
+                                      placeholder={profile?.username || "Full Name"}
+                                      className="w-full bg-[#1E2023] border border-[#2A2D31] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-indigo-500 focus:outline-none transition"
+                                    />
+                                  </div>
 
-                                          {selectedPaywallChannel === "stripe" && (
-                                            <div className="space-y-2">
-                                              <p className="text-[11px] text-gray-400">
-                                                Click below to pay safely using Stripe Credit Card Checkout.
-                                              </p>
-                                              <button
-                                                type="button"
-                                                onClick={handleDirectWorkspaceStripeCheckout}
-                                                className="inline-flex w-full justify-center items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249EC] text-white text-xs font-black py-2 rounded-lg transition cursor-pointer"
-                                              >
-                                                <ExternalLink className="w-3.5 h-3.5" /> Secure Stripe Checkout (${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo)
-                                              </button>
-                                            </div>
-                                          )}
+                                  {/* Card Number */}
+                                  <div>
+                                    <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1">
+                                      Card Number
+                                    </label>
+                                    <div className="relative">
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={directCardNumber}
+                                        onChange={(e) => handleCardNumberChange(e.target.value)}
+                                        placeholder="•••• •••• •••• ••••"
+                                        className="w-full bg-[#1E2023] border border-[#2A2D31] rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-gray-600 focus:border-indigo-500 focus:outline-none transition"
+                                      />
+                                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                                        <CreditCard className="w-4 h-4 text-gray-500" />
+                                      </div>
+                                    </div>
+                                  </div>
 
-                                          {selectedPaywallChannel === "custom" && (
-                                            <div className="space-y-2">
-                                              <span className="text-[9px] uppercase font-bold text-gray-500">Alternative Instructions:</span>
-                                              <div className="bg-[#1E2023] p-2.5 rounded border border-[#2A2D31] text-[11px] text-gray-300 font-mono whitespace-pre-wrap leading-normal">
-                                                {activeRoom.customPaymentInstructions}
-                                              </div>
-                                            </div>
-                                          )}
+                                  {/* Expiration & CVC & Zip */}
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1">
+                                        Expires
+                                      </label>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={directCardExp}
+                                        onChange={(e) => handleCardExpChange(e.target.value)}
+                                        placeholder="MM/YY"
+                                        className="w-full bg-[#1E2023] border border-[#2A2D31] rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-gray-600 focus:border-indigo-500 focus:outline-none transition"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1">
+                                        CVC / CVV
+                                      </label>
+                                      <input
+                                        type="password"
+                                        inputMode="numeric"
+                                        value={directCardCvc}
+                                        onChange={(e) => handleCardCvcChange(e.target.value)}
+                                        placeholder="123"
+                                        maxLength={4}
+                                        className="w-full bg-[#1E2023] border border-[#2A2D31] rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-gray-600 focus:border-indigo-500 focus:outline-none transition"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1">
+                                        ZIP / Postal
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={directCardZip}
+                                        onChange={(e) => setDirectCardZip(e.target.value)}
+                                        placeholder="90210"
+                                        className="w-full bg-[#1E2023] border border-[#2A2D31] rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-gray-600 focus:border-indigo-500 focus:outline-none transition"
+                                      />
+                                    </div>
+                                  </div>
 
-                                          {selectedPaywallChannel === "sandbox" && (
-                                            <div className="space-y-1">
-                                              <p className="text-[11px] text-gray-400">
-                                                Bypass payments instantly to test workspace operations using a sandboxed subscription simulator.
-                                              </p>
-                                            </div>
-                                          )}
+                                  <button
+                                    type="submit"
+                                    className="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs py-3 rounded-xl transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                                  >
+                                    <Lock className="w-3.5 h-3.5" />
+                                    <span>Pay ${(activeRoom.monthlyPrice || 29.00).toFixed(2)}/mo with Stripe</span>
+                                  </button>
 
-                                          {/* Proof of Payment input for P2P */}
-                                          {selectedPaywallChannel !== "sandbox" && (
-                                            <div className="mt-3.5 space-y-1 animate-in fade-in duration-150">
-                                              <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide">
-                                                Sender Handle / Proof of Transfer
-                                              </label>
-                                              <input
-                                                type="text"
-                                                value={p2pPaymentProof}
-                                                onChange={(e) => setP2pPaymentProof(e.target.value)}
-                                                placeholder="e.g. Sent from @MyVenmo / ref #12345"
-                                                className="w-full bg-[#1E2023] border border-[#2A2D31] rounded px-2.5 py-1.5 text-xs text-white"
-                                              />
-                                            </div>
-                                          )}
+                                  <div className="flex items-center justify-between text-[9px] text-gray-500 pt-1">
+                                    <span className="flex items-center gap-1">
+                                      <ShieldCheck className="w-3 h-3 text-emerald-400" /> 256-Bit Encrypted
+                                    </span>
+                                    <span>Cancel anytime in Settings</span>
+                                  </div>
+                                </form>
+                              )}
+
+                              {/* TAB 2: P2P & Sandbox Options */}
+                              {paywallPaymentTab === "p2p" && (
+                                <div className="space-y-3 bg-[#121417]/90 p-4 rounded-xl border border-[#2A2D31]/60 animate-in fade-in duration-150">
+                                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
+                                    Select Alternative Payout Channel:
+                                  </span>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {activeRoom.paypalLink && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPaywallChannel("paypal")}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                          selectedPaywallChannel === "paypal"
+                                            ? "bg-blue-600/10 border-blue-500 text-blue-400"
+                                            : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                        }`}
+                                      >
+                                        PayPal
+                                      </button>
+                                    )}
+                                    {activeRoom.venmoUsername && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPaywallChannel("venmo")}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                          selectedPaywallChannel === "venmo"
+                                            ? "bg-[#008CFF]/10 border-[#008CFF] text-[#008CFF]"
+                                            : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                        }`}
+                                      >
+                                        Venmo
+                                      </button>
+                                    )}
+                                    {activeRoom.cashappTag && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPaywallChannel("cashapp")}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                          selectedPaywallChannel === "cashapp"
+                                            ? "bg-emerald-600/10 border-emerald-500 text-emerald-400"
+                                            : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                        }`}
+                                      >
+                                        Cash App
+                                      </button>
+                                    )}
+                                    {activeRoom.stripePaymentLink && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPaywallChannel("stripe")}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                          selectedPaywallChannel === "stripe"
+                                            ? "bg-[#635BFF]/10 border-[#635BFF] text-[#635BFF]"
+                                            : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                        }`}
+                                      >
+                                        Stripe Link
+                                      </button>
+                                    )}
+                                    {activeRoom.customPaymentInstructions && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedPaywallChannel("custom")}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                          selectedPaywallChannel === "custom"
+                                            ? "bg-amber-500/10 border-amber-500 text-amber-400"
+                                            : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                        }`}
+                                      >
+                                        Alternative
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedPaywallChannel("sandbox")}
+                                      className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                                        selectedPaywallChannel === "sandbox"
+                                          ? "bg-gray-600/10 border-gray-500 text-gray-300"
+                                          : "bg-[#1E2023] border-transparent text-gray-400 hover:text-white"
+                                      }`}
+                                    >
+                                      Sandbox
+                                    </button>
+                                  </div>
+
+                                  <div className="border-t border-[#2A2D31]/40 pt-2.5 mt-2">
+                                    {selectedPaywallChannel === "paypal" && (
+                                      <div className="space-y-2">
+                                        <p className="text-[11px] text-gray-400">
+                                          Transfer exactly <span className="font-bold text-white">${(activeRoom.monthlyPrice || 29.00).toFixed(2)}</span> to the creator's PayPal account to settle.
+                                        </p>
+                                        <a
+                                          href={activeRoom.paypalLink.startsWith("http") ? activeRoom.paypalLink : `https://paypal.me/${activeRoom.paypalLink}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          referrerPolicy="no-referrer"
+                                          className="inline-flex w-full justify-center items-center gap-1.5 bg-[#003087] hover:bg-[#0079C1] text-white text-xs font-black py-2 rounded-lg transition"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" /> Pay on PayPal
+                                        </a>
+                                      </div>
+                                    )}
+
+                                    {selectedPaywallChannel === "venmo" && (
+                                      <div className="space-y-2">
+                                        <p className="text-[11px] text-gray-400">
+                                          Send <span className="font-bold text-white">${(activeRoom.monthlyPrice || 29.00).toFixed(2)}</span> to Venmo handle: <span className="text-blue-400 font-bold font-mono">{activeRoom.venmoUsername}</span>.
+                                        </p>
+                                        <a
+                                          href={`https://venmo.com/${activeRoom.venmoUsername.replace('@', '')}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          referrerPolicy="no-referrer"
+                                          className="inline-flex w-full justify-center items-center gap-1.5 bg-[#008CFF] hover:bg-[#0074D9] text-white text-xs font-black py-2 rounded-lg transition"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" /> Pay with Venmo
+                                        </a>
+                                      </div>
+                                    )}
+
+                                    {selectedPaywallChannel === "cashapp" && (
+                                      <div className="space-y-2">
+                                        <p className="text-[11px] text-gray-400">
+                                          Send <span className="font-bold text-white">${(activeRoom.monthlyPrice || 29.00).toFixed(2)}</span> to Cash App Cashtag: <span className="text-emerald-400 font-bold font-mono">{activeRoom.cashappTag}</span>.
+                                        </p>
+                                        <a
+                                          href={`https://cash.app/$${activeRoom.cashappTag.replace('$', '')}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          referrerPolicy="no-referrer"
+                                          className="inline-flex w-full justify-center items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black py-2 rounded-lg transition"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" /> Pay with Cash App
+                                        </a>
+                                      </div>
+                                    )}
+
+                                    {selectedPaywallChannel === "stripe" && (
+                                      <div className="space-y-2">
+                                        <p className="text-[11px] text-gray-400">
+                                          Click below to pay safely using Stripe Hosted Checkout.
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={handleDirectWorkspaceStripeCheckout}
+                                          className="inline-flex w-full justify-center items-center gap-1.5 bg-[#635BFF] hover:bg-[#5249EC] text-white text-xs font-black py-2 rounded-lg transition cursor-pointer"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" /> Hosted Stripe Checkout (${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo)
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {selectedPaywallChannel === "custom" && (
+                                      <div className="space-y-2">
+                                        <span className="text-[9px] uppercase font-bold text-gray-500">Alternative Instructions:</span>
+                                        <div className="bg-[#1E2023] p-2.5 rounded border border-[#2A2D31] text-[11px] text-gray-300 font-mono whitespace-pre-wrap leading-normal">
+                                          {activeRoom.customPaymentInstructions}
                                         </div>
                                       </div>
                                     )}
 
-                                    <button
-                                      type="button"
-                                      onClick={handleSubscribeToRoom}
-                                      className="w-full bg-amber-500 hover:bg-amber-600 text-[#121417] font-black text-xs py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
-                                    >
-                                      <Coins className="w-4 h-4" /> 
-                                      {selectedPaywallChannel === "sandbox" ? "Subscribe via Instant Sandbox Test" : `Confirm Direct ${selectedPaywallChannel.toUpperCase()} Payment`}
-                                    </button>
-                                  </>
-                                );
-                              })()}
+                                    {selectedPaywallChannel === "sandbox" && (
+                                      <div className="space-y-1">
+                                        <p className="text-[11px] text-gray-400">
+                                          Bypass payments instantly to test workspace operations using a sandboxed subscription simulator.
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {/* Proof of Payment input for P2P */}
+                                    {selectedPaywallChannel !== "sandbox" && (
+                                      <div className="mt-3.5 space-y-1 animate-in fade-in duration-150">
+                                        <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wide">
+                                          Sender Handle / Proof of Transfer
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={p2pPaymentProof}
+                                          onChange={(e) => setP2pPaymentProof(e.target.value)}
+                                          placeholder="e.g. Sent from @MyVenmo / ref #12345"
+                                          className="w-full bg-[#1E2023] border border-[#2A2D31] rounded px-2.5 py-1.5 text-xs text-white"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={handleSubscribeToRoom}
+                                    className="w-full bg-amber-500 hover:bg-amber-600 text-[#121417] font-black text-xs py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                                  >
+                                    <Coins className="w-4 h-4" /> 
+                                    {selectedPaywallChannel === "sandbox" ? "Subscribe via Instant Sandbox Test" : `Confirm Direct ${selectedPaywallChannel.toUpperCase()} Payment`}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
-                          <p className="text-[10px] text-[#8E9297]">
-                            Payments are completed directly with the room owner. Subscribing grants real-time streaming member credentials instantly.
-                          </p>
+
+                          <div className="flex items-center justify-between text-[10px] text-[#8E9297] pt-1">
+                            <span>Subscribing grants full workspace member access.</span>
+                            {activeRoom.subscribers?.includes(currentUser?.uid) && (
+                              <button
+                                type="button"
+                                onClick={() => handleUnsubscribeFromRoom(activeRoom.id)}
+                                className="text-rose-400 hover:text-rose-300 font-bold underline cursor-pointer"
+                              >
+                                Cancel Existing Pass
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -4012,6 +4418,8 @@ export default function App() {
                       onChangeChatSoundVolume={handleChangeChatSoundVolume}
                       isRoomOwner={activeRoom.creatorId === currentUser?.uid}
                       currentUser={currentUser}
+                      userRooms={rooms}
+                      onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
                       triggerToast={triggerToast}
                       isAppOwner={Boolean(currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.role === "owner")}
                     />

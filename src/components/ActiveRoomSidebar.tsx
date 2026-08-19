@@ -74,6 +74,8 @@ interface ActiveRoomSidebarProps {
   onToggleScreenShare?: () => void;
   onOpenScreenShareModal?: (uid?: string) => void;
   remoteScreenStreams?: Map<string, MediaStream>;
+  onUnsubscribeFromRoom?: (roomId: string) => Promise<void>;
+  currentUser?: any;
 }
 
 export default function ActiveRoomSidebar({
@@ -114,6 +116,8 @@ export default function ActiveRoomSidebar({
   onToggleScreenShare,
   onOpenScreenShareModal,
   remoteScreenStreams,
+  onUnsubscribeFromRoom,
+  currentUser,
 }: ActiveRoomSidebarProps) {
   const [voiceTheme, setVoiceTheme] = useState<"classic-dark" | "terminal-green" | "high-contrast-blue">(() => {
     try {
@@ -212,26 +216,59 @@ export default function ActiveRoomSidebar({
         />
       )}
       {/* Brand Header */}
-      <div className="p-4 border-b border-[#2A2D31] flex items-center justify-between bg-[#08090A]/30">
-        <div className="flex flex-col">
-          <span className="text-[9px] text-[#72767D] font-extrabold tracking-widest uppercase">
-            Active Workspace
-          </span>
-          <span
+      <div className="p-4 border-b border-[#2A2D31] bg-[#08090A]/30 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col">
+            <span className="text-[9px] text-[#72767D] font-extrabold tracking-widest uppercase">
+              Active Workspace
+            </span>
+            <span
+              onClick={onCopyRoomCode}
+              className="text-base font-black text-indigo-400 tracking-wider font-mono cursor-pointer hover:text-indigo-300 transition flex items-center gap-1.5"
+              title="Copy Invite Code"
+            >
+              {activeRoom.id}
+            </span>
+          </div>
+          <button
             onClick={onCopyRoomCode}
-            className="text-base font-black text-indigo-400 tracking-wider font-mono cursor-pointer hover:text-indigo-300 transition flex items-center gap-1.5"
-            title="Copy Invite Code"
+            className="p-1.5 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-indigo-400 rounded transition cursor-pointer"
+            title="Copy invite code"
           >
-            {activeRoom.id}
-          </span>
+            <span className="text-[10px] font-bold">Copy</span>
+          </button>
         </div>
-        <button
-          onClick={onCopyRoomCode}
-          className="p-1.5 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-indigo-400 rounded transition"
-          title="Copy invite code"
-        >
-          <span className="text-[10px] font-bold">Copy</span>
-        </button>
+
+        {/* Paid Workspace Status & Unsubscribe Action */}
+        {activeRoom.isPaid && (
+          <div className="pt-1 border-t border-[#2A2D31]/40 flex items-center justify-between text-[9px]">
+            {activeRoom.creatorId === currentUser?.uid ? (
+              <span className="font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                👑 Desk Owner (${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo)
+              </span>
+            ) : activeRoom.subscribers?.includes(currentUser?.uid) ? (
+              <div className="w-full flex items-center justify-between">
+                <span className="font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                  <Check className="w-2.5 h-2.5" /> Subscribed Member
+                </span>
+                {onUnsubscribeFromRoom && (
+                  <button
+                    type="button"
+                    onClick={() => onUnsubscribeFromRoom(activeRoom.id)}
+                    className="text-rose-400 hover:text-rose-300 underline font-bold cursor-pointer transition"
+                    title="Cancel monthly subscription to this desk"
+                  >
+                    Unsubscribe
+                  </button>
+                )}
+              </div>
+            ) : (
+              <span className="text-gray-400 font-mono">
+                Price: ${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Primary Navigation Tabs */}

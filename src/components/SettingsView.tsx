@@ -105,6 +105,8 @@ interface SettingsViewProps {
   currentUser?: any;
   isAppOwner?: boolean;
   triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
+  onUnsubscribeFromRoom?: (roomId: string) => Promise<void>;
+  userRooms?: Room[];
 }
 
 const openExternalUrl = async (url: string) => {
@@ -164,6 +166,8 @@ export default function SettingsView({
   currentUser,
   isAppOwner = false,
   triggerToast,
+  onUnsubscribeFromRoom,
+  userRooms = [],
 }: SettingsViewProps) {
   const isAppOwnerUser = Boolean(
     isAppOwner ||
@@ -1981,7 +1985,111 @@ export default function SettingsView({
           </div>
         </div>
 
+        {/* User's Enrolled Private Desk Subscriptions & Cancellation Manager */}
+        {(() => {
+          const subscribedRooms: Room[] = [];
+          if (activeRoom && activeRoom.isPaid && activeRoom.subscribers?.includes(currentUser?.uid) && activeRoom.creatorId !== currentUser?.uid) {
+            subscribedRooms.push(activeRoom);
+          }
+          userRooms.forEach((r) => {
+            if (r.isPaid && r.subscribers?.includes(currentUser?.uid) && r.creatorId !== currentUser?.uid) {
+              if (!subscribedRooms.some((sr) => sr.id === r.id)) {
+                subscribedRooms.push(r);
+              }
+            }
+          });
 
+          return (
+            <div className="bg-[#121417]/60 border border-[#2A2D31] rounded-xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#2A2D31]/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/20">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-white uppercase tracking-wider">
+                      Your Private Workspace Subscriptions
+                    </h5>
+                    <p className="text-[10px] text-gray-400">
+                      Manage recurring monthly passes to trading desks you have joined.
+                    </p>
+                  </div>
+                </div>
+                {subscribedRooms.length > 0 && (
+                  <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded uppercase">
+                    {subscribedRooms.length} Active Desk Pass{subscribedRooms.length > 1 ? "es" : ""}
+                  </span>
+                )}
+              </div>
+
+              {subscribedRooms.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {subscribedRooms.map((room) => (
+                    <div
+                      key={room.id}
+                      className="bg-[#1E2023] border border-[#2A2D31] rounded-xl p-4 flex flex-col justify-between space-y-3"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-white font-mono">{room.name || room.id}</span>
+                            <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-mono font-bold">
+                              #{room.id}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            Desk Creator: <span className="text-indigo-400 font-semibold">@{room.creatorName || "Trader"}</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-black text-emerald-400 font-mono">
+                            ${(room.monthlyPrice || 29).toFixed(2)}/mo
+                          </span>
+                          <span className="block text-[8px] text-gray-500 uppercase font-bold">Auto-Renewing</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-[#2A2D31]/60">
+                        <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Full Access Granted
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={onManageBilling}
+                            className="px-2.5 py-1 text-[10px] font-bold bg-[#121417] hover:bg-[#2A2D31] text-gray-300 hover:text-white border border-[#2A2D31] rounded transition cursor-pointer"
+                            title="Open Stripe Customer Billing Portal"
+                          >
+                            Stripe Portal
+                          </button>
+                          {onUnsubscribeFromRoom && (
+                            <button
+                              type="button"
+                              onClick={() => onUnsubscribeFromRoom(room.id)}
+                              className="px-2.5 py-1 text-[10px] font-black bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-200 border border-rose-500/30 rounded transition cursor-pointer shadow-sm"
+                              title="Cancel recurring monthly subscription"
+                            >
+                              Cancel / Unsubscribe
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-[#0F1113]/50 border border-[#2A2D31]/60 rounded-xl p-4 text-center space-y-1">
+                  <p className="text-xs text-gray-400">
+                    You are not currently subscribed to any third-party private workspaces.
+                  </p>
+                  <p className="text-[10px] text-gray-500">
+                    When you unlock paid desks with direct credit card billing or Stripe passes, they will appear here with one-click cancellation controls.
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Stripe Express Onboarding Simulator Modal */}
         {isStripeOnboardingOpen && (
