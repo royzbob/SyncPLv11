@@ -28,7 +28,7 @@ import {
   CheckCheck
 } from "lucide-react";
 import { Room, UserProfile } from "../types";
-import { getApiUrl } from "../utils/api";
+import { getApiUrl, safeFetchJson } from "../utils/api";
 
 interface WorkspaceMonetizationSectionProps {
   activeRoom: Room;
@@ -216,7 +216,7 @@ export default function WorkspaceMonetizationSection({
   const handleAutoGenerateStripePaymentLink = async () => {
     setIsGeneratingPaymentLink(true);
     try {
-      const response = await fetch(getApiUrl("/api/payment/generate-workspace-payment-link"), {
+      const { ok, data } = await safeFetchJson<any>("/api/payment/generate-workspace-payment-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -227,8 +227,7 @@ export default function WorkspaceMonetizationSection({
         })
       });
 
-      const data = await response.json();
-      if (!response.ok || data.error) {
+      if (!ok || data.error) {
         throw new Error(data.error || "Failed to generate Stripe payment link");
       }
 
@@ -270,7 +269,7 @@ export default function WorkspaceMonetizationSection({
   const handleLaunchDynamicCheckout = async () => {
     setIsLaunchingCheckout(true);
     try {
-      const response = await fetch(getApiUrl("/api/payment/create-workspace-checkout-session"), {
+      const { ok, data } = await safeFetchJson<any>("/api/payment/create-workspace-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -282,8 +281,7 @@ export default function WorkspaceMonetizationSection({
         })
       });
 
-      const data = await response.json();
-      if (!response.ok || data.error) {
+      if (!ok || data.error) {
         throw new Error(data.error || "Failed to create Stripe checkout session");
       }
 
@@ -317,7 +315,7 @@ export default function WorkspaceMonetizationSection({
 
     setIsSendingInvoice(true);
     try {
-      const response = await fetch(getApiUrl("/api/payment/send-member-invoice"), {
+      const { ok, data } = await safeFetchJson<any>("/api/payment/send-member-invoice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -331,8 +329,7 @@ export default function WorkspaceMonetizationSection({
         })
       });
 
-      const data = await response.json();
-      if (!response.ok || data.error) {
+      if (!ok || data.error) {
         throw new Error(data.error || "Failed to create Stripe invoice");
       }
 
@@ -403,7 +400,7 @@ export default function WorkspaceMonetizationSection({
     setTestResult(null);
 
     try {
-      const response = await fetch(getApiUrl("/api/payment/test-stripe-card"), {
+      const { data } = await safeFetchJson<any>("/api/payment/test-stripe-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -413,10 +410,9 @@ export default function WorkspaceMonetizationSection({
         })
       });
 
-      const data = await response.json();
       const timeNow = new Date().toLocaleTimeString();
 
-      if (data.isRealStripeApi) {
+      if (data && data.isRealStripeApi) {
         setTestResult({
           scenario,
           timestamp: timeNow,

@@ -748,6 +748,22 @@ async function startServer() {
     }
   });
 
+  // Global error handler for API routes to always return valid JSON
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith("/api")) {
+      console.error("API Request Error:", err);
+      return res.status(err.status || 500).json({
+        error: err.message || "Internal server error occurred while processing Stripe API request."
+      });
+    }
+    next(err);
+  });
+
+  // Catch-all for undefined /api routes so they return JSON instead of falling through to HTML SPA
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
+  });
+
   // Vite middleware or production build output fallback
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

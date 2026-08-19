@@ -63,7 +63,7 @@ import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, 
 import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString, DEFAULT_STRATEGIES } from "./utils/helpers";
 import { playJoinSound, playLeaveSound, playChatMessageSound, ChatNotificationSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
-import { getApiUrl } from "./utils/api";
+import { getApiUrl, safeFetchJson } from "./utils/api";
 
 const isMobileOrTablet = typeof window !== "undefined" && (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 1024);
 
@@ -523,13 +523,11 @@ export default function App() {
   });
 
   useEffect(() => {
-    fetch(getApiUrl("/api/payment/config"))
-      .then((res) => {
-        if (!res.ok) throw new Error("HTTP error " + res.status);
-        return res.json();
+    safeFetchJson<{ stripeConfigured: boolean; publishableKey: string }>("/api/payment/config")
+      .then(({ ok, data }) => {
+        if (ok && data) setStripeConfig(data);
       })
-      .then((data) => setStripeConfig(data))
-      .catch((err) => console.warn("Failed to load Stripe configuration info:", err));
+      .catch((err) => console.warn("Stripe config check notice:", err));
   }, []);
 
   const subscriptionState = useMemo(() => {
@@ -562,25 +560,21 @@ export default function App() {
 
     if (success && sessionId && currentUser) {
       triggerToast("Activating...", "Verifying your checkout session with Stripe...", "info");
-      fetch(getApiUrl("/api/payment/verify-checkout-session"), {
+      safeFetchJson<any>("/api/payment/verify-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, userId: currentUser.uid }),
       })
-        .then((res) => {
-          if (!res.ok) throw new Error("Verification failed");
-          return res.json();
-        })
-        .then((data) => {
-          if (data.success) {
+        .then(({ ok, data }) => {
+          if (ok && data.success) {
             triggerToast("Subscription Activated", "Welcome to SyncPL Premium! Enjoy full workspace tools.", "success");
           } else {
-            triggerToast("Activation Issue", "Subscription verification returned an unresolved status.", "info");
+            triggerToast("Activation Issue", data?.error || "Subscription verification returned an unresolved status.", "info");
           }
         })
         .catch((err) => {
           console.error("Error verifying subscription session:", err);
-          triggerToast("Activation Failed", "Could not verify subscription automatically. Please contact desk support.", "error");
+          triggerToast("Activation Notice", "Could not verify subscription automatically. Please contact desk support.", "error");
         })
         .finally(() => {
           window.history.replaceState({}, document.title, window.location.pathname);
@@ -2006,23 +2000,25 @@ export default function App() {
   const handleSubscribe = async () => {
     if (!currentUser) return;
     try {
-      const response = await fetch(getApiUrl("/api/payment/create-checkout-session"), {
+      const { ok, data } = await safeFetchJson<any>("/api/payment/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.uid, userEmail: currentUser.email }),
       });
-      const data = await response.json();
-      if (data.url) {
-        // Stripe Checkout pages prevent loading inside an iframe due to security headers.
-        // We open the checkout page in a new tab instead.
+
+      if (!ok || data?.error) {
+        throw new Error(data?.error || "Failed to start checkout session.");
+      }
+
+      if (data?.url) {
         window.open(data.url, "_blank");
         triggerToast("Checkout Redirect", "Opening Stripe Checkout in a new window. Check your pop-up blocker if it doesn't open.", "success");
       } else {
-        throw new Error(data.error || "Failed to start checkout session.");
+        throw new Error("Checkout session URL was not returned.");
       }
     } catch (err: any) {
       console.error(err);
-      triggerToast("Checkout Failed", err.message || "Ensure your backend is running and configured.", "error");
+      triggerToast("Checkout Notice", err.message || "Ensure your backend is running and configured.", "error");
     }
   };
 
@@ -2033,7 +2029,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch(getApiUrl("/api/payment/portal-session"), {
+      const { ok, data } = await safeFetchJson<any>("/api/payment/portal-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -2042,8 +2038,8 @@ export default function App() {
           userEmail: currentUser?.email || profile?.email || ""
         }),
       });
-      const data = await response.json();
-      if (data.customerId && currentUser) {
+
+      if (data?.customerId && currentUser) {
         try {
           await setDoc(doc(db, "users", currentUser.uid, "profile", "info"), {
             stripeCustomerId: data.customerId,
@@ -2053,13 +2049,11 @@ export default function App() {
         }
       }
 
-      if (data.url) {
-        // Stripe Customer Portal pages prevent loading inside an iframe due to security headers.
-        // We open the billing portal in a new tab instead.
+      if (ok && data?.url) {
         window.open(data.url, "_blank");
         triggerToast("Billing Redirect", "Opening billing portal in a new window. Check your pop-up blocker if it doesn't open.", "success");
       } else {
-        throw new Error(data.error || "Failed to launch billing portal.");
+        throw new Error(data?.error || "Failed to launch billing portal.");
       }
     } catch (err: any) {
       console.error(err);
@@ -2076,7 +2070,7 @@ export default function App() {
   const handleDirectWorkspaceStripeCheckout = async () => {
     if (!currentUser || !activeRoom) return;
     try {
-      const response = await fetch(getApiUrl("/api/payment/create-workspace-checkout-session"), {
+      const { ok, data } = await safeFetchJson<any>("/api/payment/create-workspace-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2088,15 +2082,16 @@ export default function App() {
         })
       });
 
-      const data = await response.json();
-      if (data.url) {
+      if (data?.url) {
         window.open(data.url, "_blank");
         triggerToast("Stripe Checkout", `Opening Stripe Checkout for $${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo in a new window.`, "success");
       } else if (activeRoom.stripePaymentLink) {
         window.open(activeRoom.stripePaymentLink, "_blank");
         triggerToast("Stripe Checkout", "Opening Stripe Payment Link in a new window.", "success");
+      } else if (!ok || data?.error) {
+        throw new Error(data?.error || "Could not start Stripe checkout.");
       } else {
-        throw new Error(data.error || "Could not start Stripe checkout.");
+        throw new Error("Could not initialize Stripe checkout.");
       }
     } catch (err: any) {
       console.error(err);
@@ -2104,7 +2099,7 @@ export default function App() {
         window.open(activeRoom.stripePaymentLink, "_blank");
         triggerToast("Stripe Checkout", "Opening Stripe Payment Link in a new window.", "success");
       } else {
-        triggerToast("Checkout Error", err.message || "Failed to launch Stripe Checkout.", "error");
+        triggerToast("Checkout Notice", err.message || "Failed to launch Stripe Checkout.", "error");
       }
     }
   };
