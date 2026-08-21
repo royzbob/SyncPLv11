@@ -30,8 +30,10 @@ export interface UserProfile {
   stripeSubscriptionId?: string;
   subscriptionStatus?: "trialing" | "active" | "canceled" | "past_due" | "unpaid" | "none";
   subscriptionPeriodEnd?: string;
+  subscriptionEndDate?: string;
   trialEndDate?: string;
   subscriptionTier?: "free" | "pro" | "elite" | "premium";
+  roomSubscriptions?: Record<string, any>;
   earningsMRR?: number;
   stripeConnectLinked?: boolean;
   stripeConnectAccountId?: string;
