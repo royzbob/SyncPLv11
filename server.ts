@@ -210,7 +210,7 @@ async function startServer() {
   app.get("/api/payment/config", (req, res) => {
     res.json({
       stripeConfigured: !!process.env.STRIPE_SECRET_KEY,
-      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || "",
     });
   });
 
