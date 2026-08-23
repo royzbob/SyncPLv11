@@ -17,6 +17,7 @@ import {
   Layers,
   ChevronRight,
   Info,
+  ExternalLink,
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { doc, updateDoc, setDoc } from "firebase/firestore";
@@ -36,6 +37,7 @@ interface ProUpgradeModalProps {
   };
   triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
   reason?: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general";
+  onUpdateLocalProfile?: (updated: UserProfile) => void;
 }
 
 export default function ProUpgradeModal({
@@ -46,39 +48,50 @@ export default function ProUpgradeModal({
   subscriptionState,
   triggerToast,
   reason = "general",
+  onUpdateLocalProfile,
 }: ProUpgradeModalProps) {
   const [loading, setLoading] = useState(false);
   const [sandboxLoading, setSandboxLoading] = useState(false);
   const [downgradeLoading, setDowngradeLoading] = useState(false);
+  const [directCheckoutUrl, setDirectCheckoutUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   // Direct client-side Firestore synchronization to guarantee instant reactive UI updates
   const directClientProfileUpdate = async (isPro: boolean = true) => {
+    const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const pastDate = new Date(Date.now() - 1000).toISOString();
+
+    const updatePayload = isPro
+      ? {
+          subscriptionStatus: "active",
+          subscriptionTier: "premium",
+          subscriptionEndDate: nextMonth,
+          subscriptionPeriodEnd: nextMonth,
+        }
+      : {
+          subscriptionStatus: "none",
+          subscriptionTier: "free",
+          subscriptionEndDate: pastDate,
+          subscriptionPeriodEnd: pastDate,
+        };
+
+    // 1. Immediately update React state for 0ms lag
+    if (profile && onUpdateLocalProfile) {
+      onUpdateLocalProfile({
+        ...profile,
+        ...updatePayload,
+      } as UserProfile);
+    }
+
     if (!currentUser || !db) return;
+
     try {
-      const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const pastDate = new Date(Date.now() - 1000).toISOString();
-
-      const updatePayload = isPro
-        ? {
-            subscriptionStatus: "active",
-            subscriptionTier: "premium",
-            subscriptionEndDate: nextMonth,
-            subscriptionPeriodEnd: nextMonth,
-          }
-        : {
-            subscriptionStatus: "none",
-            subscriptionTier: "free",
-            subscriptionEndDate: pastDate,
-            subscriptionPeriodEnd: pastDate,
-          };
-
-      // 1. Primary profile info subcollection (Where App.tsx listens for realtime state)
+      // 2. Primary profile info subcollection (Where App.tsx listens for realtime state)
       const profileInfoRef = doc(db, "users", currentUser.uid, "profile", "info");
       await setDoc(profileInfoRef, updatePayload, { merge: true });
 
-      // 2. Also update top-level user doc for compatibility
+      // 3. Also update top-level user doc for compatibility
       const userRef = doc(db, "users", currentUser.uid);
       await setDoc(userRef, updatePayload, { merge: true });
     } catch (err) {
@@ -90,6 +103,7 @@ export default function ProUpgradeModal({
   const handleStripeCheckout = async () => {
     if (!currentUser) return;
     setLoading(true);
+    setDirectCheckoutUrl(null);
     try {
       const { ok, data } = await safeFetchJson<any>("/api/payment/create-checkout-session", {
         method: "POST",
@@ -102,11 +116,13 @@ export default function ProUpgradeModal({
       });
 
       if (!ok || data?.error || !data?.url) {
-        const errorMsg = data?.error || "Unable to initiate Stripe Checkout session. Please check your Stripe keys.";
+        const errorMsg = data?.error || "Unable to initiate Stripe Checkout session. Please verify your Stripe configuration.";
         console.error("Stripe checkout error:", errorMsg);
         triggerToast?.("Stripe Payment Notice", errorMsg, "error");
         return;
       }
+
+      setDirectCheckoutUrl(data.url);
 
       // Valid Stripe Checkout URL received -> Redirect customer to Stripe
       triggerToast?.(
@@ -117,8 +133,16 @@ export default function ProUpgradeModal({
 
       const checkoutWindow = window.open(data.url, "_blank");
       if (!checkoutWindow || checkoutWindow.closed || typeof checkoutWindow.closed === "undefined") {
-        // If popup was blocked by browser or running in an iframe, navigate directly
-        window.location.href = data.url;
+        // If popup was blocked by browser or running in an iframe, attempt top window navigation
+        try {
+          if (window.top && window.top !== window) {
+            window.top.location.href = data.url;
+          } else {
+            window.location.href = data.url;
+          }
+        } catch {
+          // Fallback UI will let user click directly
+        }
       }
     } catch (err: any) {
       console.error("Checkout request failed:", err);
@@ -137,7 +161,10 @@ export default function ProUpgradeModal({
     if (!currentUser) return;
     setSandboxLoading(true);
     try {
-      // 1. Try server activation
+      // 1. Update client Firestore and React state directly for guaranteed instant reactive sync
+      await directClientProfileUpdate(true);
+
+      // 2. Try server activation
       await safeFetchJson<any>("/api/payment/activate-pro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -148,9 +175,6 @@ export default function ProUpgradeModal({
         }),
       }).catch((e) => console.warn("Server activate-pro notice:", e));
 
-      // 2. Update client Firestore directly for guaranteed instant reactive sync
-      await directClientProfileUpdate(true);
-
       triggerToast?.(
         "SyncPL Pro Activated! 👑",
         "Unlimited trade logs, real-time AI copilot, and all skins unlocked.",
@@ -159,7 +183,6 @@ export default function ProUpgradeModal({
       onClose();
     } catch (err: any) {
       console.error(err);
-      // Client-side fallback
       await directClientProfileUpdate(true);
       triggerToast?.("Pro Activated 👑", "SyncPL Pro perks enabled.", "success");
       onClose();
@@ -173,13 +196,14 @@ export default function ProUpgradeModal({
     if (!currentUser) return;
     setDowngradeLoading(true);
     try {
+      await directClientProfileUpdate(false);
+
       await safeFetchJson<any>("/api/payment/cancel-pro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.uid }),
       }).catch((e) => console.warn("Server cancel-pro notice:", e));
 
-      await directClientProfileUpdate(false);
       triggerToast?.("Switched to Free Tier", "You are now testing in Free Community Tier.", "info");
       onClose();
     } catch (err: any) {
@@ -372,6 +396,18 @@ export default function ProUpgradeModal({
 
         {/* Action Buttons */}
         <div className="space-y-3 pt-2">
+          {directCheckoutUrl && (
+            <a
+              href={directCheckoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20 animate-pulse cursor-pointer text-center"
+            >
+              <ExternalLink className="w-4 h-4 text-black" />
+              <span>👉 Click Here to Open Stripe Payment Window ($25.00/mo) ↗</span>
+            </a>
+          )}
+
           {/* Primary Stripe Button */}
           <button
             onClick={handleStripeCheckout}

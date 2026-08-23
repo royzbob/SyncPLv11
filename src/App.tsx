@@ -600,6 +600,16 @@ export default function App() {
         .then(({ ok, data }) => {
           if (ok && data.success) {
             triggerToast("Subscription Activated", "Welcome to SyncPL Premium! Enjoy full workspace tools.", "success");
+            setProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    subscriptionStatus: "active",
+                    subscriptionTier: "premium",
+                    subscriptionPeriodEnd: data.subscriptionPeriodEnd,
+                  }
+                : prev
+            );
           } else {
             triggerToast("Activation Issue", data?.error || "Subscription verification returned an unresolved status.", "info");
           }
@@ -613,6 +623,15 @@ export default function App() {
         });
     } else if (success && !sessionId) {
       triggerToast("Subscription Activated", "Welcome to SyncPL Premium! Enjoy full workspace tools.", "success");
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              subscriptionStatus: "active",
+              subscriptionTier: "premium",
+            }
+          : prev
+      );
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (params.get("canceled") === "true") {
       triggerToast("Checkout Canceled", "Subscription setup was canceled. You remain on the Free Trial tier.", "info");
@@ -5150,6 +5169,7 @@ export default function App() {
             subscriptionState={subscriptionState}
             triggerToast={triggerToast}
             reason={proModalState.reason}
+            onUpdateLocalProfile={(updated) => setProfile(updated)}
           />
 
           <UpdateNotifier />
