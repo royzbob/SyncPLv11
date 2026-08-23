@@ -2010,68 +2010,12 @@ export default function App() {
   };
 
   // Stripe & Billing actions
-  const handleSubscribe = async () => {
-    if (!currentUser) return;
-    try {
-      const { ok, data } = await safeFetchJson<any>("/api/payment/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser.uid, userEmail: currentUser.email }),
-      });
-
-      if (!ok || data?.error) {
-        throw new Error(data?.error || "Failed to start checkout session.");
-      }
-
-      if (data?.url) {
-        window.open(data.url, "_blank");
-        triggerToast("Checkout Redirect", "Opening Stripe Checkout in a new window. Check your pop-up blocker if it doesn't open.", "success");
-      } else {
-        throw new Error("Checkout session URL was not returned.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      triggerToast("Checkout Notice", err.message || "Ensure your backend is running and configured.", "error");
-    }
+  const handleSubscribe = () => {
+    handleOpenProModal("general");
   };
 
-  const handleManageBilling = async () => {
-    if (!stripeConfig.stripeConfigured) {
-      triggerToast("Billing Error", "Stripe configuration is missing on the server. Set STRIPE_SECRET_KEY in your settings.", "error");
-      return;
-    }
-
-    try {
-      const { ok, data } = await safeFetchJson<any>("/api/payment/portal-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          stripeCustomerId: profile?.stripeCustomerId || "", 
-          userId: currentUser?.uid, 
-          userEmail: currentUser?.email || profile?.email || ""
-        }),
-      });
-
-      if (data?.customerId && currentUser) {
-        try {
-          await setDoc(doc(db, "users", currentUser.uid, "profile", "info"), {
-            stripeCustomerId: data.customerId,
-          }, { merge: true });
-        } catch (dbErr) {
-          console.warn("Client profile update notice:", dbErr);
-        }
-      }
-
-      if (ok && data?.url) {
-        window.open(data.url, "_blank");
-        triggerToast("Billing Redirect", "Opening billing portal in a new window. Check your pop-up blocker if it doesn't open.", "success");
-      } else {
-        throw new Error(data?.error || "Failed to launch billing portal.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      triggerToast("Portal Status", err.message || "Failed to load billing portal.", "info");
-    }
+  const handleManageBilling = () => {
+    handleOpenProModal("general");
   };
 
   // State and Handlers for Workspace Paywalls

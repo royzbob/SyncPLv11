@@ -48,6 +48,8 @@ async function updateSubscriptionInDb(userId: string, data: any) {
   try {
     const userRef = adminDb.collection("users").doc(userId).collection("profile").doc("info");
     await userRef.set(data, { merge: true });
+    const topUserRef = adminDb.collection("users").doc(userId);
+    await topUserRef.set(data, { merge: true });
     console.log(`Updated Firestore subscription metadata for user ${userId}:`, data);
   } catch (e: any) {
     // In cloud preview environments where server IAM default credentials are read-only,
@@ -264,7 +266,8 @@ async function startServer() {
       }
 
       // 3. Setup dynamic origin url
-      const origin = req.headers.referer || req.headers.origin || "http://localhost:3000";
+      const rawOrigin = process.env.APP_URL || req.headers.origin || req.headers.referer || "http://localhost:3000";
+      const origin = rawOrigin.split("?")[0].replace(/\/$/, "");
 
       // 4. Create checkout session with a 30-day (1 month) free trial
       const session = await stripe.checkout.sessions.create({

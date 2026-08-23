@@ -26,6 +26,7 @@ interface BillingSettingsTabProps {
     status: string;
   };
   onOpenCheckoutModal?: () => void;
+  onOpenUpgradeModal?: (reason?: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general") => void;
   triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
 }
 
@@ -34,6 +35,7 @@ export default function BillingSettingsTab({
   currentUser,
   subscriptionState,
   onOpenCheckoutModal,
+  onOpenUpgradeModal,
   triggerToast,
 }: BillingSettingsTabProps) {
   const [cancellingDeskId, setCancellingDeskId] = useState<string | null>(null);
@@ -125,7 +127,10 @@ export default function BillingSettingsTab({
             {subscriptionState.isPremium ? (
               <button
                 type="button"
-                onClick={() => onOpenCheckoutModal?.()}
+                onClick={() => {
+                  if (onOpenUpgradeModal) onOpenUpgradeModal("general");
+                  else if (onOpenCheckoutModal) onOpenCheckoutModal();
+                }}
                 className="w-full lg:w-auto bg-[#1E2023] hover:bg-[#25282E] text-white border border-[#2A2D31] font-bold text-xs py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow cursor-pointer"
               >
                 <CreditCard className="w-4 h-4 text-indigo-400" />
@@ -134,7 +139,10 @@ export default function BillingSettingsTab({
             ) : (
               <button
                 type="button"
-                onClick={() => onOpenCheckoutModal?.()}
+                onClick={() => {
+                  if (onOpenUpgradeModal) onOpenUpgradeModal("general");
+                  else if (onOpenCheckoutModal) onOpenCheckoutModal();
+                }}
                 className="w-full lg:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs py-2.5 px-5 rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Crown className="w-4 h-4 text-black" />

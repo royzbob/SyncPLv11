@@ -59,8 +59,8 @@ interface SettingsViewProps {
     stripeConfigured: boolean;
     publishableKey: string;
   };
-  onSubscribe: () => Promise<void>;
-  onManageBilling: () => Promise<void>;
+  onSubscribe: () => void | Promise<void>;
+  onManageBilling: () => void | Promise<void>;
   onUpdateSubscriptionTier?: (tier: "free" | "pro" | "elite") => Promise<void>;
   onUpdateRoomMonetization?: (
     isPaid: boolean,
@@ -308,7 +308,8 @@ export default function SettingsView({
           profile={profile}
           currentUser={currentUser}
           subscriptionState={subscriptionState}
-          onOpenCheckoutModal={subscriptionState.isPremium ? onManageBilling : onSubscribe}
+          onOpenCheckoutModal={onOpenUpgradeModal ? () => onOpenUpgradeModal("general") : (subscriptionState.isPremium ? onManageBilling : onSubscribe)}
+          onOpenUpgradeModal={onOpenUpgradeModal}
           triggerToast={triggerToast}
         />
       )}

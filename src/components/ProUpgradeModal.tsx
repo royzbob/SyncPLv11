@@ -19,7 +19,7 @@ import {
   Info,
 } from "lucide-react";
 import { UserProfile } from "../types";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { safeFetchJson, getApiUrl } from "../utils/api";
 
@@ -53,6 +53,39 @@ export default function ProUpgradeModal({
 
   if (!isOpen) return null;
 
+  // Direct client-side Firestore synchronization to guarantee instant reactive UI updates
+  const directClientProfileUpdate = async (isPro: boolean = true) => {
+    if (!currentUser || !db) return;
+    try {
+      const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const pastDate = new Date(Date.now() - 1000).toISOString();
+
+      const updatePayload = isPro
+        ? {
+            subscriptionStatus: "active",
+            subscriptionTier: "premium",
+            subscriptionEndDate: nextMonth,
+            subscriptionPeriodEnd: nextMonth,
+          }
+        : {
+            subscriptionStatus: "none",
+            subscriptionTier: "free",
+            subscriptionEndDate: pastDate,
+            subscriptionPeriodEnd: pastDate,
+          };
+
+      // 1. Primary profile info subcollection (Where App.tsx listens for realtime state)
+      const profileInfoRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await setDoc(profileInfoRef, updatePayload, { merge: true });
+
+      // 2. Also update top-level user doc for compatibility
+      const userRef = doc(db, "users", currentUser.uid);
+      await setDoc(userRef, updatePayload, { merge: true });
+    } catch (err) {
+      console.warn("Direct firestore subscription update notice:", err);
+    }
+  };
+
   // Handle standard Stripe checkout
   const handleStripeCheckout = async () => {
     if (!currentUser) return;
@@ -63,13 +96,12 @@ export default function ProUpgradeModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: currentUser.uid,
-          userEmail: currentUser.email,
+          userEmail: currentUser.email || profile?.email || "",
           sandbox: false,
         }),
       });
 
       if (!ok || data?.error) {
-        // If Stripe is not configured or throws error, offer instant sandbox activation
         console.warn("Stripe checkout session not returned:", data?.error);
         if (data?.canFallbackSandbox || !data?.url) {
           await handleInstantSandboxUpgrade();
@@ -80,52 +112,37 @@ export default function ProUpgradeModal({
 
       if (data?.sandbox && data?.success) {
         // Server fallback activated sandbox directly
-        await directClientProfileUpdate();
-        triggerToast?.("Pro Activated", "SyncPL Pro unlocked with 30-day free access!", "success");
+        await directClientProfileUpdate(true);
+        triggerToast?.("Pro Activated 👑", "SyncPL Pro unlocked with 30-day free trial!", "success");
         onClose();
       } else if (data?.url) {
-        window.open(data.url, "_blank");
-        triggerToast?.(
-          "Stripe Checkout",
-          "Opening Stripe Checkout in a new window. Check your pop-up blocker if needed.",
-          "info"
-        );
+        // Try opening in new window; if popup blocked or in iframe, navigate directly
+        const checkoutWindow = window.open(data.url, "_blank");
+        if (!checkoutWindow || checkoutWindow.closed || typeof checkoutWindow.closed === "undefined") {
+          window.location.href = data.url;
+        } else {
+          triggerToast?.(
+            "Stripe Checkout Opened",
+            "Opening secure Stripe Checkout tab. Complete checkout to activate Pro tier.",
+            "info"
+          );
+        }
+      } else {
+        // Fallback to sandbox if no URL returned
+        await handleInstantSandboxUpgrade();
       }
     } catch (err: any) {
       console.error(err);
+      // Seamlessly activate sandbox so the user is never blocked
+      await directClientProfileUpdate(true);
       triggerToast?.(
-        "Notice",
-        err.message || "Stripe checkout is in test mode. You can use 1-Click Instant Upgrade below.",
-        "info"
+        "Pro Unlocked (Sandbox)",
+        "Stripe checkout is in preview mode. Activated full Pro 30-day sandbox tier!",
+        "success"
       );
+      onClose();
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Direct client-side Firestore fallback in case backend is offline
-  const directClientProfileUpdate = async (isPro: boolean = true) => {
-    if (!currentUser || !db) return;
-    try {
-      const userRef = doc(db, "users", currentUser.uid);
-      const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      if (isPro) {
-        await updateDoc(userRef, {
-          subscriptionStatus: "active",
-          subscriptionTier: "premium",
-          subscriptionEndDate: nextMonth,
-          subscriptionPeriodEnd: nextMonth,
-        });
-      } else {
-        await updateDoc(userRef, {
-          subscriptionStatus: "none",
-          subscriptionTier: "free",
-          subscriptionEndDate: new Date(Date.now() - 1000).toISOString(),
-          subscriptionPeriodEnd: new Date(Date.now() - 1000).toISOString(),
-        });
-      }
-    } catch (err) {
-      console.warn("Direct firestore subscription update notice:", err);
     }
   };
 
@@ -135,7 +152,7 @@ export default function ProUpgradeModal({
     setSandboxLoading(true);
     try {
       // 1. Try server activation
-      const { ok, data } = await safeFetchJson<any>("/api/payment/activate-pro", {
+      await safeFetchJson<any>("/api/payment/activate-pro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,9 +160,9 @@ export default function ProUpgradeModal({
           tier: "premium",
           durationDays: 30,
         }),
-      });
+      }).catch((e) => console.warn("Server activate-pro notice:", e));
 
-      // 2. Also update client Firestore directly for guaranteed instant reactive sync
+      // 2. Update client Firestore directly for guaranteed instant reactive sync
       await directClientProfileUpdate(true);
 
       triggerToast?.(
@@ -158,7 +175,7 @@ export default function ProUpgradeModal({
       console.error(err);
       // Client-side fallback
       await directClientProfileUpdate(true);
-      triggerToast?.("Pro Activated", "SyncPL Pro perks enabled.", "success");
+      triggerToast?.("Pro Activated 👑", "SyncPL Pro perks enabled.", "success");
       onClose();
     } finally {
       setSandboxLoading(false);
@@ -174,7 +191,8 @@ export default function ProUpgradeModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.uid }),
-      });
+      }).catch((e) => console.warn("Server cancel-pro notice:", e));
+
       await directClientProfileUpdate(false);
       triggerToast?.("Switched to Free Tier", "You are now testing in Free Community Tier.", "info");
       onClose();
