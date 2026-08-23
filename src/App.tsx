@@ -130,6 +130,7 @@ import PayoutsView from "./components/PayoutsView";
 import UpdateNotifier from "./components/UpdateNotifier";
 import WebUpdateNotifier from "./components/WebUpdateNotifier";
 import { LiveScreenShareModal } from "./components/LiveScreenShareModal";
+import ProUpgradeModal from "./components/ProUpgradeModal";
 
 export default function App() {
   // Authentication & Profile States
@@ -140,6 +141,18 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
+
+  // Pro Upgrade Modal State for Conversions & Limit Gating
+  const [proModalState, setProModalState] = useState<{
+    isOpen: boolean;
+    reason: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general";
+  }>({ isOpen: false, reason: "general" });
+
+  const handleOpenProModal = (
+    reason: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general" = "general"
+  ) => {
+    setProModalState({ isOpen: true, reason });
+  };
 
   // Performance cache refs
   const lastSyncedProfileKey = useRef<string>("");
@@ -4306,7 +4319,14 @@ export default function App() {
                   ) : (
                     <>
                       {activeTab === "dashboard" && (
-                        <DashboardView pnlLogs={pnlLogs} userId={currentUser.uid} payouts={payouts} onSwitchTab={setActiveTab} />
+                        <DashboardView
+                          pnlLogs={pnlLogs}
+                          userId={currentUser.uid}
+                          payouts={payouts}
+                          onSwitchTab={setActiveTab}
+                          isPremium={subscriptionState.isPremium}
+                          onOpenUpgradeModal={handleOpenProModal}
+                        />
                       )}
 
                       {activeTab === "chat" && (
@@ -4368,6 +4388,8 @@ export default function App() {
                           roomCode={activeRoom.id}
                           traders={traders}
                           isCreatorOrMod={isCreatorOrMod}
+                          isPremium={subscriptionState.isPremium}
+                          onOpenUpgradeModal={handleOpenProModal}
                         />
                       )}
 
@@ -4436,6 +4458,7 @@ export default function App() {
                       userRooms={rooms}
                       onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
                       triggerToast={triggerToast}
+                      onOpenUpgradeModal={handleOpenProModal}
                       isAppOwner={Boolean(currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.role === "owner")}
                     />
                   )}
@@ -5155,6 +5178,16 @@ export default function App() {
               onSelectStream={(uid) => setActiveScreenStreamUid(uid)}
             />
           )}
+
+          <ProUpgradeModal
+            isOpen={proModalState.isOpen}
+            onClose={() => setProModalState((prev) => ({ ...prev, isOpen: false }))}
+            profile={profile}
+            currentUser={currentUser}
+            subscriptionState={subscriptionState}
+            triggerToast={triggerToast}
+            reason={proModalState.reason}
+          />
 
           <UpdateNotifier />
           <WebUpdateNotifier />

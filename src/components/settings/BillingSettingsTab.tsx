@@ -93,29 +93,29 @@ export default function BillingSettingsTab({
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Subscription & Premium Billing Panel */}
       <div className="glass-panel p-6 rounded-2xl border border-[#2A2D31] space-y-6 shadow-xl relative overflow-hidden bg-gradient-to-r from-[#121417] to-[#1e2023]">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-48 h-48 bg-[#5865F2]/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
-              <div className="p-2.5 bg-[#5865F2]/10 rounded-xl text-[#5865F2] border border-[#5865F2]/20 shadow-inner">
-                <CreditCard className="w-5 h-5" />
+              <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20 shadow-inner">
+                <Crown className="w-5 h-5" />
               </div>
               <div>
                 <h4 className="font-extrabold text-white text-base tracking-tight flex items-center gap-2">
-                  Subscription & Workspace Billing
+                  Membership & Desk Billing
                   {subscriptionState.isPremium ? (
-                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-emerald-400" /> Active Pro Plan
                     </span>
                   ) : (
-                    <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                    <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
                       Free Community Tier
                     </span>
                   )}
                 </h4>
                 <p className="text-xs text-[#8E9297] mt-0.5">
-                  Manage your subscription tier, billing invoices, and premium workspace perks.
+                  Manage your subscription tier, uncap trading ledger limits, and configure workspace passes.
                 </p>
               </div>
             </div>
@@ -129,16 +129,16 @@ export default function BillingSettingsTab({
                 className="w-full lg:w-auto bg-[#1E2023] hover:bg-[#25282E] text-white border border-[#2A2D31] font-bold text-xs py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow cursor-pointer"
               >
                 <CreditCard className="w-4 h-4 text-indigo-400" />
-                <span>Manage Billing & Invoices</span>
+                <span>Manage Billing & Plan</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => onOpenCheckoutModal?.()}
-                className="w-full lg:w-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-xs py-2.5 px-5 rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full lg:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs py-2.5 px-5 rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Crown className="w-4 h-4 text-amber-300" />
-                <span>Upgrade to Pro ($25/mo)</span>
+                <Crown className="w-4 h-4 text-black" />
+                <span>Upgrade to Pro ($25/mo - 30 Days Free)</span>
               </button>
             )}
           </div>
@@ -151,9 +151,9 @@ export default function BillingSettingsTab({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                  Current Status
+                  Current Tier
                 </span>
-                <span className="font-mono text-xs font-bold text-indigo-400">
+                <span className="font-mono text-xs font-bold text-amber-400">
                   ${subscriptionState.isPremium ? "25.00" : "0.00"} USD / month
                 </span>
               </div>
@@ -164,42 +164,48 @@ export default function BillingSettingsTab({
               </p>
               <p className="text-xs text-gray-400 leading-relaxed">
                 {subscriptionState.isPremium
-                  ? `Your account has uninterrupted access to all real-time voice, AI Co-Pilot, and course channels. Valid through ${formatSubscriptionDate(
+                  ? `Your account has uninterrupted access to unlimited ledger logs, real-time AI Co-Pilot voice scans, custom desk skins, and monetized desk hubs. Valid through ${formatSubscriptionDate(
                       profile?.subscriptionEndDate
                     )}.`
-                  : "Unlock unlimited AI vocal speech advisors, bespoke theme skins, unlimited channels, and private monetization hubs."}
+                  : "Free tier is limited to 10 trade records and 2 AI voice scans per day. Upgrade to uncap full trading desk power."}
               </p>
             </div>
 
             <div className="pt-2 border-t border-[#2A2D31]/70 flex items-center justify-between text-xs text-gray-400">
-              <span>Next Renewal:</span>
+              <span>{subscriptionState.isPremium ? "Next Renewal:" : "Free Tier Limits:"}</span>
               <span className="font-mono text-gray-200">
-                {formatSubscriptionDate(profile?.subscriptionEndDate)}
+                {subscriptionState.isPremium
+                  ? formatSubscriptionDate(profile?.subscriptionEndDate)
+                  : "10 Trades / 2 Scans"}
               </span>
             </div>
           </div>
 
           {/* Card 2: Pro Privileges */}
           <div className="p-5 rounded-xl bg-[#0E1012] border border-[#2A2D31] space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
-              Pro Workspace Privileges
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> SyncPL Pro Perks Included
             </span>
             <ul className="space-y-2 text-xs">
               <li className="flex items-center gap-2 text-gray-200">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Unlimited Gemini Voice Co-Pilot Speech Queries</span>
+                <span className="font-semibold text-white">Unlimited Trade Logging & Historical Ledger CSV</span>
               </li>
               <li className="flex items-center gap-2 text-gray-200">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>High-Fidelity Realtime Audio Streaming Rooms</span>
+                <span>Unlimited Real-Time Gemini AI Voice Co-Pilot Scans</span>
               </li>
               <li className="flex items-center gap-2 text-gray-200">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Bespoke Solar Gold & Cyber Emerald Theme Skins</span>
+                <span>Solar Gold, Cyber Emerald & Neon Theme Skins</span>
               </li>
               <li className="flex items-center gap-2 text-gray-200">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span>Direct Stripe Connect Workspace Monetization</span>
+                <span>Charge Monthly Passes & Collect MRR with Stripe Connect</span>
+              </li>
+              <li className="flex items-center gap-2 text-gray-200">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Glowing Gold Crown PRO Badge in Chat & Leaderboards</span>
               </li>
             </ul>
           </div>

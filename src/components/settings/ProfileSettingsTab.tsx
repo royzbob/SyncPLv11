@@ -31,6 +31,7 @@ interface ProfileSettingsTabProps {
   isAppOwnerUser: boolean;
   onOpenBroadcastModal: () => void;
   triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
+  onOpenUpgradeModal?: (reason?: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general") => void;
 }
 
 export default function ProfileSettingsTab({
@@ -40,6 +41,7 @@ export default function ProfileSettingsTab({
   isAppOwnerUser,
   onOpenBroadcastModal,
   triggerToast,
+  onOpenUpgradeModal,
 }: ProfileSettingsTabProps) {
   const [username, setUsername] = useState(profile?.username || "");
   const [avatarColor, setAvatarColor] = useState<"indigo" | "pink" | "emerald" | "amber" | "sky">(
@@ -454,18 +456,21 @@ export default function ProfileSettingsTab({
             {/* Solar Gold Glow */}
             <button
               type="button"
-              disabled={!subscriptionState?.isPremium}
               onClick={() => {
+                if (!subscriptionState?.isPremium) {
+                  onOpenUpgradeModal?.("skin_locked");
+                  return;
+                }
                 localStorage.setItem("syncpl_custom_skin", "amber");
                 setActiveSkin("amber");
                 window.dispatchEvent(new Event("syncpl_skin_updated"));
               }}
-              className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition relative ${
+              className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition relative cursor-pointer ${
                 !subscriptionState?.isPremium
-                  ? "opacity-60 cursor-not-allowed bg-[#121417]/20 border-transparent text-gray-500"
+                  ? "bg-[#121417]/40 border-[#2A2D31]/40 text-gray-400 hover:border-amber-500/50 hover:bg-amber-500/5"
                   : activeSkin === "amber"
-                  ? "bg-amber-600/10 border-amber-500/50 text-amber-200 cursor-pointer"
-                  : "bg-[#121417]/40 border-[#2A2D31]/50 text-gray-400 hover:border-gray-700 cursor-pointer"
+                  ? "bg-amber-600/10 border-amber-500/50 text-amber-200"
+                  : "bg-[#121417]/40 border-[#2A2D31]/50 text-gray-400 hover:border-gray-700"
               }`}
             >
               <div className="flex items-center gap-2">
@@ -473,7 +478,11 @@ export default function ProfileSettingsTab({
                 <div>
                   <p className="text-xs font-bold text-white flex items-center gap-1.5">
                     Solar Gold Glow
-                    {!subscriptionState?.isPremium && <Lock className="w-3 h-3 text-amber-500" />}
+                    {!subscriptionState?.isPremium && (
+                      <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.2 rounded font-black flex items-center gap-0.5">
+                        <Lock className="w-2.5 h-2.5 text-amber-400" /> PRO
+                      </span>
+                    )}
                   </p>
                   <p className="text-[9px] text-gray-400">Amber solar flares with golden ambient highlights.</p>
                 </div>
@@ -486,18 +495,21 @@ export default function ProfileSettingsTab({
             {/* Neon Emerald Cyber */}
             <button
               type="button"
-              disabled={!subscriptionState?.isPremium}
               onClick={() => {
+                if (!subscriptionState?.isPremium) {
+                  onOpenUpgradeModal?.("skin_locked");
+                  return;
+                }
                 localStorage.setItem("syncpl_custom_skin", "emerald");
                 setActiveSkin("emerald");
                 window.dispatchEvent(new Event("syncpl_skin_updated"));
               }}
-              className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition relative ${
+              className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition relative cursor-pointer ${
                 !subscriptionState?.isPremium
-                  ? "opacity-60 cursor-not-allowed bg-[#121417]/20 border-transparent text-gray-500"
+                  ? "bg-[#121417]/40 border-[#2A2D31]/40 text-gray-400 hover:border-emerald-500/50 hover:bg-emerald-500/5"
                   : activeSkin === "emerald"
-                  ? "bg-emerald-600/10 border-emerald-500/50 text-emerald-200 cursor-pointer"
-                  : "bg-[#121417]/40 border-[#2A2D31]/50 text-gray-400 hover:border-gray-700 cursor-pointer"
+                  ? "bg-emerald-600/10 border-emerald-500/50 text-emerald-200"
+                  : "bg-[#121417]/40 border-[#2A2D31]/50 text-gray-400 hover:border-gray-700"
               }`}
             >
               <div className="flex items-center gap-2">
@@ -505,7 +517,11 @@ export default function ProfileSettingsTab({
                 <div>
                   <p className="text-xs font-bold text-white flex items-center gap-1.5">
                     Neon Emerald Cyber
-                    {!subscriptionState?.isPremium && <Lock className="w-3 h-3 text-emerald-500" />}
+                    {!subscriptionState?.isPremium && (
+                      <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-black flex items-center gap-0.5">
+                        <Lock className="w-2.5 h-2.5 text-emerald-400" /> PRO
+                      </span>
+                    )}
                   </p>
                   <p className="text-[9px] text-gray-400">High-tech cyber matrix theme with emerald flows.</p>
                 </div>

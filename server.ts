@@ -212,18 +212,34 @@ async function startServer() {
     });
   });
 
-  // Create Stripe Checkout Session
+  // Create Stripe Checkout Session (Supports Live Stripe and Instant Sandbox Test Upgrades)
   app.post("/api/payment/create-checkout-session", async (req: any, res: any) => {
     try {
-      const { userId, userEmail } = req.body;
+      const { userId, userEmail, sandbox } = req.body;
       if (!userId) {
         return res.status(400).json({ error: "userId is required" });
       }
 
       const stripe = getStripe();
-      if (!stripe) {
-        return res.status(500).json({
-          error: "Stripe keys are not configured. Set STRIPE_SECRET_KEY in your environment to unlock billing.",
+
+      // If user requested sandbox mode OR Stripe keys are not configured in environment
+      if (sandbox || !stripe) {
+        const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        await updateSubscriptionInDb(userId, {
+          subscriptionStatus: "active",
+          subscriptionTier: "premium",
+          subscriptionEndDate: nextMonth,
+          subscriptionPeriodEnd: nextMonth,
+        });
+
+        return res.json({
+          url: null,
+          sandbox: true,
+          success: true,
+          subscriptionStatus: "active",
+          subscriptionTier: "premium",
+          subscriptionEndDate: nextMonth,
+          message: "SyncPL Pro Subscription successfully activated in sandbox mode!",
         });
       }
 
@@ -270,9 +286,67 @@ async function startServer() {
         cancel_url: `${origin}?canceled=true`,
       });
 
-      res.json({ url: session.url });
+      res.json({ url: session.url, sandbox: false });
     } catch (e: any) {
       console.error("Error creating checkout session:", e);
+      // If Stripe throws an API error, allow fallback gracefully
+      res.status(500).json({ error: e.message, canFallbackSandbox: true });
+    }
+  });
+
+  // Direct Pro Tier Activation (Instant 1-Click Upgrade for Sandbox & Verification)
+  app.post("/api/payment/activate-pro", async (req: any, res: any) => {
+    try {
+      const { userId, tier = "premium", durationDays = 30 } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+
+      const subscriptionEndDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+      const updatedData = {
+        subscriptionStatus: "active",
+        subscriptionTier: tier,
+        subscriptionEndDate,
+        subscriptionPeriodEnd: subscriptionEndDate,
+      };
+
+      await updateSubscriptionInDb(userId, updatedData);
+
+      res.json({
+        success: true,
+        message: "Pro subscription successfully activated!",
+        ...updatedData,
+      });
+    } catch (e: any) {
+      console.error("Error activating Pro subscription:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Downgrade to Free Tier (for testing both tiers easily)
+  app.post("/api/payment/cancel-pro", async (req: any, res: any) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+
+      const updatedData = {
+        subscriptionStatus: "none",
+        subscriptionTier: "free",
+        subscriptionEndDate: new Date(Date.now() - 1000).toISOString(),
+        subscriptionPeriodEnd: new Date(Date.now() - 1000).toISOString(),
+      };
+
+      await updateSubscriptionInDb(userId, updatedData);
+
+      res.json({
+        success: true,
+        message: "Reverted to Free Community Tier.",
+        ...updatedData,
+      });
+    } catch (e: any) {
+      console.error("Error cancelling Pro subscription:", e);
       res.status(500).json({ error: e.message });
     }
   });

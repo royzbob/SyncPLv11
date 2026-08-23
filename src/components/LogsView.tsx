@@ -1,5 +1,23 @@
 import React, { useState, useMemo } from "react";
-import { Download, Plus, Filter, Award, Trash2, X, Clipboard, FolderOpen, Sparkles, TrendingUp, TrendingDown, Layers, Bookmark } from "lucide-react";
+import {
+  Download,
+  Plus,
+  Filter,
+  Award,
+  Trash2,
+  X,
+  Clipboard,
+  FolderOpen,
+  Sparkles,
+  TrendingUp,
+  TrendingDown,
+  Layers,
+  Bookmark,
+  Crown,
+  Lock,
+  AlertCircle,
+  Zap,
+} from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 
@@ -12,6 +30,8 @@ interface LogsViewProps {
   roomCode: string;
   traders: UserProfile[];
   isCreatorOrMod?: boolean;
+  isPremium?: boolean;
+  onOpenUpgradeModal?: (reason?: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general") => void;
 }
 
 const accountTypeConfig: Record<
@@ -53,12 +73,30 @@ export default function LogsView({
   roomCode,
   traders,
   isCreatorOrMod = false,
+  isPremium = false,
+  onOpenUpgradeModal,
 }: LogsViewProps) {
   const [scope, setScope] = useState<"all" | "me">("all");
   const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
   const [strategyFilter, setStrategyFilter] = useState<string>("all");
   const [selectedFlexLog, setSelectedFlexLog] = useState<PnlLog | null>(null);
   const [copiedState, setCopiedState] = useState(false);
+
+  // Compute how many logs the current user has created
+  const userLogsCount = useMemo(() => {
+    return pnlLogs.filter((l) => l.userId === userId).length;
+  }, [pnlLogs, userId]);
+
+  const FREE_LOG_LIMIT = 10;
+  const isLimitReached = !isPremium && userLogsCount >= FREE_LOG_LIMIT;
+
+  const handleAddRecordClick = () => {
+    if (isLimitReached) {
+      onOpenUpgradeModal?.("logs_limit");
+    } else {
+      onOpenLogModal();
+    }
+  };
 
   // Collect all unique strategies present in the logs
   const availableStrategies = useMemo(() => {
@@ -128,7 +166,18 @@ export default function LogsView({
       {/* Header */}
       <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
-          <h3 className="font-black text-2xl text-white tracking-tight">Ledger Logs</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-black text-2xl text-white tracking-tight">Ledger Logs</h3>
+            {isPremium ? (
+              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <Crown className="w-3 h-3 text-emerald-400" /> Unlimited
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold bg-[#121417] text-gray-400 border border-[#2A2D31] px-2 py-0.5 rounded-full">
+                Free Tier: {userLogsCount}/{FREE_LOG_LIMIT} Trades
+              </span>
+            )}
+          </div>
           <p className="text-xs text-[#8E9297] mt-1">
             Comprehensive multi-account ledger logs reported within active workspace
           </p>
@@ -141,13 +190,54 @@ export default function LogsView({
             <Download className="w-4 h-4" /> Export CSV
           </button>
           <button
-            onClick={onOpenLogModal}
-            className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer"
+            onClick={handleAddRecordClick}
+            className={`font-bold text-xs px-3.5 py-2 rounded transition flex items-center gap-1.5 cursor-pointer shadow ${
+              isLimitReached
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30"
+                : "bg-[#5865F2] hover:bg-[#4752C4] text-white"
+            }`}
           >
-            <Plus className="w-4 h-4" /> Add Record
+            {isLimitReached ? (
+              <>
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Limit Reached (Upgrade)</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                <span>Add Record</span>
+              </>
+            )}
           </button>
         </div>
       </div>
+
+      {/* Free Tier Limit Notification Banner */}
+      {!isPremium && isLimitReached && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/40 via-[#1E2023] to-[#121417] border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 mt-0.5">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white flex items-center gap-2">
+                Free Community Tier Quota Reached ({userLogsCount}/{FREE_LOG_LIMIT} Trades)
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                You have reached your 10 free trade logs limit. Upgrade to SyncPL Pro to unlock unlimited trade logging, full historical P&L analytics, and bespoke desk skins.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onOpenUpgradeModal?.("logs_limit")}
+            className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <Crown className="w-3.5 h-3.5 text-black" />
+            <span>Upgrade to Pro ($25/mo)</span>
+          </button>
+        </div>
+      )}
 
       {/* Filter Panel */}
       <div className="glass-panel p-3 rounded flex gap-4 items-center justify-between flex-wrap border border-[#2A2D31] bg-[#121417]">

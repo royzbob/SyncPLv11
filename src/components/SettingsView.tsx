@@ -79,6 +79,7 @@ interface SettingsViewProps {
   triggerToast?: (title: string, message: string, type?: "success" | "error" | "info") => void;
   onUnsubscribeFromRoom?: (roomId: string) => Promise<void>;
   userRooms?: Room[];
+  onOpenUpgradeModal?: (reason?: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general") => void;
 }
 
 export default function SettingsView({
@@ -120,6 +121,7 @@ export default function SettingsView({
   triggerToast,
   onUnsubscribeFromRoom,
   userRooms,
+  onOpenUpgradeModal,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabType>("profile");
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
@@ -255,6 +257,7 @@ export default function SettingsView({
           isAppOwnerUser={isAppOwnerUser}
           onOpenBroadcastModal={() => setShowBroadcastModal(true)}
           triggerToast={triggerToast}
+          onOpenUpgradeModal={onOpenUpgradeModal}
         />
       )}
 

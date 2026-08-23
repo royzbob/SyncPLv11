@@ -13,6 +13,9 @@ import {
   Banknote,
   ArrowRight,
   Layers,
+  Crown,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -32,9 +35,18 @@ interface DashboardViewProps {
   userId: string;
   payouts?: PayoutRecord[];
   onSwitchTab?: (tab: string) => void;
+  isPremium?: boolean;
+  onOpenUpgradeModal?: (reason?: "logs_limit" | "ai_limit" | "skin_locked" | "monetization_locked" | "general") => void;
 }
 
-export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchTab }: DashboardViewProps) {
+export default function DashboardView({
+  pnlLogs,
+  userId,
+  payouts = [],
+  onSwitchTab,
+  isPremium = false,
+  onOpenUpgradeModal,
+}: DashboardViewProps) {
   const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
 
   // Filter logs by selected account type if specified
@@ -271,6 +283,37 @@ export default function DashboardView({ pnlLogs, userId, payouts = [], onSwitchT
           })}
         </div>
       </div>
+
+      {/* Free Tier Upgrade CTA Banner */}
+      {!isPremium && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#1E2023] to-[#121417] border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+              <Crown className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-white">Upgrade to SyncPL Pro ($25/mo)</span>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded-full">
+                  1st Month $0.00
+                </span>
+              </div>
+              <p className="text-[11px] text-[#8E9297] mt-0.5">
+                Uncap unlimited trade ledger records, gain unlimited AI voice scans, and unlock exclusive glowing desk themes.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onOpenUpgradeModal?.("general")}
+            className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-black" />
+            <span>Unlock Pro Access</span>
+          </button>
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Stat 1 */}
