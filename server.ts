@@ -214,7 +214,7 @@ async function startServer() {
     });
   });
 
-  // Create Stripe Checkout Session (Supports Live Stripe and Instant Sandbox Test Upgrades)
+  // Create Stripe Checkout Session (Redirects directly to Stripe Hosted Checkout for $25/mo)
   app.post("/api/payment/create-checkout-session", async (req: any, res: any) => {
     try {
       const { userId, userEmail, sandbox } = req.body;
@@ -222,10 +222,8 @@ async function startServer() {
         return res.status(400).json({ error: "userId is required" });
       }
 
-      const stripe = getStripe();
-
-      // If user requested sandbox mode OR Stripe keys are not configured in environment
-      if (sandbox || !stripe) {
+      // Explicit Sandbox Mode (Only when specifically requested via the Sandbox test button)
+      if (sandbox) {
         const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
         await updateSubscriptionInDb(userId, {
           subscriptionStatus: "active",
@@ -241,25 +239,34 @@ async function startServer() {
           subscriptionStatus: "active",
           subscriptionTier: "premium",
           subscriptionEndDate: nextMonth,
-          message: "SyncPL Pro Subscription successfully activated in sandbox mode!",
+          message: "SyncPL Pro Subscription activated in Test Sandbox mode.",
         });
       }
 
-      // 1. Get or create product/price
+      const stripe = getStripe();
+
+      if (!stripe) {
+        return res.status(400).json({
+          error: "Stripe is not configured. Please add STRIPE_SECRET_KEY in your environment secrets to accept live Stripe card payments.",
+          stripeConfigured: false,
+        });
+      }
+
+      // 1. Get or create product/price ($25/month)
       const priceId = await getOrCreatePrice(stripe);
 
       // 2. Find or create stripe customer
       let customerId: string;
-      const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
+      const targetEmail = userEmail || `${userId}@syncpl.internal`;
+      const customers = await stripe.customers.list({ email: targetEmail, limit: 1 });
       if (customers.data.length > 0) {
         customerId = customers.data[0].id;
-        // Ensure metadata contains userId
         if (customers.data[0].metadata?.userId !== userId) {
           await stripe.customers.update(customerId, { metadata: { userId } });
         }
       } else {
         const customer = await stripe.customers.create({
-          email: userEmail,
+          email: targetEmail,
           metadata: { userId },
         });
         customerId = customer.id;
@@ -269,7 +276,7 @@ async function startServer() {
       const rawOrigin = process.env.APP_URL || req.headers.origin || req.headers.referer || "http://localhost:3000";
       const origin = rawOrigin.split("?")[0].replace(/\/$/, "");
 
-      // 4. Create checkout session with a 30-day (1 month) free trial
+      // 4. Create Stripe Checkout Session for $25.00/month recurring (charged immediately)
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         payment_method_types: ["card"],
@@ -280,20 +287,16 @@ async function startServer() {
             quantity: 1,
           },
         ],
-        subscription_data: {
-          trial_period_days: 30, // First Month Free!
-          metadata: { userId },
-        },
         metadata: { userId },
         success_url: `${origin}?success=true&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}?canceled=true`,
       });
 
-      res.json({ url: session.url, sandbox: false });
+      console.log(`[Stripe] Created checkout session ${session.id} for user ${userId}. URL: ${session.url}`);
+      return res.json({ url: session.url, sandbox: false, success: true });
     } catch (e: any) {
       console.error("Error creating checkout session:", e);
-      // If Stripe throws an API error, allow fallback gracefully
-      res.status(500).json({ error: e.message, canFallbackSandbox: true });
+      return res.status(500).json({ error: e.message || "Failed to initiate Stripe Checkout session." });
     }
   });
 

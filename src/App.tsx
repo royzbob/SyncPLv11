@@ -544,27 +544,46 @@ export default function App() {
   }, []);
 
   const subscriptionState = useMemo(() => {
-    if (currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com") {
-      return { isPremium: true, daysRemaining: 365, isExpired: false, status: "active" };
-    }
-    if (!profile) return { isPremium: true, daysRemaining: 30, isExpired: false, status: "none" };
+    if (!profile) return { isPremium: false, daysRemaining: 0, isExpired: true, status: "none" };
 
-    if (profile.subscriptionStatus === "active") {
-      return { isPremium: true, daysRemaining: 0, isExpired: false, status: "active" };
+    const isProTier = profile.subscriptionTier === "premium" || profile.subscriptionTier === "pro";
+    const isActiveStatus = profile.subscriptionStatus === "active";
+
+    // Check if subscription period has ended
+    const periodEnd = profile.subscriptionPeriodEnd || profile.subscriptionEndDate;
+    if (periodEnd) {
+      const endTime = new Date(periodEnd).getTime();
+      const now = Date.now();
+      if (!isNaN(endTime)) {
+        const daysRemaining = Math.max(0, Math.ceil((endTime - now) / (1000 * 60 * 60 * 24)));
+        const isExpired = now >= endTime;
+        if (isActiveStatus || isProTier) {
+          return {
+            isPremium: !isExpired,
+            daysRemaining,
+            isExpired,
+            status: isExpired ? "expired" : "active",
+          };
+        }
+      }
+    }
+
+    if (isActiveStatus || isProTier) {
+      return { isPremium: true, daysRemaining: 30, isExpired: false, status: "active" };
     }
 
     const trialEnd = profile.trialEndDate ? new Date(profile.trialEndDate).getTime() : 0;
     const now = Date.now();
-    const isExpired = now >= trialEnd;
-    const daysRemaining = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
+    const isTrialExpired = trialEnd ? now >= trialEnd : true;
+    const trialDaysRemaining = trialEnd ? Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24))) : 0;
 
     return {
-      isPremium: !isExpired && profile.subscriptionStatus === "trialing",
-      daysRemaining,
-      isExpired,
+      isPremium: !isTrialExpired && profile.subscriptionStatus === "trialing",
+      daysRemaining: trialDaysRemaining,
+      isExpired: isTrialExpired,
       status: profile.subscriptionStatus || "none",
     };
-  }, [profile, currentUser]);
+  }, [profile]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

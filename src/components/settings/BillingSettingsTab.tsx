@@ -146,7 +146,7 @@ export default function BillingSettingsTab({
                 className="w-full lg:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs py-2.5 px-5 rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Crown className="w-4 h-4 text-black" />
-                <span>Upgrade to Pro ($25/mo - 30 Days Free)</span>
+                <span>Upgrade to Pro ($25/mo via Stripe)</span>
               </button>
             )}
           </div>

@@ -101,46 +101,32 @@ export default function ProUpgradeModal({
         }),
       });
 
-      if (!ok || data?.error) {
-        console.warn("Stripe checkout session not returned:", data?.error);
-        if (data?.canFallbackSandbox || !data?.url) {
-          await handleInstantSandboxUpgrade();
-          return;
-        }
-        throw new Error(data?.error || "Failed to initiate Stripe Checkout.");
+      if (!ok || data?.error || !data?.url) {
+        const errorMsg = data?.error || "Unable to initiate Stripe Checkout session. Please check your Stripe keys.";
+        console.error("Stripe checkout error:", errorMsg);
+        triggerToast?.("Stripe Payment Notice", errorMsg, "error");
+        return;
       }
 
-      if (data?.sandbox && data?.success) {
-        // Server fallback activated sandbox directly
-        await directClientProfileUpdate(true);
-        triggerToast?.("Pro Activated 👑", "SyncPL Pro unlocked with 30-day free trial!", "success");
-        onClose();
-      } else if (data?.url) {
-        // Try opening in new window; if popup blocked or in iframe, navigate directly
-        const checkoutWindow = window.open(data.url, "_blank");
-        if (!checkoutWindow || checkoutWindow.closed || typeof checkoutWindow.closed === "undefined") {
-          window.location.href = data.url;
-        } else {
-          triggerToast?.(
-            "Stripe Checkout Opened",
-            "Opening secure Stripe Checkout tab. Complete checkout to activate Pro tier.",
-            "info"
-          );
-        }
-      } else {
-        // Fallback to sandbox if no URL returned
-        await handleInstantSandboxUpgrade();
+      // Valid Stripe Checkout URL received -> Redirect customer to Stripe
+      triggerToast?.(
+        "Redirecting to Stripe",
+        "Opening secure Stripe Checkout ($25/month)...",
+        "info"
+      );
+
+      const checkoutWindow = window.open(data.url, "_blank");
+      if (!checkoutWindow || checkoutWindow.closed || typeof checkoutWindow.closed === "undefined") {
+        // If popup was blocked by browser or running in an iframe, navigate directly
+        window.location.href = data.url;
       }
     } catch (err: any) {
-      console.error(err);
-      // Seamlessly activate sandbox so the user is never blocked
-      await directClientProfileUpdate(true);
+      console.error("Checkout request failed:", err);
       triggerToast?.(
-        "Pro Unlocked (Sandbox)",
-        "Stripe checkout is in preview mode. Activated full Pro 30-day sandbox tier!",
-        "success"
+        "Payment Connection Error",
+        err.message || "Failed to contact payment server. Please verify your connection.",
+        "error"
       );
-      onClose();
     } finally {
       setLoading(false);
     }
@@ -306,7 +292,7 @@ export default function ProUpgradeModal({
               <span className="text-3xl font-black text-white tracking-tight">$25</span>
               <span className="text-xs text-gray-400 font-medium">/ month</span>
               <span className="text-[11px] text-amber-400 font-bold ml-2">
-                (First 30 days $0.00)
+                (Billed Monthly via Stripe)
               </span>
             </div>
             <p className="text-[11px] text-gray-400 mt-1">
@@ -390,17 +376,17 @@ export default function ProUpgradeModal({
           <button
             onClick={handleStripeCheckout}
             disabled={loading || sandboxLoading}
-            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-sm py-3 rounded-xl transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-sm py-3.5 rounded-xl transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             {loading ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin text-black" />
-                <span>Opening Checkout...</span>
+                <span>Redirecting to Stripe...</span>
               </>
             ) : (
               <>
                 <CreditCard className="w-4 h-4 text-black" />
-                <span>Start 30-Day Free Trial ($25/mo thereafter)</span>
+                <span>Pay with Stripe ($25.00 / month)</span>
                 <ArrowRight className="w-4 h-4 text-black ml-1" />
               </>
             )}
