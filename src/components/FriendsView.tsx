@@ -39,7 +39,7 @@ import {
 } from "firebase/firestore";
 import { User } from "firebase/auth";
 import { UserProfile, Friendship } from "../types";
-import { computeUserPresence, getPresenceIndicatorColor, getPresenceLabel } from "../utils/presence";
+import { computeUserPresence, getPresenceIndicatorColor, getPresenceLabel, isImageAvatar } from "../utils/presence";
 
 interface FriendsViewProps {
   currentUser: User;
@@ -566,7 +566,7 @@ export default function FriendsView({
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  {profile?.avatarType === "url" && profile?.avatarVal ? (
+                  {isImageAvatar(profile?.avatarType, profile?.avatarVal) ? (
                     <div className="w-10 h-10 rounded-full border border-indigo-500/30 overflow-hidden flex items-center justify-center bg-[#08090A]">
                       <img
                         src={profile.avatarVal}
@@ -577,7 +577,7 @@ export default function FriendsView({
                     </div>
                   ) : (
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-black bg-${profile?.avatarColor || "indigo"}-500/10 border border-${profile?.avatarColor || "indigo"}-500/30 text-${profile?.avatarColor || "indigo"}-400`}>
-                      {profile?.avatarVal || "🐂"}
+                      {typeof profile?.avatarVal === "string" && profile.avatarVal.length < 8 ? profile.avatarVal : "🐂"}
                     </div>
                   )}
                   <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#12151c] ${getPresenceIndicatorColor(myPresence)}`} />
@@ -729,7 +729,7 @@ export default function FriendsView({
                             <div className="flex items-center gap-3 min-w-0">
                               {/* Avatar with absolute status badge */}
                               <div className="relative shrink-0 select-none">
-                                {f.avatarType === "url" && f.avatarVal ? (
+                                {isImageAvatar(f.avatarType, f.avatarVal) ? (
                                   <div className="w-10 h-10 rounded-full border border-[#202530]/40 overflow-hidden flex items-center justify-center bg-[#08090A]">
                                     <img
                                       src={f.avatarVal}
@@ -740,7 +740,7 @@ export default function FriendsView({
                                   </div>
                                 ) : (
                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-black bg-${f.avatarColor}-500/10 border border-${f.avatarColor}-500/30 text-${f.avatarColor}-400`}>
-                                    {f.avatarVal || "📈"}
+                                    {typeof f.avatarVal === "string" && f.avatarVal.length < 8 ? f.avatarVal : "📈"}
                                   </div>
                                 )}
                                 <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#11141b] group-hover:border-[#181d26] transition ${getPresenceIndicatorColor(f.marketPresence)}`} />
@@ -848,7 +848,7 @@ export default function FriendsView({
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="relative shrink-0 select-none">
-                              {f.avatarType === "url" && f.avatarVal ? (
+                              {isImageAvatar(f.avatarType, f.avatarVal) ? (
                                 <div className="w-10 h-10 rounded-full border border-[#202530]/40 overflow-hidden flex items-center justify-center bg-[#08090A]">
                                   <img
                                     src={f.avatarVal}
@@ -859,7 +859,7 @@ export default function FriendsView({
                                 </div>
                               ) : (
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-black bg-${f.avatarColor}-500/10 border border-${f.avatarColor}-500/30 text-${f.avatarColor}-400`}>
-                                  {f.avatarVal || "🐂"}
+                                  {typeof f.avatarVal === "string" && f.avatarVal.length < 8 ? f.avatarVal : "🐂"}
                                 </div>
                               )}
                               <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#11141b] group-hover:border-[#181d26] transition ${getPresenceIndicatorColor(f.marketPresence)}`} />
@@ -927,7 +927,7 @@ export default function FriendsView({
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className="relative shrink-0 select-none">
-                                  {f.avatarType === "url" && f.avatarVal ? (
+                                  {isImageAvatar(f.avatarType, f.avatarVal) ? (
                                     <div className="w-10 h-10 rounded-full border border-gray-800 overflow-hidden flex items-center justify-center bg-[#08090A]">
                                       <img
                                         src={f.avatarVal}
@@ -938,7 +938,7 @@ export default function FriendsView({
                                     </div>
                                   ) : (
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-black bg-gray-900 border border-gray-800 text-gray-500`}>
-                                      {f.avatarVal || "🐂"}
+                                      {typeof f.avatarVal === "string" && f.avatarVal.length < 8 ? f.avatarVal : "🐂"}
                                     </div>
                                   )}
                                   <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#11141b] bg-gray-700`} />
@@ -991,7 +991,7 @@ export default function FriendsView({
                       className="p-3 bg-[#11141b] border border-dark-border/10 rounded-xl flex items-center justify-between gap-3 shadow-md"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        {r.avatarType === "url" && r.avatarVal ? (
+                        {isImageAvatar(r.avatarType, r.avatarVal) ? (
                           <div className="w-9 h-9 rounded-xl border border-indigo-500/30 overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0">
                             <img
                               src={r.avatarVal}
@@ -1002,7 +1002,7 @@ export default function FriendsView({
                           </div>
                         ) : (
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black bg-${r.avatarColor}-500/10 border border-${r.avatarColor}-500/30 text-${r.avatarColor}-400 shrink-0`}>
-                            {r.avatarVal || "🐂"}
+                            {typeof r.avatarVal === "string" && r.avatarVal.length < 8 ? r.avatarVal : "🐂"}
                           </div>
                         )}
                         <div className="min-w-0">

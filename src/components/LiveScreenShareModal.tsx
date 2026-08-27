@@ -25,6 +25,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { VoiceUser } from "../types";
+import { isImageAvatar } from "../utils/presence";
 
 interface LiveScreenShareModalProps {
   isOpen: boolean;
@@ -286,8 +287,8 @@ export const LiveScreenShareModal: React.FC<LiveScreenShareModalProps> = ({
             {/* Streamer Avatar & Name */}
             <div className="flex items-center space-x-2">
               <div className="relative">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-white shadow-inner">
-                  {streamerUser?.avatarType === "url" && streamerUser.avatarVal ? (
+                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-white shadow-inner overflow-hidden">
+                  {isImageAvatar(streamerUser?.avatarType, streamerUser?.avatarVal) ? (
                     <img
                       src={streamerUser.avatarVal}
                       alt=""
@@ -295,7 +296,9 @@ export const LiveScreenShareModal: React.FC<LiveScreenShareModalProps> = ({
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    streamerUser?.avatarVal || "📈"
+                    typeof streamerUser?.avatarVal === "string" && streamerUser.avatarVal.length < 8
+                      ? streamerUser.avatarVal
+                      : "📈"
                   )}
                 </div>
                 <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#181A1E]" />
@@ -672,7 +675,18 @@ export const LiveScreenShareModal: React.FC<LiveScreenShareModalProps> = ({
                         : "bg-[#25282C] text-gray-300 border border-[#2A2D31]"
                     }`}
                   >
-                    <span>{u.avatarVal || "👤"}</span>
+                    {isImageAvatar(u.avatarType, u.avatarVal) ? (
+                      <img
+                        src={u.avatarVal}
+                        alt=""
+                        className="w-3.5 h-3.5 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span>
+                        {typeof u.avatarVal === "string" && u.avatarVal.length < 8 ? u.avatarVal : "👤"}
+                      </span>
+                    )}
                     <span>{u.username}</span>
                     {u.isScreenSharing && <Radio className="w-2.5 h-2.5 text-rose-400 animate-pulse ml-0.5" />}
                   </span>

@@ -48,7 +48,7 @@ import { User as FirebaseUser } from "firebase/auth";
 import { DirectMessage, DMConversation, UserProfile, Friendship } from "../types";
 import { compressImage } from "../utils/imageCompressor";
 import { playChatMessageSound } from "../utils/audio";
-import { computeUserPresence } from "../utils/presence";
+import { computeUserPresence, isImageAvatar } from "../utils/presence";
 
 interface PrivateMessagesViewProps {
   currentUser: FirebaseUser;
@@ -637,7 +637,7 @@ export default function PrivateMessagesView({
                 >
                   {/* Avatar with Presence Indicator */}
                   <div className="relative shrink-0 select-none">
-                    {conv.partnerAvatarType === "url" && conv.partnerAvatarVal ? (
+                    {isImageAvatar(conv.partnerAvatarType, conv.partnerAvatarVal) ? (
                       <div className="w-10 h-10 rounded-full border border-gray-700 overflow-hidden bg-black flex items-center justify-center">
                         <img
                           src={conv.partnerAvatarVal}
@@ -650,7 +650,7 @@ export default function PrivateMessagesView({
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-black bg-${conv.partnerAvatarColor}-500/10 border border-${conv.partnerAvatarColor}-500/30 text-${conv.partnerAvatarColor}-400`}
                       >
-                        {conv.partnerAvatarVal || "🐂"}
+                        {typeof conv.partnerAvatarVal === "string" && conv.partnerAvatarVal.length < 8 ? conv.partnerAvatarVal : "🐂"}
                       </div>
                     )}
                     <span
@@ -710,7 +710,7 @@ export default function PrivateMessagesView({
 
                 {/* Partner Avatar */}
                 <div className="relative shrink-0">
-                  {selectedPartnerInfo.avatarType === "url" && selectedPartnerInfo.avatarVal ? (
+                  {isImageAvatar(selectedPartnerInfo.avatarType, selectedPartnerInfo.avatarVal) ? (
                     <div className="w-9 h-9 rounded-full border border-indigo-500/30 overflow-hidden bg-black flex items-center justify-center">
                       <img
                         src={selectedPartnerInfo.avatarVal}
@@ -727,7 +727,9 @@ export default function PrivateMessagesView({
                         selectedPartnerInfo.avatarColor || "indigo"
                       }-400`}
                     >
-                      {selectedPartnerInfo.avatarVal || "🐂"}
+                      {typeof selectedPartnerInfo.avatarVal === "string" && selectedPartnerInfo.avatarVal.length < 8
+                        ? selectedPartnerInfo.avatarVal
+                        : "🐂"}
                     </div>
                   )}
                   <span
@@ -806,9 +808,20 @@ export default function PrivateMessagesView({
               }}
             >
               {/* Conversation Welcoming Banner */}
-              <div className="p-6 text-center bg-[#101319]/40 border border-[#1E222B] rounded-2xl max-w-md mx-auto my-4 space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto text-xl font-black">
-                  {selectedPartnerInfo.avatarVal || "🐂"}
+              <div className="p-6 text-center bg-[#101319]/40 border border-[#1E222B] rounded-2xl max-w-md mx-auto my-4 space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto text-2xl font-black overflow-hidden shadow-inner">
+                  {isImageAvatar(selectedPartnerInfo.avatarType, selectedPartnerInfo.avatarVal) ? (
+                    <img
+                      src={selectedPartnerInfo.avatarVal}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    typeof selectedPartnerInfo.avatarVal === "string" && selectedPartnerInfo.avatarVal.length < 8
+                      ? selectedPartnerInfo.avatarVal
+                      : "🐂"
+                  )}
                 </div>
                 <h3 className="text-sm font-black text-white">
                   Direct PM with {selectedPartnerInfo.username}
@@ -830,7 +843,7 @@ export default function PrivateMessagesView({
                   >
                     {/* Avatar */}
                     <div className="shrink-0 select-none">
-                      {msg.senderAvatarType === "url" && msg.senderAvatarVal ? (
+                      {isImageAvatar(msg.senderAvatarType, msg.senderAvatarVal) ? (
                         <div className="w-8 h-8 rounded-full border border-gray-700 overflow-hidden bg-black flex items-center justify-center">
                           <img
                             src={msg.senderAvatarVal}
@@ -847,7 +860,7 @@ export default function PrivateMessagesView({
                             msg.senderAvatarColor || "indigo"
                           }-400`}
                         >
-                          {msg.senderAvatarVal || "🐂"}
+                          {typeof msg.senderAvatarVal === "string" && msg.senderAvatarVal.length < 8 ? msg.senderAvatarVal : "🐂"}
                         </div>
                       )}
                     </div>
@@ -1097,9 +1110,9 @@ export default function PrivateMessagesView({
                       className="p-2.5 rounded-xl bg-[#101319] hover:bg-[#161A24] border border-[#1E222B] hover:border-indigo-500/30 transition flex items-center gap-2.5 text-left cursor-pointer"
                     >
                       <div className="relative shrink-0">
-                        {friend.avatarType === "url" && friend.avatarVal ? (
+                        {isImageAvatar(friend.avatarType, friend.avatarVal) ? (
                           <div className="w-8 h-8 rounded-full border border-gray-700 overflow-hidden bg-black flex items-center justify-center">
-                            <img src={friend.avatarVal} alt="" className="w-full h-full object-cover" />
+                            <img src={friend.avatarVal} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </div>
                         ) : (
                           <div
@@ -1109,7 +1122,7 @@ export default function PrivateMessagesView({
                               friend.avatarColor || "indigo"
                             }-400`}
                           >
-                            {friend.avatarVal || "🐂"}
+                            {typeof friend.avatarVal === "string" && friend.avatarVal.length < 8 ? friend.avatarVal : "🐂"}
                           </div>
                         )}
                         <span
@@ -1195,9 +1208,9 @@ export default function PrivateMessagesView({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="relative shrink-0 select-none">
-                        {friend.avatarType === "url" && friend.avatarVal ? (
+                        {isImageAvatar(friend.avatarType, friend.avatarVal) ? (
                           <div className="w-9 h-9 rounded-full border border-gray-700 overflow-hidden bg-black flex items-center justify-center">
-                            <img src={friend.avatarVal} alt="" className="w-full h-full object-cover" />
+                            <img src={friend.avatarVal} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </div>
                         ) : (
                           <div
@@ -1207,7 +1220,7 @@ export default function PrivateMessagesView({
                               friend.avatarColor || "indigo"
                             }-400`}
                           >
-                            {friend.avatarVal || "🐂"}
+                            {typeof friend.avatarVal === "string" && friend.avatarVal.length < 8 ? friend.avatarVal : "🐂"}
                           </div>
                         )}
                         <span

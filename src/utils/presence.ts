@@ -70,3 +70,17 @@ export const getPresenceLabel = (presence?: string, customStatus?: string) => {
       return "Offline";
   }
 };
+
+export const isImageAvatar = (avatarType?: string, avatarVal?: string): boolean => {
+  if (!avatarVal || typeof avatarVal !== "string") return false;
+  if (avatarType === "url") return true;
+  if (
+    avatarVal.startsWith("data:image/") ||
+    avatarVal.startsWith("http://") ||
+    avatarVal.startsWith("https://") ||
+    avatarVal.startsWith("blob:")
+  ) {
+    return true;
+  }
+  return false;
+};

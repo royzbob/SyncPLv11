@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
+import { isImageAvatar } from "../utils/presence";
 
 interface LogsViewProps {
   pnlLogs: PnlLog[];
@@ -508,7 +509,7 @@ export default function LogsView({
                 <div className="pt-4 border-t border-[#2A2D31] mt-6 relative z-10 flex justify-between items-center text-left text-xs">
                   <div className="flex items-center space-x-2.5 min-w-0">
                     {/* Trader Profile Picture */}
-                    {logTrader?.avatarType === "url" && logTrader?.avatarVal ? (
+                    {isImageAvatar(logTrader?.avatarType, logTrader?.avatarVal) ? (
                       <div className="w-8 h-8 rounded-full border border-[#2A2D31] overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0">
                         <img
                           src={logTrader.avatarVal}
@@ -521,7 +522,7 @@ export default function LogsView({
                       <div
                         className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs shrink-0 ${avatarBgClass}`}
                       >
-                        {logTrader?.avatarVal || initials}
+                        {typeof logTrader?.avatarVal === "string" && logTrader.avatarVal.length < 8 ? logTrader.avatarVal : initials}
                       </div>
                     )}
                     <div className="min-w-0">

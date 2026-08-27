@@ -52,6 +52,7 @@ import { User as FirebaseUser } from "firebase/auth";
 import { ChatMessage, Room, UserProfile, Channel } from "../types";
 import { formatCurrency } from "../utils/helpers";
 import { compressImage } from "../utils/imageCompressor";
+import { isImageAvatar } from "../utils/presence";
 
 interface ChatViewProps {
   activeRoom: Room;
@@ -856,7 +857,7 @@ export default function ChatView({
                 >
                   <div className="flex items-start space-x-2 sm:space-x-2.5 max-w-[95%] sm:max-w-[85%]">
                     {/* Avatar */}
-                    {msg.avatarType === "url" && msg.avatarVal ? (
+                    {isImageAvatar(msg.avatarType, msg.avatarVal) ? (
                       <div className="w-8 h-8 rounded border border-[#2A2D31] overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0">
                         <img
                           src={msg.avatarVal}
@@ -869,7 +870,7 @@ export default function ChatView({
                       <div
                         className={`w-8 h-8 rounded border border-[#2A2D31] flex items-center justify-center font-bold text-xs ${avatarBgClass} shrink-0`}
                       >
-                        {msg.avatarVal || initials}
+                        {typeof msg.avatarVal === "string" && msg.avatarVal.length < 8 ? msg.avatarVal : initials}
                       </div>
                     )}
 
@@ -1117,19 +1118,20 @@ export default function ChatView({
                 >
                   <div className="flex items-center space-x-2 min-w-0">
                     <div className="relative shrink-0">
-                      {trader.avatarType === "url" && trader.avatarVal ? (
+                      {isImageAvatar(trader.avatarType, trader.avatarVal) ? (
                         <div className="w-7 h-7 rounded-md border border-[#2A2D31] overflow-hidden flex items-center justify-center bg-[#08090A]">
                           <img
                             src={trader.avatarVal}
                             alt=""
                             className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
                           />
                         </div>
                       ) : (
                         <div
                           className={`w-7 h-7 rounded-md border border-[#2A2D31] flex items-center justify-center font-bold text-xs ${avatarBgClass}`}
                         >
-                          {trader.avatarVal || initials}
+                          {typeof trader.avatarVal === "string" && trader.avatarVal.length < 8 ? trader.avatarVal : initials}
                         </div>
                       )}
                       {/* Live presence indicator dot */}
@@ -1275,19 +1277,20 @@ export default function ChatView({
                   >
                     <div className="flex items-center space-x-2.5 min-w-0">
                       <div className="relative shrink-0">
-                        {trader.avatarType === "url" && trader.avatarVal ? (
+                        {isImageAvatar(trader.avatarType, trader.avatarVal) ? (
                           <div className="w-8 h-8 rounded-lg border border-[#2A2D31] overflow-hidden flex items-center justify-center bg-[#08090A]">
                             <img
                               src={trader.avatarVal}
                               alt=""
                               className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
                             />
                           </div>
                         ) : (
                           <div
                             className={`w-8 h-8 rounded-lg border border-[#2A2D31] flex items-center justify-center font-bold text-xs ${avatarBgClass}`}
                           >
-                            {trader.avatarVal || initials}
+                            {typeof trader.avatarVal === "string" && trader.avatarVal.length < 8 ? trader.avatarVal : initials}
                           </div>
                         )}
                         <span className={`absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full ${getPresenceIndicatorColor(trader.marketPresence)} ring-2 ring-[#141619]`} />
@@ -1406,13 +1409,13 @@ export default function ChatView({
               {/* Avatar position floating over header */}
               <div className="-mt-10 mb-3 flex items-end justify-between">
                 <div className="relative">
-                  {selectedPartner.avatarType === "url" && selectedPartner.avatarVal ? (
+                  {isImageAvatar(selectedPartner.avatarType, selectedPartner.avatarVal) ? (
                     <div className="w-16 h-16 rounded-2xl border-4 border-[#121417] overflow-hidden bg-[#08090A] shadow-lg">
-                      <img src={selectedPartner.avatarVal} alt="" className="w-full h-full object-cover" />
+                      <img src={selectedPartner.avatarVal} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
                   ) : (
                     <div className="w-16 h-16 rounded-2xl border-4 border-[#121417] bg-indigo-600/30 border-indigo-500/40 flex items-center justify-center text-2xl font-black text-indigo-300 shadow-lg">
-                      {selectedPartner.avatarVal || selectedPartner.username.substring(0, 2).toUpperCase()}
+                      {typeof selectedPartner.avatarVal === "string" && selectedPartner.avatarVal.length < 8 ? selectedPartner.avatarVal : selectedPartner.username.substring(0, 2).toUpperCase()}
                     </div>
                   )}
                   <span className={`absolute bottom-0 right-0 block h-4 w-4 rounded-full ${getPresenceIndicatorColor(selectedPartner.marketPresence)} ring-4 ring-[#121417]`} />

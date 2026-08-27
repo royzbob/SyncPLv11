@@ -35,6 +35,7 @@ import {
   Radio,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
+import { isImageAvatar } from "../utils/presence";
 
 interface ActiveRoomSidebarProps {
   activeRoom: Room;
@@ -704,7 +705,7 @@ export default function ActiveRoomSidebar({
                             className="flex items-center justify-between py-1 px-2 rounded hover:bg-[#1E2023]/40 transition-all duration-150 text-[10px]"
                           >
                             <div className="flex items-center space-x-2 min-w-0">
-                              {user.avatarType === "url" && user.avatarVal ? (
+                              {isImageAvatar(user.avatarType, user.avatarVal) ? (
                                 <div className={`w-4.5 h-4.5 rounded border overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0 transition-all duration-200 ${
                                   user.speaking
                                     ? "ring-1.5 ring-emerald-500 border-emerald-500"
@@ -714,6 +715,7 @@ export default function ActiveRoomSidebar({
                                     src={user.avatarVal}
                                     alt=""
                                     className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
                                   />
                                 </div>
                               ) : (
@@ -724,7 +726,7 @@ export default function ActiveRoomSidebar({
                                       : "border-white/10"
                                   } ${avatarBgClass}`}
                                 >
-                                  {user.avatarVal || initials}
+                                  {typeof user.avatarVal === "string" && user.avatarVal.length < 8 ? user.avatarVal : initials}
                                 </div>
                               )}
                               <span className={`font-medium truncate transition-colors duration-150 ${user.speaking ? "text-emerald-400" : "text-[#DCDDDE]"}`}>
@@ -969,7 +971,7 @@ export default function ActiveRoomSidebar({
               <div className="flex items-center min-w-0 space-x-2">
                 {/* Avatar with status indicator */}
                 <div className="relative shrink-0">
-                  {profile?.avatarType === "url" && profile?.avatarVal ? (
+                  {isImageAvatar(profile?.avatarType, profile?.avatarVal) ? (
                     <div className="w-8 h-8 rounded-full border border-[#2b2d31] overflow-hidden flex items-center justify-center bg-[#08090A]">
                       <img
                         src={profile.avatarVal}
@@ -980,7 +982,7 @@ export default function ActiveRoomSidebar({
                     </div>
                   ) : (
                     <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-black text-xs ${avatarBgClass}`}>
-                      {profile?.avatarVal || initials}
+                      {typeof profile?.avatarVal === "string" && profile.avatarVal.length < 8 ? profile.avatarVal : initials}
                     </div>
                   )}
                   {/* Status Indicator Dot */}
