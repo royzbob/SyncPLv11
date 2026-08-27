@@ -45,6 +45,7 @@ interface FriendsViewProps {
   db: any;
   profile: UserProfile | null;
   onJoinRoomCode: (code: string) => Promise<void>;
+  onOpenPmWithUser?: (partnerId: string) => void;
   triggerToast: (title: string, body: string, type: "success" | "error" | "info") => void;
 }
 
@@ -68,6 +69,7 @@ export default function FriendsView({
   db,
   profile,
   onJoinRoomCode,
+  onOpenPmWithUser,
   triggerToast
 }: FriendsViewProps) {
   const [searchUsername, setSearchUsername] = useState("");
@@ -765,11 +767,23 @@ export default function FriendsView({
 
                             {/* Action elements */}
                             <div className="flex items-center gap-2 shrink-0">
+                              {/* Send PM Button */}
+                              {onOpenPmWithUser && (
+                                <button
+                                  onClick={() => onOpenPmWithUser(f.friendId)}
+                                  className="p-2 bg-[#202530] hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                                  title={`Send Private Message to ${f.username}`}
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline text-[11px]">PM</span>
+                                </button>
+                              )}
+
                               {/* Jump desk button */}
                               {f.activeGroupId && (
                                 <button
                                   onClick={() => handleJoinFriendDesk(f.activeGroupId, f.username)}
-                                  className="p-2 bg-[#202530] hover:bg-indigo-600 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                  className="p-2 bg-[#202530] hover:bg-emerald-600 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
                                   title={`Jump onto ${f.username}'s active workspace desk`}
                                 >
                                   <ArrowRight className="w-3.5 h-3.5" />
@@ -861,10 +875,20 @@ export default function FriendsView({
                           </div>
 
                           <div className="flex items-center gap-2">
+                            {onOpenPmWithUser && (
+                              <button
+                                onClick={() => onOpenPmWithUser(f.friendId)}
+                                className="p-2 bg-[#202530] hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold"
+                                title={`Send Private Message to ${f.username}`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline text-[11px]">PM</span>
+                              </button>
+                            )}
                             {f.activeGroupId && (
                               <button
                                 onClick={() => handleJoinFriendDesk(f.activeGroupId, f.username)}
-                                className="p-2 bg-[#202530] hover:bg-indigo-600 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                className="p-2 bg-[#202530] hover:bg-emerald-600 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
                                 title="Jump Desk"
                               >
                                 <ArrowRight className="w-3.5 h-3.5" />

@@ -76,6 +76,7 @@ interface ActiveRoomSidebarProps {
   remoteScreenStreams?: Map<string, MediaStream>;
   onUnsubscribeFromRoom?: (roomId: string) => Promise<void>;
   currentUser?: any;
+  unreadPmCount?: number;
 }
 
 export default function ActiveRoomSidebar({
@@ -118,6 +119,7 @@ export default function ActiveRoomSidebar({
   remoteScreenStreams,
   onUnsubscribeFromRoom,
   currentUser,
+  unreadPmCount = 0,
 }: ActiveRoomSidebarProps) {
   const [voiceTheme, setVoiceTheme] = useState<"classic-dark" | "terminal-green" | "high-contrast-blue">(() => {
     try {
@@ -218,21 +220,28 @@ export default function ActiveRoomSidebar({
       {/* Brand Header */}
       <div className="p-4 border-b border-[#2A2D31] bg-[#08090A]/30 space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex flex-col">
+          <div className="flex flex-col min-w-0 pr-2">
             <span className="text-[9px] text-[#72767D] font-extrabold tracking-widest uppercase">
               Active Workspace
             </span>
+            {activeRoom.name && (
+              <span className="text-sm font-extrabold text-white truncate max-w-[150px]" title={activeRoom.name}>
+                {activeRoom.name}
+              </span>
+            )}
             <span
               onClick={onCopyRoomCode}
-              className="text-base font-black text-indigo-400 tracking-wider font-mono cursor-pointer hover:text-indigo-300 transition flex items-center gap-1.5"
+              className={`text-indigo-400 tracking-wider font-mono cursor-pointer hover:text-indigo-300 transition flex items-center gap-1.5 ${
+                activeRoom.name ? "text-xs font-bold" : "text-base font-black"
+              }`}
               title="Copy Invite Code"
             >
-              {activeRoom.id}
+              #{activeRoom.id}
             </span>
           </div>
           <button
             onClick={onCopyRoomCode}
-            className="p-1.5 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-indigo-400 rounded transition cursor-pointer"
+            className="p-1.5 bg-[#1E2023] hover:bg-[#2A2D31] border border-[#2A2D31] text-indigo-400 rounded transition cursor-pointer shrink-0"
             title="Copy invite code"
           >
             <span className="text-[10px] font-bold">Copy</span>
@@ -242,9 +251,9 @@ export default function ActiveRoomSidebar({
         {/* Paid Workspace Status & Unsubscribe Action */}
         {activeRoom.isPaid && (
           <div className="pt-1 border-t border-[#2A2D31]/40 flex items-center justify-between text-[9px]">
-            {activeRoom.creatorId === currentUser?.uid ? (
+            {activeRoom.creatorId === currentUser?.uid || currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ? (
               <span className="font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
-                👑 Desk Owner (${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo)
+                👑 {currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ? "App Creator & Owner" : `Desk Owner ($${(activeRoom.monthlyPrice || 29).toFixed(2)}/mo)`}
               </span>
             ) : activeRoom.subscribers?.includes(currentUser?.uid) ? (
               <div className="w-full flex items-center justify-between">
@@ -349,6 +358,26 @@ export default function ActiveRoomSidebar({
             <Users className="w-4 h-4 text-indigo-400" />
             <span>Friends & Co-Traders</span>
           </div>
+        </button>
+
+        <button
+          onClick={() => onSwitchTab("pms")}
+          className={getNavBtnClass("pms")}
+        >
+          <div className="flex items-center space-x-2.5">
+            <MessageSquare className="w-4 h-4 text-indigo-400" />
+            <span className="flex items-center gap-1.5">
+              <span>Direct Messages</span>
+              <span className="bg-indigo-500/20 text-indigo-400 text-[9px] font-black px-1.5 py-0.2 rounded border border-indigo-500/30">
+                PM
+              </span>
+            </span>
+          </div>
+          {unreadPmCount > 0 && (
+            <span className="px-1.5 py-0.2 bg-rose-500 text-white font-black text-[9px] rounded-full animate-bounce shadow">
+              {unreadPmCount > 9 ? "9+" : unreadPmCount}
+            </span>
+          )}
         </button>
 
         <button

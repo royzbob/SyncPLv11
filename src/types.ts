@@ -170,6 +170,40 @@ export interface PayoutRecord {
   timestamp: string;
 }
 
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderAvatarColor?: string;
+  senderAvatarVal?: string;
+  senderAvatarType?: "emoji" | "url";
+  receiverId: string;
+  receiverName: string;
+  receiverAvatarColor?: string;
+  receiverAvatarVal?: string;
+  receiverAvatarType?: "emoji" | "url";
+  conversationId: string; // sorted: dm_uidA_uidB
+  text: string;
+  imageUrl?: string;
+  timestamp: string;
+  read?: boolean;
+}
+
+export interface DMConversation {
+  conversationId: string;
+  partnerId: string;
+  partnerName: string;
+  partnerAvatarColor: string;
+  partnerAvatarVal: string;
+  partnerAvatarType: "emoji" | "url";
+  partnerPresence?: "active" | "idle" | "dnd" | "offline";
+  partnerCustomStatus?: string;
+  partnerActiveGroupId?: string;
+  lastMessage?: string;
+  lastTimestamp?: string;
+  unreadCount: number;
+}
+
 
 
 

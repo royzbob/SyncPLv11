@@ -84,6 +84,7 @@ interface ChatViewProps {
   onToggleMic?: () => void;
   onToggleDeafen?: () => void;
   onDisconnectVoice?: () => void;
+  onOpenPmWithUser?: (partnerId: string) => void;
 }
 
 export default function ChatView({
@@ -117,6 +118,7 @@ export default function ChatView({
   onToggleMic,
   onToggleDeafen,
   onDisconnectVoice,
+  onOpenPmWithUser,
 }: ChatViewProps) {
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -1540,6 +1542,23 @@ export default function ChatView({
                   >
                     <UserPlus className="w-4 h-4" />
                     {isSendingRequest ? "Sending Request..." : "Add as Friend / Co-Trader"}
+                  </button>
+                )}
+
+                {/* Send PM Button */}
+                {friendshipStatus !== "self" && onOpenPmWithUser && (
+                  <button
+                    onClick={() => {
+                      const partnerUid = selectedPartner.userId || selectedPartner.id;
+                      if (partnerUid) {
+                        onOpenPmWithUser(partnerUid);
+                        setSelectedPartner(null);
+                      }
+                    }}
+                    className="w-full bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 font-bold text-xs py-2.5 rounded-xl border border-indigo-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <MessageSquare className="w-4 h-4 text-indigo-400" />
+                    Send Private Message (PM)
                   </button>
                 )}
 

@@ -91,6 +91,12 @@ export default function BillingSettingsTab({
     }
   };
 
+  const isAppOwner =
+    currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+    profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+    profile?.role === "owner" ||
+    profile?.role === "creator";
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Subscription & Premium Billing Panel */}
@@ -106,7 +112,11 @@ export default function BillingSettingsTab({
               <div>
                 <h4 className="font-extrabold text-white text-base tracking-tight flex items-center gap-2">
                   Membership & Desk Billing
-                  {subscriptionState.isPremium ? (
+                  {isAppOwner ? (
+                    <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                      👑 App Creator (Universal Full Access)
+                    </span>
+                  ) : subscriptionState.isPremium ? (
                     <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-emerald-400" /> Active Pro Plan
                     </span>
@@ -117,14 +127,21 @@ export default function BillingSettingsTab({
                   )}
                 </h4>
                 <p className="text-xs text-[#8E9297] mt-0.5">
-                  Manage your subscription tier, uncap trading ledger limits, and configure workspace passes.
+                  {isAppOwner
+                    ? "Universal root creator tier with lifetime unrestricted access across all rooms, tools, and databases."
+                    : "Manage your subscription tier, uncap trading ledger limits, and configure workspace passes."}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3 w-full lg:w-auto">
-            {subscriptionState.isPremium ? (
+            {isAppOwner ? (
+              <div className="px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 font-black text-xs flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>Lifetime Creator Credentials Active</span>
+              </div>
+            ) : subscriptionState.isPremium ? (
               <button
                 type="button"
                 onClick={() => {
@@ -162,16 +179,20 @@ export default function BillingSettingsTab({
                   Current Tier
                 </span>
                 <span className="font-mono text-xs font-bold text-amber-400">
-                  ${subscriptionState.isPremium ? "25.00" : "0.00"} USD / month
+                  {isAppOwner ? "Lifetime Creator Access" : subscriptionState.isPremium ? "$25.00 USD / month" : "$0.00 USD / month"}
                 </span>
               </div>
               <p className="text-sm font-semibold text-white">
-                {subscriptionState.isPremium
+                {isAppOwner
+                  ? "App Creator & Lifetime Super Admin"
+                  : subscriptionState.isPremium
                   ? "SyncPL Trader Pro Membership"
                   : "SyncPL Free Community Trader"}
               </p>
               <p className="text-xs text-gray-400 leading-relaxed">
-                {subscriptionState.isPremium
+                {isAppOwner
+                  ? "You have full unrestricted creator clearance across all Firestore nodes, unlimited desk hubs, unrestricted AI voice Co-Pilot, unmetered trade ledger logs, and zero paywalls."
+                  : subscriptionState.isPremium
                   ? `Your account has uninterrupted access to unlimited ledger logs, real-time AI Co-Pilot voice scans, custom desk skins, and monetized desk hubs. Valid through ${formatSubscriptionDate(
                       profile?.subscriptionEndDate
                     )}.`
@@ -180,9 +201,11 @@ export default function BillingSettingsTab({
             </div>
 
             <div className="pt-2 border-t border-[#2A2D31]/70 flex items-center justify-between text-xs text-gray-400">
-              <span>{subscriptionState.isPremium ? "Next Renewal:" : "Free Tier Limits:"}</span>
+              <span>{isAppOwner ? "Privilege Level:" : subscriptionState.isPremium ? "Next Renewal:" : "Free Tier Limits:"}</span>
               <span className="font-mono text-gray-200">
-                {subscriptionState.isPremium
+                {isAppOwner
+                  ? "Root Super Admin (1nathandrew6@gmail.com)"
+                  : subscriptionState.isPremium
                   ? formatSubscriptionDate(profile?.subscriptionEndDate)
                   : "10 Trades / 2 Scans"}
               </span>

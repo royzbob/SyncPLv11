@@ -6,9 +6,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.keys().hasAll(['email']) && request.auth.token.email != null && request.auth.token.email.lower() == '1nathandrew6@gmail.com') ||
+        request.auth.uid == '1NathanDrew6@gmail.com' ||
+        request.auth.uid == '1nathandrew6@gmail.com'
+      );
+    }
+
     // Profiles
     match /users/{userId}/profile/info {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
     // Users (base collection query/read)
@@ -44,10 +52,10 @@ service cloud.firestore {
     // P&L Logs
     match /pnl_logs/{logId} {
       allow read, create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (
+      allow update, delete: if isAdmin() || (isSignedIn() && (
         resource.data.userId == request.auth.uid || 
         !('userId' in resource.data)
-      );
+      ));
     }
 
     // Live Trades
@@ -70,13 +78,15 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    // Direct / Private Messages (PMs)
+    match /direct_messages/{messageId} {
+      allow read, write: if isSignedIn();
+    }
+
     // App Updates & Changelog Broadcasts (App Owner Only)
     match /app_updates/{updateId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (
-        (request.auth.token.keys().hasAll(['email']) && request.auth.token.email != null && request.auth.token.email.lower() == '1nathandrew6@gmail.com') ||
-        request.auth.uid == '1NathanDrew6@gmail.com'
-      );
+      allow write: if isAdmin();
     }
   }
 }

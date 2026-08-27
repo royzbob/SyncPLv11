@@ -21,7 +21,9 @@ interface WorkspaceSettingsTabProps {
   currentUser: any;
   onCopyRoomCode: () => void;
   onJoinRoomCode: (code: string) => Promise<void>;
-  onCreateNewRoom: () => Promise<void>;
+  onCreateNewRoom: (roomName?: string) => Promise<void>;
+  onRenameRoom?: (roomId: string, newName: string) => Promise<void>;
+  onDeleteRoom?: (roomId: string) => Promise<void>;
   onAddChannel: (name: string, type: "text" | "voice") => Promise<void>;
   onDeleteChannel: (id: string, name: string) => Promise<void>;
   onRenameChannel: (id: string, name: string) => void;
@@ -50,6 +52,8 @@ export default function WorkspaceSettingsTab({
   onCopyRoomCode,
   onJoinRoomCode,
   onCreateNewRoom,
+  onRenameRoom,
+  onDeleteRoom,
   onAddChannel,
   onDeleteChannel,
   onRenameChannel,
@@ -64,6 +68,14 @@ export default function WorkspaceSettingsTab({
   const [newChanType, setNewChanType] = useState<"text" | "voice">("text");
   const [editingPinChannelId, setEditingPinChannelId] = useState<string | null>(null);
   const [pinValue, setPinValue] = useState("");
+
+  // Room Rename & Create State
+  const [isEditingRoomName, setIsEditingRoomName] = useState(false);
+  const [editingRoomNameVal, setEditingRoomNameVal] = useState(activeRoom.name || "");
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [createRoomNameVal, setCreateRoomNameVal] = useState("");
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   const handleJoinRoomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +108,7 @@ export default function WorkspaceSettingsTab({
       <div className="glass-panel p-5 rounded-xl space-y-4 border border-[#2A2D31] shadow-lg">
         <div className="flex items-center justify-between">
           <h4 className="font-bold text-gray-100 text-sm flex items-center gap-2">
-            <Globe className="text-[#5865F2] w-4.5 h-4.5" /> Workspace Room Connection
+            <Globe className="text-[#5865F2] w-4.5 h-4.5" /> Workspace Room Details & Management
           </h4>
           <span className="text-[10px] font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded">
             ID: #{activeRoom.id}
@@ -104,26 +116,155 @@ export default function WorkspaceSettingsTab({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-[#121417] p-3.5 rounded-lg border border-[#2A2D31] flex flex-col justify-between space-y-2">
+          {/* Active Shared Room Box with Rename & Delete */}
+          <div className="bg-[#121417] p-3.5 rounded-lg border border-[#2A2D31] flex flex-col justify-between space-y-3">
             <div>
-              <span className="text-[10px] font-bold text-[#8E9297] uppercase tracking-widest block">
-                Active Shared Room
-              </span>
-              <div className="flex items-center justify-between mt-1 font-mono">
-                <span className="font-black text-[#5865F2] tracking-wider text-base">
-                  {activeRoom.name || activeRoom.id}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-[#8E9297] uppercase tracking-widest block">
+                  Active Shared Room
                 </span>
+                {isRoomOwner && (
+                  <span className="text-[9px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 px-1.5 py-0.2 rounded">
+                    Room Owner
+                  </span>
+                )}
               </div>
+
+              {!isEditingRoomName ? (
+                <div className="flex items-center justify-between mt-1.5">
+                  <div>
+                    <div className="font-black text-white text-base tracking-wide flex items-center gap-2">
+                      {activeRoom.name || activeRoom.id}
+                      {isCreatorOrMod && onRenameRoom && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingRoomNameVal(activeRoom.name || "");
+                            setIsEditingRoomName(true);
+                          }}
+                          className="text-[#8E9297] hover:text-white p-1 hover:bg-[#1E2023] rounded transition cursor-pointer"
+                          title="Rename Room"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {activeRoom.name && (
+                      <span className="text-[10px] text-indigo-400 font-mono font-semibold">
+                        Code: #{activeRoom.id}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!onRenameRoom) return;
+                    setIsSubmittingAction(true);
+                    try {
+                      await onRenameRoom(activeRoom.id, editingRoomNameVal.trim());
+                      setIsEditingRoomName(false);
+                      if (triggerToast) {
+                        triggerToast("Room Renamed", `Room name updated to "${editingRoomNameVal.trim() || activeRoom.id}"`, "success");
+                      }
+                    } catch (err: any) {
+                      if (triggerToast) triggerToast("Rename Failed", err.message, "error");
+                    } finally {
+                      setIsSubmittingAction(false);
+                    }
+                  }}
+                  className="mt-2 space-y-2"
+                >
+                  <input
+                    type="text"
+                    value={editingRoomNameVal}
+                    onChange={(e) => setEditingRoomNameVal(e.target.value)}
+                    placeholder="Enter new room name..."
+                    className="w-full bg-[#08090A] border border-[#2A2D31] rounded px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingRoomName(false)}
+                      className="px-2.5 py-1 bg-[#1E2023] hover:bg-[#25282E] text-gray-300 text-[11px] font-bold rounded transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAction}
+                      className="px-3 py-1 bg-[#5865F2] hover:bg-[#4752C4] text-white text-[11px] font-bold rounded transition cursor-pointer disabled:opacity-50"
+                    >
+                      {isSubmittingAction ? "Saving..." : "Save Name"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={onCopyRoomCode}
-              className="w-full text-center py-2 bg-[#1E2023] hover:bg-[#25282E] border border-[#2A2D31] text-xs font-bold text-indigo-300 rounded transition cursor-pointer"
-            >
-              Copy Room Invitation Link
-            </button>
+
+            <div className="space-y-2 pt-1 border-t border-[#2A2D31]/40">
+              <button
+                type="button"
+                onClick={onCopyRoomCode}
+                className="w-full text-center py-2 bg-[#1E2023] hover:bg-[#25282E] border border-[#2A2D31] text-xs font-bold text-indigo-300 rounded transition cursor-pointer"
+              >
+                Copy Room Invitation Link
+              </button>
+
+              {/* Room Owner Deletion Option */}
+              {isRoomOwner && onDeleteRoom && (
+                <div>
+                  {!isConfirmingDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingDelete(true)}
+                      className="w-full text-center py-1.5 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/20 text-[11px] font-bold text-rose-400 hover:text-rose-300 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Workspace Room</span>
+                    </button>
+                  ) : (
+                    <div className="bg-rose-950/30 border border-rose-500/30 rounded p-2.5 space-y-2 text-left">
+                      <p className="text-[11px] text-rose-300 font-bold leading-tight">
+                        Permanently delete this room? All channels and data for this room will be removed.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsConfirmingDelete(false)}
+                          className="w-1/2 py-1 bg-[#1E2023] hover:bg-[#25282E] text-gray-300 text-[11px] font-bold rounded transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSubmittingAction}
+                          onClick={async () => {
+                            setIsSubmittingAction(true);
+                            try {
+                              await onDeleteRoom(activeRoom.id);
+                              setIsConfirmingDelete(false);
+                            } catch (err: any) {
+                              if (triggerToast) triggerToast("Delete Failed", err.message, "error");
+                            } finally {
+                              setIsSubmittingAction(false);
+                            }
+                          }}
+                          className="w-1/2 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded transition cursor-pointer disabled:opacity-50"
+                        >
+                          {isSubmittingAction ? "Deleting..." : "Confirm Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* Join or Establish Room Box */}
           <div className="space-y-3">
             <form onSubmit={handleJoinRoomSubmit} className="space-y-1.5">
               <label className="block text-[10px] font-bold text-[#8E9297] uppercase tracking-wider">
@@ -146,13 +287,61 @@ export default function WorkspaceSettingsTab({
               </div>
             </form>
 
-            <button
-              type="button"
-              onClick={onCreateNewRoom}
-              className="w-full bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] text-gray-200 font-bold text-xs py-2 px-4 rounded transition cursor-pointer"
-            >
-              Establish New Room Code
-            </button>
+            {!isCreatingRoom ? (
+              <button
+                type="button"
+                onClick={() => setIsCreatingRoom(true)}
+                className="w-full bg-[#1E2023] border border-[#2A2D31] hover:bg-[#24272C] text-gray-200 font-bold text-xs py-2 px-4 rounded transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Establish New Room</span>
+              </button>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setIsSubmittingAction(true);
+                  try {
+                    await onCreateNewRoom(createRoomNameVal.trim());
+                    setCreateRoomNameVal("");
+                    setIsCreatingRoom(false);
+                  } catch (err: any) {
+                    if (triggerToast) triggerToast("Create Failed", err.message, "error");
+                  } finally {
+                    setIsSubmittingAction(false);
+                  }
+                }}
+                className="bg-[#121417] p-3 rounded-lg border border-[#2A2D31] space-y-2.5"
+              >
+                <label className="block text-[10px] font-bold text-gray-300 uppercase tracking-wider">
+                  New Room Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. FX Scalpers Desk"
+                  value={createRoomNameVal}
+                  onChange={(e) => setCreateRoomNameVal(e.target.value)}
+                  className="w-full bg-[#08090A] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingRoom(false)}
+                    className="w-1/3 bg-[#1E2023] hover:bg-[#25282E] text-gray-300 text-xs font-bold py-1.5 rounded transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAction}
+                    className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-1.5 rounded transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingAction ? "Creating..." : "Establish Room"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </div>

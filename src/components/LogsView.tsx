@@ -82,13 +82,16 @@ export default function LogsView({
   const [selectedFlexLog, setSelectedFlexLog] = useState<PnlLog | null>(null);
   const [copiedState, setCopiedState] = useState(false);
 
+  // Determine if user has unlimited access (Pro subscriber or Room Creator / App Owner / Mod)
+  const isUnlimitedUser = isPremium || isCreatorOrMod;
+
   // Compute how many logs the current user has created
   const userLogsCount = useMemo(() => {
     return pnlLogs.filter((l) => l.userId === userId).length;
   }, [pnlLogs, userId]);
 
   const FREE_LOG_LIMIT = 10;
-  const isLimitReached = !isPremium && userLogsCount >= FREE_LOG_LIMIT;
+  const isLimitReached = !isUnlimitedUser && userLogsCount >= FREE_LOG_LIMIT;
 
   const handleAddRecordClick = () => {
     if (isLimitReached) {
@@ -168,9 +171,9 @@ export default function LogsView({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-black text-2xl text-white tracking-tight">Ledger Logs</h3>
-            {isPremium ? (
+            {isUnlimitedUser ? (
               <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <Crown className="w-3 h-3 text-emerald-400" /> Unlimited
+                <Crown className="w-3 h-3 text-emerald-400" /> {isCreatorOrMod ? "Owner / Unlimited" : "Pro Unlimited"}
               </span>
             ) : (
               <span className="text-[10px] font-bold bg-[#121417] text-gray-400 border border-[#2A2D31] px-2 py-0.5 rounded-full">
@@ -213,7 +216,7 @@ export default function LogsView({
       </div>
 
       {/* Free Tier Limit Notification Banner */}
-      {!isPremium && isLimitReached && (
+      {!isUnlimitedUser && isLimitReached && (
         <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/40 via-[#1E2023] to-[#121417] border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg animate-in fade-in">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 mt-0.5">

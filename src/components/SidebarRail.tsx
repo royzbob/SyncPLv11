@@ -5,6 +5,9 @@ import { Room } from "../types";
 interface SidebarRailProps {
   rooms: Room[];
   activeRoomId: string;
+  activeTab?: string;
+  unreadPmCount?: number;
+  onSwitchTab?: (tab: string) => void;
   onSelectRoom: (roomId: string) => void;
   onLeaveRoom: (roomId: string) => void;
   onOpenJoinCreateModal: () => void;
@@ -15,22 +18,53 @@ interface SidebarRailProps {
 export default function SidebarRail({
   rooms,
   activeRoomId,
+  activeTab,
+  unreadPmCount = 0,
+  onSwitchTab,
   onSelectRoom,
   onLeaveRoom,
   onOpenJoinCreateModal,
   userProfileName,
   onLogout,
 }: SidebarRailProps) {
+  const isPmActive = activeTab === "pms";
+
   return (
     <div className="w-[72px] bg-[#08090A] flex flex-col items-center py-4 justify-between h-full border-r border-[#2A2D31] shrink-0 select-none">
       {/* Top Section */}
       <div className="flex flex-col items-center space-y-3 w-full">
         {/* Brand Icon (Home/Lobby logo) */}
         <div
+          onClick={() => onSwitchTab && onSwitchTab("dashboard")}
           className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white cursor-pointer hover:rounded-lg transition-all duration-300 shadow-lg"
           title="SyncPL Home Terminal"
         >
           <Compass className="w-5 h-5 animate-pulse" />
+        </div>
+
+        {/* Private Messages (PMs) Dedicated Rail Button */}
+        <div className="relative group flex items-center justify-center w-full">
+          <div
+            className={`absolute left-0 w-1 bg-white rounded-r-md transition-all duration-300 ${
+              isPmActive ? "h-10" : "h-0 group-hover:h-5"
+            }`}
+          />
+          <button
+            onClick={() => onSwitchTab && onSwitchTab("pms")}
+            className={`w-12 h-12 rounded-3xl flex items-center justify-center transition-all duration-300 relative cursor-pointer ${
+              isPmActive
+                ? "bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-600/30"
+                : "bg-[#16181D] text-indigo-400 border border-indigo-500/20 hover:bg-indigo-950/40 hover:text-white hover:rounded-xl"
+            }`}
+            title="Private Messages (PM)"
+          >
+            <MessageSquare className="w-5 h-5" />
+            {unreadPmCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-bounce shadow-md">
+                {unreadPmCount > 9 ? "9+" : unreadPmCount}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="w-8 border-t border-[#2A2D31] my-1"></div>
@@ -39,7 +73,10 @@ export default function SidebarRail({
         <div className="flex flex-col items-center space-y-3 w-full overflow-y-auto max-h-[calc(100dvh-220px)] no-scrollbar">
           {rooms.map((room) => {
             const isActive = room.id === activeRoomId;
-            const displayCode = room.id.replace("PL-", "").substring(0, 3);
+            const displayName = room.name || room.id;
+            const initials = room.name
+              ? room.name.split(" ").map(w => w[0]).join("").substring(0, 3).toUpperCase()
+              : room.id.replace("PL-", "").substring(0, 3);
             return (
               <div key={room.id} className="relative group flex items-center justify-center w-full">
                 {/* Indicator Pill */}
@@ -59,9 +96,9 @@ export default function SidebarRail({
                       ? "bg-indigo-600 text-white rounded-xl shadow-lg"
                       : "bg-[#1E2023] text-[#8E9297] border border-[#2A2D31] hover:bg-indigo-900/40 hover:text-white hover:rounded-xl"
                   }`}
-                  title={`Workspace ${room.id}`}
+                  title={`${displayName} (${room.id})`}
                 >
-                  {displayCode}
+                  {initials}
                 </button>
 
                 {/* Leave Button overlay or small hover icon */}

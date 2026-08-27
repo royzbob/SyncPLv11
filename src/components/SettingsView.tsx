@@ -36,7 +36,9 @@ interface SettingsViewProps {
   onMoveChannel?: (id: string, direction: "up" | "down") => Promise<void>;
   onCopyRoomCode: () => void;
   onJoinRoomCode: (code: string) => Promise<void>;
-  onCreateNewRoom: () => Promise<void>;
+  onCreateNewRoom: (roomName?: string) => Promise<void>;
+  onRenameRoom?: (roomId: string, newName: string) => Promise<void>;
+  onDeleteRoom?: (roomId: string) => Promise<void>;
   isCreatorOrMod: boolean;
   onConsultAiAdvisor: () => void;
   voiceName: string;
@@ -95,6 +97,8 @@ export default function SettingsView({
   onCopyRoomCode,
   onJoinRoomCode,
   onCreateNewRoom,
+  onRenameRoom,
+  onDeleteRoom,
   isCreatorOrMod,
   onConsultAiAdvisor,
   voiceName,
@@ -273,6 +277,8 @@ export default function SettingsView({
           onCopyRoomCode={onCopyRoomCode}
           onJoinRoomCode={onJoinRoomCode}
           onCreateNewRoom={onCreateNewRoom}
+          onRenameRoom={onRenameRoom}
+          onDeleteRoom={onDeleteRoom}
           onAddChannel={onAddChannel}
           onDeleteChannel={onDeleteChannel}
           onRenameChannel={onRenameChannel}

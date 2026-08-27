@@ -19,6 +19,7 @@ import {
   deleteDoc,
   updateDoc,
   where,
+  limit,
   writeBatch,
 } from "firebase/firestore";
 import {
@@ -56,6 +57,7 @@ import {
   MonitorX,
   Radio,
   Tv,
+  Zap,
 } from "lucide-react";
 
 import { auth, db } from "./lib/firebase";
@@ -126,6 +128,7 @@ import LogsView from "./components/LogsView";
 import SettingsView from "./components/SettingsView";
 import ChecklistView from "./components/ChecklistView";
 import FriendsView from "./components/FriendsView";
+import PrivateMessagesView from "./components/PrivateMessagesView";
 import PayoutsView from "./components/PayoutsView";
 import UpdateNotifier from "./components/UpdateNotifier";
 import WebUpdateNotifier from "./components/WebUpdateNotifier";
@@ -141,6 +144,29 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState<boolean>(false);
+
+  const handleFirestoreErrorState = (err: any, contextName: string) => {
+    const errorStr = String(err?.message || err || "").toLowerCase();
+    const isQuota =
+      err?.code === "resource-exhausted" ||
+      errorStr.includes("quota exceeded") ||
+      errorStr.includes("resource-exhausted") ||
+      errorStr.includes("too many requests");
+
+    if (isQuota) {
+      setIsQuotaExceeded(true);
+      console.warn(`Firestore quota reached (${contextName}). Daily free Spark limit reached.`);
+      return;
+    }
+
+    if (err?.code === "permission-denied" || errorStr.includes("permission-denied") || errorStr.includes("permission denied")) {
+      setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
+      return;
+    }
+
+    console.warn(`Firestore notice (${contextName}):`, err);
+  };
 
   // Pro Upgrade Modal State for Conversions & Limit Gating
   const [proModalState, setProModalState] = useState<{
@@ -544,6 +570,17 @@ export default function App() {
   }, []);
 
   const subscriptionState = useMemo(() => {
+    // If the user is App Creator / Owner, grant permanent Pro VIP unlimited status universally
+    const isAppOwner =
+      currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+      profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+      profile?.role === "owner" ||
+      profile?.role === "creator";
+
+    if (isAppOwner) {
+      return { isPremium: true, daysRemaining: 9999, isExpired: false, status: "active" };
+    }
+
     if (!profile) return { isPremium: false, daysRemaining: 0, isExpired: true, status: "none" };
 
     const isProTier = profile.subscriptionTier === "premium" || profile.subscriptionTier === "pro";
@@ -583,7 +620,7 @@ export default function App() {
       isExpired: isTrialExpired,
       status: profile.subscriptionStatus || "none",
     };
-  }, [profile]);
+  }, [profile, currentUser]);
 
   // Robust Stripe checkout session completion listener and automatic Firestore persistence
   useEffect(() => {
@@ -670,7 +707,41 @@ export default function App() {
 
   // Navigation tab & Tickers
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [selectedPmUserId, setSelectedPmUserId] = useState<string | null>(null);
+  const [unreadPmCount, setUnreadPmCount] = useState<number>(0);
   const [tickers, setTickers] = useState<TickerInfo[]>(initialTickers);
+
+  // Global Realtime listener for incoming unread Private Messages (PMs)
+  useEffect(() => {
+    if (!currentUser || !db) {
+      setUnreadPmCount(0);
+      return;
+    }
+    try {
+      const q = query(
+        collection(db, "direct_messages"),
+        where("receiverId", "==", currentUser.uid),
+        where("read", "==", false)
+      );
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          setUnreadPmCount(snapshot.size);
+        },
+        (err) => {
+          handleFirestoreErrorState(err, "Unread direct messages");
+        }
+      );
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn("Failed to subscribe to unread direct messages:", err);
+    }
+  }, [currentUser, db]);
+
+  const handleOpenPmWithUser = (targetUserId: string) => {
+    setSelectedPmUserId(targetUserId);
+    setActiveTab("pms");
+  };
 
   // Modals status
   const [isJoinCreateOpen, setIsJoinCreateOpen] = useState(false);
@@ -868,6 +939,8 @@ export default function App() {
 
   // Join Room simple input inside Modal
   const [modalJoinCode, setModalJoinCode] = useState("");
+  const [modalCreateRoomName, setModalCreateRoomName] = useState("");
+  const [isModalCreatingNamed, setIsModalCreatingNamed] = useState(false);
 
   // Dynamic Toast alerts
   const [toast, setToast] = useState<{ title: string; body: string; type: "success" | "error" | "info" } | null>(null);
@@ -1097,64 +1170,86 @@ export default function App() {
     try {
       // 6-segments path compliance: users/{userId}/profile/info
       const profileRef = doc(db, "users", user.uid, "profile", "info");
-      const snap = await getDoc(profileRef);
-
-      let currentProfile: UserProfile;
-
-      if (snap.exists()) {
-        currentProfile = snap.data() as UserProfile;
-        let needsUpdate = false;
-        if (!currentProfile.createdAt) {
-          currentProfile.createdAt = new Date().toISOString();
-          needsUpdate = true;
-        }
-        if (!currentProfile.trialEndDate) {
-          const createdTime = currentProfile.createdAt ? new Date(currentProfile.createdAt).getTime() : Date.now();
-          currentProfile.trialEndDate = new Date(createdTime + 3 * 24 * 60 * 60 * 1000).toISOString();
-          needsUpdate = true;
-        }
-        if (user.email?.toLowerCase() === "1nathandrew6@gmail.com") {
-          if (currentProfile.subscriptionStatus !== "active" || currentProfile.subscriptionTier !== "premium") {
-            currentProfile.subscriptionStatus = "active";
-            currentProfile.subscriptionTier = "premium";
+      let currentProfile: UserProfile | null = null;
+      
+      try {
+        const snap = await getDoc(profileRef);
+        if (snap.exists()) {
+          currentProfile = snap.data() as UserProfile;
+          let needsUpdate = false;
+          if (!currentProfile.createdAt) {
+            currentProfile.createdAt = new Date().toISOString();
             needsUpdate = true;
           }
-        } else if (!currentProfile.subscriptionStatus) {
-          currentProfile.subscriptionStatus = "trialing";
-          needsUpdate = true;
+          if (!currentProfile.trialEndDate) {
+            const createdTime = currentProfile.createdAt ? new Date(currentProfile.createdAt).getTime() : Date.now();
+            currentProfile.trialEndDate = new Date(createdTime + 3 * 24 * 60 * 60 * 1000).toISOString();
+            needsUpdate = true;
+          }
+          if (user.email?.toLowerCase() === "1nathandrew6@gmail.com") {
+            if (currentProfile.subscriptionStatus !== "active" || currentProfile.subscriptionTier !== "premium") {
+              currentProfile.subscriptionStatus = "active";
+              currentProfile.subscriptionTier = "premium";
+              needsUpdate = true;
+            }
+          } else if (!currentProfile.subscriptionStatus) {
+            currentProfile.subscriptionStatus = "trialing";
+            needsUpdate = true;
+          }
+          if (needsUpdate) {
+            try {
+              await setDoc(profileRef, currentProfile, { merge: true });
+            } catch (writeErr) {
+              handleFirestoreErrorState(writeErr, "setProfileDoc");
+            }
+          }
         }
-        if (needsUpdate) {
-          await setDoc(profileRef, currentProfile, { merge: true });
+      } catch (getErr) {
+        handleFirestoreErrorState(getErr, "getProfileDoc");
+      }
+
+      if (!currentProfile) {
+        // Try local storage cache
+        try {
+          const cached = localStorage.getItem(`syncpl_cached_profile_${user.uid}`);
+          if (cached) {
+            currentProfile = JSON.parse(cached);
+          }
+        } catch {
+          // ignore
         }
-      } else {
+      }
+
+      if (!currentProfile) {
         // Create initial default profile
         const randomName = `Trader_${user.uid.substring(0, 5)}`;
         const now = new Date();
         const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
         const isCreator = user.email?.toLowerCase() === "1nathandrew6@gmail.com";
-        const defaultRoom = isCreator ? "SYNC-ALPHA" : "TRADING-DESK-1";
         currentProfile = {
           username: randomName,
           avatarColor: "indigo",
           avatarType: "emoji",
           avatarVal: "🐂",
-          groupIds: [defaultRoom],
-          activeGroupId: defaultRoom,
+          groupIds: isCreator ? ["SYNC-ALPHA"] : [],
+          activeGroupId: isCreator ? "SYNC-ALPHA" : "",
           createdAt: now.toISOString(),
           trialEndDate: trialEnd.toISOString(),
           subscriptionStatus: isCreator ? "active" : "trialing",
           subscriptionTier: isCreator ? "premium" : "free",
         };
-        await setDoc(profileRef, currentProfile);
+        try {
+          await setDoc(profileRef, currentProfile);
+        } catch (setErr) {
+          handleFirestoreErrorState(setErr, "initDefaultProfile");
+        }
       }
 
-      // Auto-ensure default room if list is empty
-      if (!currentProfile.groupIds || currentProfile.groupIds.length === 0) {
-        const isCreator = user.email?.toLowerCase() === "1nathandrew6@gmail.com";
-        const defaultRoom = isCreator ? "SYNC-ALPHA" : "TRADING-DESK-1";
-        currentProfile.groupIds = [defaultRoom];
-        currentProfile.activeGroupId = defaultRoom;
-        await setDoc(profileRef, { groupIds: currentProfile.groupIds, activeGroupId: defaultRoom }, { merge: true });
+      // Cache locally
+      try {
+        localStorage.setItem(`syncpl_cached_profile_${user.uid}`, JSON.stringify(currentProfile));
+      } catch {
+        // ignore
       }
 
       setProfile(currentProfile);
@@ -1168,10 +1263,7 @@ export default function App() {
         setActiveRoom(null);
       }
     } catch (e: any) {
-      console.error("Failed to load user credentials profile:", e);
-      if (e.code === "permission-denied" || e.message?.toLowerCase().includes("permission")) {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(e, "initUserProfileAndRoom");
     }
   };
 
@@ -1190,6 +1282,9 @@ export default function App() {
           };
         }
         setProfile(updatedProfile);
+        try {
+          localStorage.setItem(`syncpl_cached_profile_${currentUser.uid}`, JSON.stringify(updatedProfile));
+        } catch {}
         const groupIdsKey = (updatedProfile.groupIds || []).join(",");
         if (groupIdsKey && groupIdsKey !== lastFetchedGroupIdsKey.current) {
           lastFetchedGroupIdsKey.current = groupIdsKey;
@@ -1197,10 +1292,7 @@ export default function App() {
         }
       }
     }, (error) => {
-      console.error("Profile onSnapshot error:", error);
-      if (error.code === "permission-denied") {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(error, "Profile onSnapshot");
     });
     return () => unsubscribe();
   }, [currentUser?.uid]);
@@ -1226,7 +1318,7 @@ export default function App() {
           activeGroupId: profile.activeGroupId || "",
         }, { merge: true });
       } catch (err) {
-        console.error("Failed to sync public user doc in App.tsx:", err);
+        handleFirestoreErrorState(err, "syncPublicUserDoc");
       }
     };
     syncPublicUserDoc();
@@ -1235,25 +1327,43 @@ export default function App() {
   const fetchJoinedRooms = async (groupIds: string[], activeGroupId: string) => {
     try {
       const roomPromises = groupIds.map(async (gid) => {
-        const roomRef = doc(db, "rooms", gid);
-        const snap = await getDoc(roomRef);
-        if (snap.exists()) {
-          return { id: gid, ...snap.data() } as Room;
-        } else {
-          // Auto create missing rooms so data stays robust
-          const newRoom: Room = {
+        try {
+          const roomRef = doc(db, "rooms", gid);
+          const snap = await getDoc(roomRef);
+          if (snap.exists()) {
+            return { id: gid, ...snap.data() } as Room;
+          } else {
+            // Auto create missing rooms so data stays robust
+            const newRoom: Room = {
+              id: gid,
+              creatorId: currentUser?.uid || "admin",
+              creatorName: profile?.username || "Trader",
+              moderators: [],
+              createdAt: new Date().toISOString(),
+            };
+            try {
+              await setDoc(roomRef, newRoom);
+            } catch (err) {
+              handleFirestoreErrorState(err, "createRoomDoc");
+            }
+            return newRoom;
+          }
+        } catch (err) {
+          handleFirestoreErrorState(err, `fetchRoom-${gid}`);
+          return {
             id: gid,
             creatorId: currentUser?.uid || "admin",
             creatorName: profile?.username || "Trader",
             moderators: [],
             createdAt: new Date().toISOString(),
-          };
-          await setDoc(roomRef, newRoom);
-          return newRoom;
+          } as Room;
         }
       });
       const roomList = await Promise.all(roomPromises);
       setRooms(roomList);
+      try {
+        localStorage.setItem("syncpl_cached_rooms", JSON.stringify(roomList));
+      } catch {}
 
       const preferredId = activeGroupId || localStorage.getItem("syncpl_last_active_room") || "";
       const active = roomList.find((r) => r.id === preferredId) || roomList[0] || null;
@@ -1262,10 +1372,7 @@ export default function App() {
         localStorage.setItem("syncpl_last_active_room", active.id);
       }
     } catch (e: any) {
-      console.error("Failed to fetch joined workspace rooms:", e);
-      if (e.code === "permission-denied" || e.message?.toLowerCase().includes("permission")) {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(e, "fetchJoinedRooms");
     }
   };
 
@@ -1297,7 +1404,7 @@ export default function App() {
         );
       }
     }, (err) => {
-      console.warn("Room doc onSnapshot notice:", err);
+      handleFirestoreErrorState(err, "Room doc onSnapshot");
     });
     unsubscribers.push(unsubRoomDoc);
 
@@ -1328,16 +1435,13 @@ export default function App() {
         }
       }
     }, (error) => {
-      console.error("Channels onSnapshot error:", error);
-      if (error.code === "permission-denied") {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(error, "Channels onSnapshot");
     });
     unsubscribers.push(unsubChannels);
 
     // Observe chat messages
     let isInitialChatSnapshot = true;
-    const chatQuery = query(collection(db, "chat_messages"), where("groupId", "==", activeRoom.id));
+    const chatQuery = query(collection(db, "chat_messages"), where("groupId", "==", activeRoom.id), limit(100));
     const unsubChat = onSnapshot(chatQuery, (snapshot) => {
       const map = new Map<string, ChatMessage>();
       snapshot.forEach((d) => {
@@ -1392,10 +1496,7 @@ export default function App() {
       const sorted = Array.from(map.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       setChatMessages(sorted);
     }, (error) => {
-      console.error("Chat onSnapshot error:", error);
-      if (error.code === "permission-denied") {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(error, "Chat onSnapshot");
     });
     unsubscribers.push(unsubChat);
 
@@ -1409,15 +1510,12 @@ export default function App() {
       });
       setVoiceUsers(Array.from(map.values()));
     }, (error) => {
-      console.error("Voice onSnapshot error:", error);
-      if (error.code === "permission-denied") {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(error, "Voice onSnapshot");
     });
     unsubscribers.push(unsubVoice);
 
-    // Observe all users to get their dynamic market presence, custom status, and avatars
-    const usersQuery = collection(db, "users");
+    // Observe active users
+    const usersQuery = query(collection(db, "users"), limit(50));
     const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
       const map = new Map<string, any>();
       snapshot.forEach((d) => {
@@ -1425,12 +1523,12 @@ export default function App() {
       });
       setPublicUsers(Array.from(map.values()));
     }, (error) => {
-      console.error("Users onSnapshot error:", error);
+      handleFirestoreErrorState(error, "Users onSnapshot");
     });
     unsubscribers.push(unsubUsers);
 
     // Observe PNL logs and Live Trades in a single unified listener
-    const logsQuery = query(collection(db, "pnl_logs"), where("groupId", "==", activeRoom.id));
+    const logsQuery = query(collection(db, "pnl_logs"), where("groupId", "==", activeRoom.id), limit(200));
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const logsMap = new Map<string, PnlLog>();
       const liveMap = new Map<string, LiveTrade>();
@@ -1447,10 +1545,7 @@ export default function App() {
       const sortedLive = Array.from(liveMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setLiveTrades(sortedLive);
     }, (error) => {
-      console.error("Logs onSnapshot error:", error);
-      if (error.code === "permission-denied") {
-        setFirebaseError("Firestore permission denied. Your custom Firestore database's security rules are blocking access.");
-      }
+      handleFirestoreErrorState(error, "Logs onSnapshot");
     });
     unsubscribers.push(unsubLogs);
 
@@ -1465,7 +1560,7 @@ export default function App() {
       const sorted = Array.from(map.values()).sort((a, b) => a.order - b.order);
       setTradingRules(sorted);
     }, (error) => {
-      console.error("Rules onSnapshot error:", error);
+      handleFirestoreErrorState(error, "Rules onSnapshot");
     });
     unsubscribers.push(unsubRules);
 
@@ -1480,10 +1575,7 @@ export default function App() {
       const sorted = Array.from(map.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setPayouts(sorted);
     }, (error) => {
-      console.error("Payouts onSnapshot error:", error);
-      if (error.code === "permission-denied") {
-        setFirebaseError("Firestore permission denied on payouts. Security rules updated.");
-      }
+      handleFirestoreErrorState(error, "Payouts onSnapshot");
     });
     unsubscribers.push(unsubPayouts);
 
@@ -1857,7 +1949,7 @@ export default function App() {
     triggerToast("Room Connected", `Synchronized room node: ${normalized}`, "success");
   };
 
-  const handleCreateRoom = async () => {
+  const handleCreateRoom = async (roomName?: string) => {
     if (!currentUser || !profile) return;
 
     // Enforce subscription limits
@@ -1868,9 +1960,12 @@ export default function App() {
     }
 
     const newCode = generateRandomRoomCode();
+    const cleanName = roomName?.trim() || "";
 
     const roomRef = doc(db, "rooms", newCode);
     await setDoc(roomRef, {
+      id: newCode,
+      name: cleanName || newCode,
       creatorId: currentUser.uid,
       creatorName: profile.username,
       moderators: [],
@@ -1880,7 +1975,7 @@ export default function App() {
       subscribers: []
     });
 
-    const updatedGroupIds = [...profile.groupIds, newCode];
+    const updatedGroupIds = [...(profile.groupIds || []), newCode];
     const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
     await updateDoc(profileRef, {
       groupIds: updatedGroupIds,
@@ -1888,7 +1983,72 @@ export default function App() {
     });
 
     setIsJoinCreateOpen(false);
-    triggerToast("Room Established", `Share invite code: ${newCode} with friends!`, "success");
+    triggerToast("Room Established", `Room "${cleanName || newCode}" established with code #${newCode}`, "success");
+  };
+
+  const handleRenameRoom = async (roomId: string, newName: string) => {
+    if (!currentUser || !profile) return;
+    const cleanName = newName.trim();
+    if (!cleanName) return;
+
+    try {
+      const roomRef = doc(db, "rooms", roomId);
+      await updateDoc(roomRef, {
+        name: cleanName,
+      });
+
+      // Optimistically update local states
+      setActiveRoom((prev) => (prev && prev.id === roomId ? { ...prev, name: cleanName } : prev));
+      setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, name: cleanName } : r)));
+
+      triggerToast("Room Renamed", `Room #${roomId} renamed to "${cleanName}".`, "success");
+    } catch (err: any) {
+      console.error("Failed to rename room:", err);
+      triggerToast("Rename Failed", err.message || "Failed to update room name.", "error");
+      throw err;
+    }
+  };
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!currentUser || !profile) return;
+
+    try {
+      if (activeVoiceChannel && activeRoom?.id === roomId) {
+        await handleDisconnectVoice();
+      }
+
+      // 1. Delete the room document from Firestore
+      const roomRef = doc(db, "rooms", roomId);
+      await deleteDoc(roomRef);
+
+      // 2. Remove roomId from the current user's profile
+      const updatedGroupIds = (profile.groupIds || []).filter((g) => g !== roomId);
+      const nextActive = updatedGroupIds.length > 0 ? updatedGroupIds[0] : "";
+
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      await updateDoc(profileRef, {
+        groupIds: updatedGroupIds,
+        activeGroupId: nextActive,
+      });
+
+      // 3. Clean up room from any other cached rooms state
+      const remainingRooms = rooms.filter((r) => r.id !== roomId);
+      setRooms(remainingRooms);
+      if (remainingRooms.length > 0) {
+        const nextRoom = remainingRooms.find((r) => r.id === nextActive) || remainingRooms[0];
+        setActiveRoom(nextRoom);
+        localStorage.setItem("syncpl_last_active_room", nextRoom.id);
+      } else {
+        setActiveRoom(null);
+        localStorage.removeItem("syncpl_last_active_room");
+      }
+
+      triggerToast("Room Deleted", `Workspace Room #${roomId} has been permanently deleted.`, "info");
+    } catch (err: any) {
+      console.error("Failed to delete room:", err);
+      triggerToast("Delete Failed", err.message || "Failed to delete room.", "error");
+      throw err;
+    }
   };
 
   // Channels Operations
@@ -2387,6 +2547,14 @@ export default function App() {
     // If the room is not set to paid, it is open to everyone
     if (!activeRoom.isPaid) return false;
 
+    // Super admin app owner has universal access across all desks
+    const isAppOwner =
+      currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+      profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+      profile?.role === "owner" ||
+      profile?.role === "creator";
+    if (isAppOwner) return false;
+
     // Room creator / owner always has full access
     const isOwner = currentUser?.uid && (
       activeRoom.creatorId === currentUser.uid ||
@@ -2394,9 +2562,6 @@ export default function App() {
       (activeRoom.creatorName && profile?.username && activeRoom.creatorName.toLowerCase() === profile.username.toLowerCase())
     );
     if (isOwner) return false;
-
-    // Super admin app owner has universal access across all desks
-    if (currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com") return false;
 
     // Check if current user is an active subscriber of this workspace
     const subscribers = activeRoom.subscribers || [];
@@ -3426,11 +3591,18 @@ export default function App() {
 
   // Helper check Mod/Owner status
   const isCreatorOrMod = useMemo(() => {
-    if (!currentUser || !activeRoom) return false;
+    if (!currentUser) return false;
+    const isAppCreator =
+      currentUser.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+      profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+      profile?.role === "owner" ||
+      profile?.role === "creator";
+    if (isAppCreator) return true;
+    if (!activeRoom) return false;
     const isOwner = activeRoom.creatorId === currentUser.uid;
     const isRoomMod = activeRoom.moderators?.includes(profile?.username || "");
     return isOwner || isRoomMod;
-  }, [currentUser?.uid, activeRoom, profile?.username]);
+  }, [currentUser?.uid, currentUser?.email, profile?.email, profile?.role, activeRoom, profile?.username]);
 
   // Loading Screen while session credentials & rooms synchronize
   if (isAuthLoading) {
@@ -3456,6 +3628,41 @@ export default function App() {
 
   return (
     <div className="fixed inset-0 w-screen h-[100dvh] bg-dark-bg text-gray-200 flex flex-col font-sans overflow-hidden">
+      {/* Firestore Daily Free Quota Exceeded warning banner */}
+      {isQuotaExceeded && (
+        <div className="bg-gradient-to-r from-amber-950/90 via-[#1E2023] to-[#121417] border-b border-amber-500/40 text-white px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-3 shrink-0 z-50 shadow-lg animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+              <Zap className="w-4 h-4 animate-pulse" />
+            </div>
+            <div>
+              <span className="font-bold text-amber-300 mr-1.5">Firestore Free Daily Quota Reached:</span>
+              <span className="text-gray-300">
+                The free Spark plan daily read limit has been reached (resets at midnight PT). Local cached data is active, or switch to Blaze for uninterrupted sync.
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href="https://console.firebase.google.com/project/syncpl-fe47a/firestore/databases/ai-studio-syncpltradingdas-0abcfe65-6185-44e8-a1d7-a23a3b273fce/data?openUpgradeDialog=true"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+            >
+              <span>Upgrade to Blaze</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <button
+              onClick={() => setIsQuotaExceeded(false)}
+              className="text-gray-400 hover:text-white p-1 transition font-bold"
+              title="Dismiss Notice"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Firebase Permission Error warning */}
       {firebaseError && (
         <div className="bg-[#F04747]/10 border-b border-[#F04747]/30 text-[#F04747] text-xs py-2.5 px-4 flex items-center justify-between gap-3 animate-in fade-in duration-200 z-50">
@@ -3544,6 +3751,12 @@ export default function App() {
                   <SidebarRail
                     rooms={rooms}
                     activeRoomId={activeRoom.id}
+                    activeTab={activeTab}
+                    unreadPmCount={unreadPmCount}
+                    onSwitchTab={(tab) => {
+                      setActiveTab(tab);
+                      setIsMobileSidebarOpen(false);
+                    }}
                     onSelectRoom={(roomId) => {
                       handleSelectRoom(roomId);
                       setIsMobileSidebarOpen(false);
@@ -3573,6 +3786,7 @@ export default function App() {
                       customStatus: publicUsers.find(u => u.uid === currentUser?.uid)?.customStatus || "",
                     } : null}
                     activeTab={activeTab}
+                    unreadPmCount={unreadPmCount}
                     onSwitchTab={(tab) => {
                       setActiveTab(tab);
                       setIsMobileSidebarOpen(false);
@@ -3625,6 +3839,9 @@ export default function App() {
               <SidebarRail
                 rooms={rooms}
                 activeRoomId={activeRoom.id}
+                activeTab={activeTab}
+                unreadPmCount={unreadPmCount}
+                onSwitchTab={setActiveTab}
                 onSelectRoom={handleSelectRoom}
                 onLeaveRoom={handleLeaveRoom}
                 onOpenJoinCreateModal={() => setIsJoinCreateOpen(true)}
@@ -3650,6 +3867,7 @@ export default function App() {
                     customStatus: publicUsers.find(u => u.uid === currentUser?.uid)?.customStatus || "",
                   } : null}
                   activeTab={activeTab}
+                  unreadPmCount={unreadPmCount}
                   onSwitchTab={setActiveTab}
                   onOpenLogModal={() => setIsLogModalOpen(true)}
                   onDisconnectVoice={handleDisconnectVoice}
@@ -3804,6 +4022,16 @@ export default function App() {
                       <>
                         <span className="hidden sm:inline">P&L Ledger log sheets</span>
                         <span className="sm:hidden">P&L Logs</span>
+                      </>
+                    ) : activeTab === "pms" ? (
+                      <>
+                        <span className="hidden sm:inline">Direct Messages & Encrypted Chat</span>
+                        <span className="sm:hidden">Private Messages</span>
+                      </>
+                    ) : activeTab === "friends" ? (
+                      <>
+                        <span className="hidden sm:inline">Friends & Linked Co-Traders</span>
+                        <span className="sm:hidden">Friends</span>
                       </>
                     ) : (
                       <>
@@ -4374,6 +4602,7 @@ export default function App() {
                           onToggleMic={handleToggleMic}
                           onToggleDeafen={handleToggleDeafen}
                           onDisconnectVoice={handleDisconnectVoice}
+                          onOpenPmWithUser={handleOpenPmWithUser}
                         />
                       )}
 
@@ -4421,6 +4650,19 @@ export default function App() {
                           db={db}
                           profile={profile}
                           onJoinRoomCode={handleJoinRoom}
+                          onOpenPmWithUser={handleOpenPmWithUser}
+                          triggerToast={triggerToast}
+                        />
+                      )}
+
+                      {activeTab === "pms" && (
+                        <PrivateMessagesView
+                          currentUser={currentUser}
+                          db={db}
+                          profile={profile}
+                          initialPartnerId={selectedPmUserId}
+                          onClearInitialPartner={() => setSelectedPmUserId(null)}
+                          onJoinRoomCode={handleJoinRoom}
                           triggerToast={triggerToast}
                         />
                       )}
@@ -4444,6 +4686,8 @@ export default function App() {
                       }}
                       onJoinRoomCode={handleJoinRoom}
                       onCreateNewRoom={handleCreateRoom}
+                      onRenameRoom={handleRenameRoom}
+                      onDeleteRoom={handleDeleteRoom}
                       isCreatorOrMod={isCreatorOrMod}
                       onConsultAiAdvisor={handleConsultAiAdvisor}
                       voiceName={voiceName}
@@ -4464,7 +4708,12 @@ export default function App() {
                       onChangeChatSoundType={handleChangeChatSoundType}
                       chatSoundVolume={chatSoundVolume}
                       onChangeChatSoundVolume={handleChangeChatSoundVolume}
-                      isRoomOwner={activeRoom.creatorId === currentUser?.uid}
+                      isRoomOwner={
+                        activeRoom.creatorId === currentUser?.uid ||
+                        currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+                        profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+                        profile?.role === "owner"
+                      }
                       currentUser={currentUser}
                       userRooms={rooms}
                       onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
@@ -4550,12 +4799,51 @@ export default function App() {
                   </p>
 
                   <div className="space-y-3 pt-2">
-                    <button
-                      onClick={handleCreateRoom}
-                      className="w-full bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] font-extrabold text-xs py-2.5 px-4 rounded hover:bg-[#5865F2]/20 transition flex items-center justify-center gap-1.5"
-                    >
-                      Establish New Sync Room
-                    </button>
+                    {!isModalCreatingNamed ? (
+                      <button
+                        onClick={() => setIsModalCreatingNamed(true)}
+                        className="w-full bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] font-extrabold text-xs py-2.5 px-4 rounded hover:bg-[#5865F2]/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        Establish New Sync Room
+                      </button>
+                    ) : (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          await handleCreateRoom(modalCreateRoomName.trim());
+                          setModalCreateRoomName("");
+                          setIsModalCreatingNamed(false);
+                        }}
+                        className="bg-[#121417] p-3 rounded-lg border border-[#2A2D31] space-y-2 text-left"
+                      >
+                        <label className="block text-[10px] font-bold text-gray-300 uppercase tracking-wider">
+                          New Room Name (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. FX Scalpers Desk"
+                          value={modalCreateRoomName}
+                          onChange={(e) => setModalCreateRoomName(e.target.value)}
+                          className="w-full bg-[#08090A] border border-[#2A2D31] rounded px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsModalCreatingNamed(false)}
+                            className="w-1/3 bg-[#1E2023] hover:bg-[#25282E] text-gray-300 text-xs font-bold py-1.5 rounded transition cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold py-1.5 rounded transition cursor-pointer"
+                          >
+                            Establish
+                          </button>
+                        </div>
+                      </form>
+                    )}
 
                     <div className="relative flex py-2 items-center">
                       <div className="flex-grow border-t border-[#2A2D31]/50"></div>
