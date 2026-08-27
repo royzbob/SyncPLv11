@@ -4604,7 +4604,14 @@ export default function App() {
                         />
                       )}
 
-                      {activeTab === "leaderboard" && <LeaderboardView pnlLogs={pnlLogs} />}
+                      {activeTab === "leaderboard" && (
+                        <LeaderboardView
+                          pnlLogs={pnlLogs}
+                          traders={traders}
+                          currentUserId={currentUser.uid}
+                          onOpenLogModal={() => setIsLogModalOpen(true)}
+                        />
+                      )}
 
                       {activeTab === "challenges" && (
                         <RoomChallengesView
