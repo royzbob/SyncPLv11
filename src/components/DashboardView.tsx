@@ -30,6 +30,7 @@ import {
   ArrowDownRight,
   DollarSign,
   Scale,
+  BookOpen,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -61,6 +62,7 @@ interface DashboardViewProps {
   onOpenTiltGuardModal?: () => void;
   onOpenFlexModal?: () => void;
   onOpenLogModal?: () => void;
+  onOpenGuide?: () => void;
 }
 
 export default function DashboardView({
@@ -78,6 +80,7 @@ export default function DashboardView({
   onOpenTiltGuardModal,
   onOpenFlexModal,
   onOpenLogModal,
+  onOpenGuide,
 }: DashboardViewProps) {
   const [viewMode, setViewMode] = useState<"personal" | "group">(initialMode);
   const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
@@ -455,9 +458,9 @@ export default function DashboardView({
   return (
     <div className="p-4 md:p-6 space-y-5 overflow-y-auto h-full text-[#DCDDDE] bg-[#0E1013] font-sans pb-16">
       {/* Top Header & View Switcher Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[#14171B] p-3 rounded-2xl border border-[#262A30] shadow-md">
+      <div id="dashboard-header-toolbar" className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[#14171B] p-3 rounded-2xl border border-[#262A30] shadow-md">
         {/* Mode Segmented Toggle Switch */}
-        <div className="flex items-center bg-[#090A0C] p-1 rounded-xl border border-[#22262C] w-full md:w-auto">
+        <div id="dashboard-view-mode-toggle" className="flex items-center bg-[#090A0C] p-1 rounded-xl border border-[#22262C] w-full md:w-auto">
           <button
             id="btn-switch-personal-dashboard"
             onClick={() => setViewMode("personal")}
@@ -491,7 +494,7 @@ export default function DashboardView({
         {/* Right Controls: Account Filter & Action Shortcuts */}
         <div className="flex items-center gap-2 flex-wrap justify-between md:justify-end">
           {/* Account Filter Pill */}
-          <div className="flex items-center gap-1 bg-[#090A0C] p-1 rounded-xl border border-[#22262C]">
+          <div id="dashboard-account-filters" className="flex items-center gap-1 bg-[#090A0C] p-1 rounded-xl border border-[#22262C]">
             <Layers className="w-3.5 h-3.5 text-gray-400 ml-1.5" />
             <span className="text-[10px] font-bold text-gray-400 uppercase hidden sm:inline mr-1">
               Account:
@@ -528,9 +531,10 @@ export default function DashboardView({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-1.5">
+          <div id="dashboard-quick-actions" className="flex items-center gap-1.5">
             {onOpenLogModal && (
               <button
+                id="btn-dashboard-log-trade"
                 onClick={onOpenLogModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
                 title="Log a new trade"
@@ -542,6 +546,7 @@ export default function DashboardView({
 
             {onOpenTiltGuardModal && (
               <button
+                id="btn-dashboard-tilt-guard"
                 onClick={onOpenTiltGuardModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
                 title="Open Tilt Guard & Max Loss Protector"
@@ -553,12 +558,25 @@ export default function DashboardView({
 
             {onOpenFlexModal && (
               <button
+                id="btn-dashboard-flex"
                 onClick={onOpenFlexModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
                 title="Generate Social P&L Flex Card"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Flex Card</span>
+              </button>
+            )}
+
+            {onOpenGuide && (
+              <button
+                id="btn-dashboard-quick-guide"
+                onClick={onOpenGuide}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
+                title="Open Quick Getting Started Guide"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden md:inline">Quick Guide</span>
               </button>
             )}
           </div>
@@ -695,7 +713,7 @@ export default function DashboardView({
       {viewMode === "personal" && (
         <>
           {/* Primary 4 Hero Metric Cards (Individual) */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <div id="dashboard-hero-metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             {/* Stat 1: Today's Personal P&L */}
             <div className="bg-[#14171B] p-4 md:p-5 rounded-2xl border border-[#262A30] flex flex-col justify-between relative overflow-hidden shadow-md">
               <div className="flex items-center justify-between mb-3">
@@ -870,7 +888,7 @@ export default function DashboardView({
           </div>
 
           {/* Personal Consistency Calendar */}
-          <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md">
+          <div id="dashboard-consistency-calendar" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <div>
                 <h3 className="font-black text-white text-base flex items-center gap-2">
@@ -987,7 +1005,7 @@ export default function DashboardView({
           {/* Cumulative Equity Curve & Strategy Playbook Grid */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* My Cumulative Balance Curve */}
-            <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] xl:col-span-2 flex flex-col justify-between shadow-md">
+            <div id="dashboard-equity-chart" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] xl:col-span-2 flex flex-col justify-between shadow-md">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div>
                   <h3 className="font-black text-white text-base flex items-center gap-2">
@@ -1066,7 +1084,7 @@ export default function DashboardView({
             </div>
 
             {/* My Strategy Win Rates */}
-            <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] flex flex-col justify-between shadow-md">
+            <div id="dashboard-strategy-playbook" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] flex flex-col justify-between shadow-md">
               <div>
                 <h3 className="font-black text-white text-base flex items-center gap-2 mb-0.5">
                   <BarChart2 className="text-indigo-400 w-4 h-4" /> My Strategy Playbook
@@ -1124,7 +1142,7 @@ export default function DashboardView({
       {viewMode === "group" && (
         <>
           {/* Primary 4 Hero Metric Cards (Collective Desk) */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <div id="group-dashboard-hero-metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             {/* Stat 1: Desk Today's Pool P&L */}
             <div className="bg-[#14171B] p-4 md:p-5 rounded-2xl border border-[#262A30] flex flex-col justify-between relative overflow-hidden shadow-md">
               <div className="flex items-center justify-between mb-3">
@@ -1259,7 +1277,7 @@ export default function DashboardView({
           </div>
 
           {/* Collective Desk Consistency Calendar */}
-          <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md">
+          <div id="group-dashboard-consistency-calendar" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <div>
                 <h3 className="font-black text-white text-base flex items-center gap-2">
@@ -1376,7 +1394,7 @@ export default function DashboardView({
           {/* Group Multi-Trader Performance Curve & Desk Roster Grid */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* Multi-Trader Performance Race */}
-            <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] xl:col-span-2 flex flex-col justify-between shadow-md">
+            <div id="group-dashboard-race-chart" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] xl:col-span-2 flex flex-col justify-between shadow-md">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div>
                   <h3 className="font-black text-white text-base flex items-center gap-2">
@@ -1452,7 +1470,7 @@ export default function DashboardView({
             </div>
 
             {/* Desk Top Contributors Roster */}
-            <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] flex flex-col justify-between shadow-md">
+            <div id="group-dashboard-roster" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] flex flex-col justify-between shadow-md">
               <div>
                 <div className="flex items-center justify-between mb-0.5">
                   <h3 className="font-black text-white text-base flex items-center gap-2">

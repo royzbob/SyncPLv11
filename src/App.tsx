@@ -133,6 +133,7 @@ import PayoutsView from "./components/PayoutsView";
 import RoomChallengesView from "./components/RoomChallengesView";
 import CleanFlexCardModal from "./components/CleanFlexCardModal";
 import TiltGuardModal from "./components/TiltGuardModal";
+import GettingStartedGuideModal from "./components/GettingStartedGuideModal";
 import UpdateNotifier from "./components/UpdateNotifier";
 import WebUpdateNotifier from "./components/WebUpdateNotifier";
 import { LiveScreenShareModal } from "./components/LiveScreenShareModal";
@@ -717,6 +718,7 @@ export default function App() {
   const [isTiltGuardModalOpen, setIsTiltGuardModalOpen] = useState(false);
   const [isFlexModalOpen, setIsFlexModalOpen] = useState(false);
   const [flexModalLog, setFlexModalLog] = useState<PnlLog | null>(null);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
   // Global Realtime listener for incoming unread Private Messages (PMs)
   useEffect(() => {
@@ -3777,6 +3779,19 @@ export default function App() {
                       setIsLogModalOpen(true);
                       setIsMobileSidebarOpen(false);
                     }}
+                    onOpenTiltGuardModal={() => {
+                      setIsTiltGuardModalOpen(true);
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    onOpenFlexModal={() => {
+                      setFlexModalLog(null);
+                      setIsFlexModalOpen(true);
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    onOpenGuide={() => {
+                      setIsGuideModalOpen(true);
+                      setIsMobileSidebarOpen(false);
+                    }}
                     onDisconnectVoice={handleDisconnectVoice}
                     isMuted={isMuted}
                     isDeafened={isDeafened}
@@ -3857,6 +3872,7 @@ export default function App() {
                     setFlexModalLog(null);
                     setIsFlexModalOpen(true);
                   }}
+                  onOpenGuide={() => setIsGuideModalOpen(true)}
                   onDisconnectVoice={handleDisconnectVoice}
                   isMuted={isMuted}
                   isDeafened={isDeafened}
@@ -4563,6 +4579,7 @@ export default function App() {
                             setIsFlexModalOpen(true);
                           }}
                           onOpenLogModal={() => setIsLogModalOpen(true)}
+                          onOpenGuide={() => setIsGuideModalOpen(true)}
                         />
                       )}
 
@@ -5557,6 +5574,25 @@ export default function App() {
             deskName={activeRoom.name || "Trading Desk"}
             roomCode={activeRoom.id}
             triggerToast={triggerToast}
+          />
+
+          <GettingStartedGuideModal
+            isOpen={isGuideModalOpen}
+            onClose={() => setIsGuideModalOpen(false)}
+            onSwitchTab={setActiveTab}
+            onOpenLogModal={() => {
+              setIsGuideModalOpen(false);
+              setIsLogModalOpen(true);
+            }}
+            onOpenTiltGuardModal={() => {
+              setIsGuideModalOpen(false);
+              setIsTiltGuardModalOpen(true);
+            }}
+            onOpenFlexModal={() => {
+              setIsGuideModalOpen(false);
+              setFlexModalLog(null);
+              setIsFlexModalOpen(true);
+            }}
           />
 
           <UpdateNotifier />

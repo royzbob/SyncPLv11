@@ -38,6 +38,7 @@ import {
   Target,
   Share2,
   Flame,
+  BookOpen,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 import { isImageAvatar } from "../utils/presence";
@@ -56,6 +57,7 @@ interface ActiveRoomSidebarProps {
   onOpenLogModal: () => void;
   onOpenTiltGuardModal?: () => void;
   onOpenFlexModal?: () => void;
+  onOpenGuide?: () => void;
   onDisconnectVoice: () => void;
   isMuted: boolean;
   isDeafened: boolean;
@@ -101,6 +103,7 @@ export default function ActiveRoomSidebar({
   onOpenLogModal,
   onOpenTiltGuardModal,
   onOpenFlexModal,
+  onOpenGuide,
   onDisconnectVoice,
   isMuted,
   isDeafened,
@@ -321,6 +324,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-chat"
           onClick={() => onSwitchTab("chat")}
           className={getNavBtnClass("chat")}
         >
@@ -334,6 +338,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-leaderboard"
           onClick={() => onSwitchTab("leaderboard")}
           className={getNavBtnClass("leaderboard")}
         >
@@ -344,6 +349,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-challenges"
           onClick={() => onSwitchTab("challenges")}
           className={getNavBtnClass("challenges")}
         >
@@ -359,6 +365,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-payouts"
           onClick={() => onSwitchTab("payouts")}
           className={getNavBtnClass("payouts")}
         >
@@ -374,6 +381,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-logs"
           onClick={() => onSwitchTab("logs")}
           className={getNavBtnClass("logs")}
         >
@@ -384,6 +392,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-checklist"
           onClick={() => onSwitchTab("checklist")}
           className={getNavBtnClass("checklist")}
         >
@@ -394,6 +403,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-friends"
           onClick={() => onSwitchTab("friends")}
           className={getNavBtnClass("friends")}
         >
@@ -404,6 +414,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-pms"
           onClick={() => onSwitchTab("pms")}
           className={getNavBtnClass("pms")}
         >
@@ -424,6 +435,7 @@ export default function ActiveRoomSidebar({
         </button>
 
         <button
+          id="nav-partners"
           onClick={() => onSwitchTab("partners")}
           className={getNavBtnClass("partners")}
         >
@@ -432,10 +444,26 @@ export default function ActiveRoomSidebar({
             <span>Workspace Settings</span>
           </div>
         </button>
+
+        {onOpenGuide && (
+          <button
+            id="nav-quick-start-guide"
+            onClick={onOpenGuide}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-amber-300/90 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition cursor-pointer mt-1 shadow-sm"
+          >
+            <div className="flex items-center space-x-2.5">
+              <BookOpen className="w-4 h-4 text-amber-400" />
+              <span>Getting Started Guide</span>
+            </div>
+            <span className="text-[9px] bg-amber-400 text-black font-black px-1.5 py-0.2 rounded shadow">
+              HELP
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Channels List Section */}
-      <div className="flex-grow overflow-y-auto p-3 space-y-4">
+      <div id="channels-section" className="flex-grow overflow-y-auto p-3 space-y-4">
         {/* Text Channels */}
         <div>
           <div className="flex items-center justify-between px-2 mb-1.5">
@@ -1009,7 +1037,7 @@ export default function ActiveRoomSidebar({
           };
 
           return (
-            <div className="bg-[#1e1f22] p-2 flex items-center justify-between h-[52px] select-none relative">
+            <div id="user-profile-bar" className="bg-[#1e1f22] p-2 flex items-center justify-between h-[52px] select-none relative">
               <div className="flex items-center min-w-0 space-x-2">
                 {/* Avatar with status indicator */}
                 <div className="relative shrink-0">
