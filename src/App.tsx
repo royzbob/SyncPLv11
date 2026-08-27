@@ -134,6 +134,7 @@ import UpdateNotifier from "./components/UpdateNotifier";
 import WebUpdateNotifier from "./components/WebUpdateNotifier";
 import { LiveScreenShareModal } from "./components/LiveScreenShareModal";
 import ProUpgradeModal from "./components/ProUpgradeModal";
+import { computeUserPresence } from "./utils/presence";
 
 export default function App() {
   // Authentication & Profile States
@@ -1589,32 +1590,7 @@ export default function App() {
     user: any,
     isSelf: boolean = false
   ): "active" | "idle" | "dnd" | "offline" => {
-    if (isSelf) {
-      if (profile?.marketPresence === "offline" || profile?.marketPresence === "dnd") {
-        return profile.marketPresence;
-      }
-      return typeof document !== "undefined" && document.visibilityState === "visible"
-        ? "active"
-        : "idle";
-    }
-    if (!user) return "offline";
-    if (user.marketPresence === "offline" || user.marketPresence === "dnd") {
-      return user.marketPresence;
-    }
-    if (!user.lastActiveAt) {
-      return "offline";
-    }
-    const lastTime = new Date(user.lastActiveAt).getTime();
-    if (isNaN(lastTime)) return "offline";
-    const diff = Date.now() - lastTime;
-    if (diff > 150000) {
-      // Greater than 2.5 minutes without heartbeat -> accurately offline
-      return "offline";
-    }
-    if (diff > 75000) {
-      return "idle";
-    }
-    return user.marketPresence || "active";
+    return computeUserPresence(user, isSelf, profile?.marketPresence);
   };
 
   // Real presence heartbeat and active status synchronization
@@ -4649,6 +4625,7 @@ export default function App() {
                           currentUser={currentUser}
                           db={db}
                           profile={profile}
+                          publicUsers={publicUsers}
                           onJoinRoomCode={handleJoinRoom}
                           onOpenPmWithUser={handleOpenPmWithUser}
                           triggerToast={triggerToast}
@@ -4660,6 +4637,7 @@ export default function App() {
                           currentUser={currentUser}
                           db={db}
                           profile={profile}
+                          publicUsers={publicUsers}
                           initialPartnerId={selectedPmUserId}
                           onClearInitialPartner={() => setSelectedPmUserId(null)}
                           onJoinRoomCode={handleJoinRoom}

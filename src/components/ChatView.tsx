@@ -466,7 +466,7 @@ export default function ChatView({
   const voiceChannels = channels.filter((c) => c.type === "voice");
 
   // Calculate live presence counts
-  const onlineCount = roomTraders.filter((t) => t.marketPresence === "active" || t.marketPresence === "idle").length;
+  const onlineCount = roomTraders.filter((t) => t.marketPresence === "active" || t.marketPresence === "idle" || t.marketPresence === "dnd").length;
   const totalCount = roomTraders.length;
 
   // Filtered traders for mobile drawer / desktop sidebar search

@@ -48,11 +48,13 @@ import { User as FirebaseUser } from "firebase/auth";
 import { DirectMessage, DMConversation, UserProfile, Friendship } from "../types";
 import { compressImage } from "../utils/imageCompressor";
 import { playChatMessageSound } from "../utils/audio";
+import { computeUserPresence } from "../utils/presence";
 
 interface PrivateMessagesViewProps {
   currentUser: FirebaseUser;
   db: any;
   profile: UserProfile | null;
+  publicUsers?: any[];
   initialPartnerId?: string | null;
   onClearInitialPartner?: () => void;
   onJoinRoomCode: (code: string) => Promise<void>;
@@ -63,6 +65,7 @@ export default function PrivateMessagesView({
   currentUser,
   db,
   profile,
+  publicUsers = [],
   initialPartnerId,
   onClearInitialPartner,
   onJoinRoomCode,
@@ -72,6 +75,15 @@ export default function PrivateMessagesView({
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(initialPartnerId || null);
   const [selectedPartnerInfo, setSelectedPartnerInfo] = useState<any | null>(null);
+
+  // Periodic ticker to recalculate presence every 15s
+  const [presenceTick, setPresenceTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPresenceTick((prev) => prev + 1);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Search & New PM modal
   const [searchQuery, setSearchQuery] = useState("");
@@ -188,16 +200,18 @@ export default function PrivateMessagesView({
                 console.warn(e);
               }
             }
+            const presence = computeUserPresence(partnerUser, false);
             friendsList.push({
               uid: partnerUid,
               username: partnerUser?.username || data.receiverName,
               avatarColor: partnerUser?.avatarColor || data.receiverAvatarColor || "indigo",
               avatarVal: partnerUser?.avatarVal || data.receiverAvatarVal || "🐂",
               avatarType: partnerUser?.avatarType || "emoji",
-              marketPresence: partnerUser?.marketPresence || "active",
+              marketPresence: presence,
               customStatus: partnerUser?.customStatus || "Analyzing Markets",
               activeGroupId: partnerUser?.activeGroupId || "",
               subscriptionTier: partnerUser?.subscriptionTier || "free",
+              lastActiveAt: partnerUser?.lastActiveAt,
             });
           } else if (isReceiver) {
             const partnerUid = data.senderId;
@@ -210,16 +224,18 @@ export default function PrivateMessagesView({
                 console.warn(e);
               }
             }
+            const presence = computeUserPresence(partnerUser, false);
             friendsList.push({
               uid: partnerUid,
               username: partnerUser?.username || data.senderName,
               avatarColor: partnerUser?.avatarColor || data.senderAvatarColor || "indigo",
               avatarVal: partnerUser?.avatarVal || data.senderAvatarVal || "🐂",
               avatarType: partnerUser?.avatarType || "emoji",
-              marketPresence: partnerUser?.marketPresence || "active",
+              marketPresence: presence,
               customStatus: partnerUser?.customStatus || "Analyzing Markets",
               activeGroupId: partnerUser?.activeGroupId || "",
               subscriptionTier: partnerUser?.subscriptionTier || "free",
+              lastActiveAt: partnerUser?.lastActiveAt,
             });
           }
         }
@@ -247,6 +263,10 @@ export default function PrivateMessagesView({
       const friendDetail = availableFriends.find(
         (f) => f.uid === partnerId || f.username?.toLowerCase() === partnerName?.toLowerCase()
       );
+      const liveUser = (publicUsers || []).find(
+        (u) => u.uid === partnerId || (partnerName && u.username?.toLowerCase() === partnerName?.toLowerCase())
+      );
+      const computedPresence = computeUserPresence(liveUser || friendDetail, false);
 
       const convId = [currentUser.uid, partnerId].sort().join("_");
       const isUnread = !isSender && !msg.read;
@@ -255,13 +275,13 @@ export default function PrivateMessagesView({
         map.set(partnerId, {
           conversationId: convId,
           partnerId,
-          partnerName: friendDetail?.username || partnerName || "Trader",
-          partnerAvatarColor: friendDetail?.avatarColor || partnerAvatarColor,
-          partnerAvatarVal: friendDetail?.avatarVal || partnerAvatarVal,
-          partnerAvatarType: friendDetail?.avatarType || partnerAvatarType,
-          partnerPresence: friendDetail?.marketPresence || "active",
-          partnerCustomStatus: friendDetail?.customStatus || "Active Desk",
-          partnerActiveGroupId: friendDetail?.activeGroupId || "",
+          partnerName: liveUser?.username || friendDetail?.username || partnerName || "Trader",
+          partnerAvatarColor: liveUser?.avatarColor || friendDetail?.avatarColor || partnerAvatarColor,
+          partnerAvatarVal: liveUser?.avatarVal || friendDetail?.avatarVal || partnerAvatarVal,
+          partnerAvatarType: liveUser?.avatarType || friendDetail?.avatarType || partnerAvatarType,
+          partnerPresence: computedPresence,
+          partnerCustomStatus: liveUser?.customStatus || friendDetail?.customStatus || "Active Desk",
+          partnerActiveGroupId: liveUser?.activeGroupId || friendDetail?.activeGroupId || "",
           lastMessage: msg.imageUrl ? "📷 [Trade Chart]" : msg.text,
           lastTimestamp: msg.timestamp,
           unreadCount: isUnread ? 1 : 0,
@@ -273,10 +293,10 @@ export default function PrivateMessagesView({
         if (isUnread) {
           existing.unreadCount += 1;
         }
-        if (friendDetail) {
-          existing.partnerPresence = friendDetail.marketPresence;
-          existing.partnerCustomStatus = friendDetail.customStatus;
-          existing.partnerActiveGroupId = friendDetail.activeGroupId;
+        existing.partnerPresence = computedPresence;
+        if (liveUser || friendDetail) {
+          existing.partnerCustomStatus = (liveUser || friendDetail).customStatus;
+          existing.partnerActiveGroupId = (liveUser || friendDetail).activeGroupId;
         }
       }
     });
@@ -287,7 +307,7 @@ export default function PrivateMessagesView({
       const timeB = b.lastTimestamp ? new Date(b.lastTimestamp).getTime() : 0;
       return timeB - timeA;
     });
-  }, [messages, currentUser.uid, availableFriends]);
+  }, [messages, currentUser.uid, availableFriends, publicUsers, presenceTick]);
 
   // Fetch partner info whenever selectedPartnerId changes
   useEffect(() => {
@@ -296,9 +316,15 @@ export default function PrivateMessagesView({
       return;
     }
 
+    const liveUser = (publicUsers || []).find((u) => u.uid === selectedPartnerId);
     const friendInfo = availableFriends.find((f) => f.uid === selectedPartnerId);
-    if (friendInfo) {
-      setSelectedPartnerInfo(friendInfo);
+    const targetSource = liveUser || friendInfo;
+
+    if (targetSource) {
+      setSelectedPartnerInfo({
+        ...targetSource,
+        marketPresence: computeUserPresence(targetSource, false),
+      });
     } else {
       // Find from messages or fetch from /users
       const sampleMsg = messages.find(
@@ -312,8 +338,8 @@ export default function PrivateMessagesView({
           avatarColor: (isSender ? sampleMsg.receiverAvatarColor : sampleMsg.senderAvatarColor) || "indigo",
           avatarVal: (isSender ? sampleMsg.receiverAvatarVal : sampleMsg.senderAvatarVal) || "🐂",
           avatarType: (isSender ? sampleMsg.receiverAvatarType : sampleMsg.senderAvatarType) || "emoji",
-          marketPresence: "active",
-          customStatus: "Active Desk",
+          marketPresence: "offline",
+          customStatus: "Offline",
         });
       }
 
@@ -327,6 +353,7 @@ export default function PrivateMessagesView({
                 ...prev,
                 ...uData,
                 uid: selectedPartnerId,
+                marketPresence: computeUserPresence(uData, false),
               }));
             }
           })

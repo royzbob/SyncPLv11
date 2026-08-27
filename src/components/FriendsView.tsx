@@ -39,11 +39,13 @@ import {
 } from "firebase/firestore";
 import { User } from "firebase/auth";
 import { UserProfile, Friendship } from "../types";
+import { computeUserPresence, getPresenceIndicatorColor, getPresenceLabel } from "../utils/presence";
 
 interface FriendsViewProps {
   currentUser: User;
   db: any;
   profile: UserProfile | null;
+  publicUsers?: any[];
   onJoinRoomCode: (code: string) => Promise<void>;
   onOpenPmWithUser?: (partnerId: string) => void;
   triggerToast: (title: string, body: string, type: "success" | "error" | "info") => void;
@@ -62,12 +64,14 @@ interface FriendDetail {
   isIncoming: boolean;
   marketPresence?: "active" | "idle" | "dnd" | "offline";
   customStatus?: string;
+  lastActiveAt?: string;
 }
 
 export default function FriendsView({
   currentUser,
   db,
   profile,
+  publicUsers = [],
   onJoinRoomCode,
   onOpenPmWithUser,
   triggerToast
@@ -77,6 +81,15 @@ export default function FriendsView({
   const [friendships, setFriendships] = useState<FriendDetail[]>([]);
   const [activeTab, setActiveTab] = useState<"online" | "all" | "pending" | "add_partner" | "perks_support">("online");
   const [friendSearchQuery, setFriendSearchQuery] = useState("");
+  
+  // Periodic ticker to recalculate presence every 15s even without network events
+  const [presenceTick, setPresenceTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPresenceTick((prev) => prev + 1);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
   
   // User's own status presence states with persistent local cache fallback
   const [myPresence, setMyPresence] = useState<"active" | "idle" | "dnd" | "offline">(() => {
@@ -179,6 +192,7 @@ export default function FriendsView({
           const p = (targetUid && !targetUid.startsWith("user_") ? getDoc(doc(db, "users", targetUid)) : Promise.resolve(null as any))
             .then((userSnap) => {
               const userData = userSnap && userSnap.exists() ? userSnap.data() : null;
+              const presence = computeUserPresence(userData, false);
               friendshipList.push({
                 friendshipId: d.id,
                 friendId: data.receiverId,
@@ -190,8 +204,9 @@ export default function FriendsView({
                 subscriptionTier: userData?.subscriptionTier || "free",
                 status: data.status,
                 isIncoming: false,
-                marketPresence: userData?.marketPresence || "active",
-                customStatus: userData?.customStatus || "Analyzing Markets"
+                marketPresence: presence,
+                customStatus: userData?.customStatus || "Analyzing Markets",
+                lastActiveAt: userData?.lastActiveAt,
               });
             }).catch((err) => {
               console.error(err);
@@ -206,7 +221,7 @@ export default function FriendsView({
                 subscriptionTier: "free",
                 status: data.status,
                 isIncoming: false,
-                marketPresence: "active",
+                marketPresence: "offline",
                 customStatus: "Analyzing Markets"
               });
             });
@@ -217,6 +232,7 @@ export default function FriendsView({
           const p = (targetUid && !targetUid.startsWith("user_") ? getDoc(doc(db, "users", targetUid)) : Promise.resolve(null as any))
             .then((userSnap) => {
               const userData = userSnap && userSnap.exists() ? userSnap.data() : null;
+              const presence = computeUserPresence(userData, false);
               friendshipList.push({
                 friendshipId: d.id,
                 friendId: data.senderId,
@@ -228,8 +244,9 @@ export default function FriendsView({
                 subscriptionTier: userData?.subscriptionTier || "free",
                 status: data.status,
                 isIncoming: true,
-                marketPresence: userData?.marketPresence || "active",
-                customStatus: userData?.customStatus || "Analyzing Markets"
+                marketPresence: presence,
+                customStatus: userData?.customStatus || "Analyzing Markets",
+                lastActiveAt: userData?.lastActiveAt,
               });
             }).catch((err) => {
               console.error(err);
@@ -244,7 +261,7 @@ export default function FriendsView({
                 subscriptionTier: "free",
                 status: data.status,
                 isIncoming: true,
-                marketPresence: "active",
+                marketPresence: "offline",
                 customStatus: "Analyzing Markets"
               });
             });
@@ -427,9 +444,24 @@ export default function FriendsView({
 
   const isPremium = profile?.subscriptionStatus === "active" || profile?.subscriptionStatus === "trialing";
 
+  // Dynamically compute real-time presence for every friend using live publicUsers and timestamp verification
+  const enrichedFriends = friendships.map((f) => {
+    const liveUser = (publicUsers || []).find(
+      (u) => u.uid === f.friendId || (f.username && u.username?.toLowerCase() === f.username.toLowerCase())
+    );
+    const targetData = liveUser || f;
+    const computedPresence = computeUserPresence(targetData, false);
+    return {
+      ...f,
+      marketPresence: computedPresence,
+      customStatus: liveUser?.customStatus || f.customStatus || "Analyzing Markets",
+      activeGroupId: liveUser?.activeGroupId || f.activeGroupId || "",
+    };
+  });
+
   // Organize friends list
-  const acceptedFriends = friendships.filter(f => f.status === "accepted");
-  const pendingRequests = friendships.filter(f => f.status === "pending");
+  const acceptedFriends = enrichedFriends.filter(f => f.status === "accepted");
+  const pendingRequests = enrichedFriends.filter(f => f.status === "pending");
   const incomingPendingCount = pendingRequests.filter(r => r.isIncoming).length;
 
   // Search filter
@@ -439,43 +471,15 @@ export default function FriendsView({
   );
 
   // Split into Online vs Offline
-  // In our trading layout, anyone whose status is active, idle, or dnd is grouped into "Online"
-  const onlineFriends = filteredFriends.filter(f => f.marketPresence !== "offline");
-  const offlineFriends = filteredFriends.filter(f => f.marketPresence === "offline");
+  // In our trading layout, anyone whose computed presence is active, idle, or dnd is grouped into "Online"
+  const onlineFriends = filteredFriends.filter(f => f.marketPresence === "active" || f.marketPresence === "idle" || f.marketPresence === "dnd");
+  const offlineFriends = filteredFriends.filter(f => !f.marketPresence || f.marketPresence === "offline");
 
   const getTierColor = (status?: string, tier?: string) => {
     if (status === "active" || status === "trialing" || tier === "premium" || tier === "pro" || tier === "elite") {
       return "text-indigo-400 border-indigo-500/30 bg-indigo-500/10";
     }
     return "text-gray-400 border-gray-700 bg-gray-800/40";
-  };
-
-  const getPresenceIndicatorColor = (presence?: string) => {
-    switch (presence) {
-      case "active":
-        return "bg-emerald-500";
-      case "idle":
-        return "bg-amber-500";
-      case "dnd":
-        return "bg-rose-500";
-      case "offline":
-      default:
-        return "bg-gray-600";
-    }
-  };
-
-  const getPresenceLabel = (presence?: string) => {
-    switch (presence) {
-      case "active":
-        return "Active Desk";
-      case "idle":
-        return "AFK / Analyzing";
-      case "dnd":
-        return "Deep Trading (DND)";
-      case "offline":
-      default:
-        return "Offline";
-    }
   };
 
   return (
