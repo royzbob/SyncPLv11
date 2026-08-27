@@ -130,6 +130,9 @@ import ChecklistView from "./components/ChecklistView";
 import FriendsView from "./components/FriendsView";
 import PrivateMessagesView from "./components/PrivateMessagesView";
 import PayoutsView from "./components/PayoutsView";
+import RoomChallengesView from "./components/RoomChallengesView";
+import CleanFlexCardModal from "./components/CleanFlexCardModal";
+import TiltGuardModal from "./components/TiltGuardModal";
 import UpdateNotifier from "./components/UpdateNotifier";
 import WebUpdateNotifier from "./components/WebUpdateNotifier";
 import { LiveScreenShareModal } from "./components/LiveScreenShareModal";
@@ -711,6 +714,9 @@ export default function App() {
   const [selectedPmUserId, setSelectedPmUserId] = useState<string | null>(null);
   const [unreadPmCount, setUnreadPmCount] = useState<number>(0);
   const [tickers, setTickers] = useState<TickerInfo[]>(initialTickers);
+  const [isTiltGuardModalOpen, setIsTiltGuardModalOpen] = useState(false);
+  const [isFlexModalOpen, setIsFlexModalOpen] = useState(false);
+  const [flexModalLog, setFlexModalLog] = useState<PnlLog | null>(null);
 
   // Global Realtime listener for incoming unread Private Messages (PMs)
   useEffect(() => {
@@ -3846,6 +3852,11 @@ export default function App() {
                   unreadPmCount={unreadPmCount}
                   onSwitchTab={setActiveTab}
                   onOpenLogModal={() => setIsLogModalOpen(true)}
+                  onOpenTiltGuardModal={() => setIsTiltGuardModalOpen(true)}
+                  onOpenFlexModal={() => {
+                    setFlexModalLog(null);
+                    setIsFlexModalOpen(true);
+                  }}
                   onDisconnectVoice={handleDisconnectVoice}
                   isMuted={isMuted}
                   isDeafened={isDeafened}
@@ -4583,6 +4594,21 @@ export default function App() {
                       )}
 
                       {activeTab === "leaderboard" && <LeaderboardView pnlLogs={pnlLogs} />}
+
+                      {activeTab === "challenges" && (
+                        <RoomChallengesView
+                          roomCode={activeRoom.id}
+                          pnlLogs={pnlLogs}
+                          traders={traders}
+                          currentUserId={currentUser.uid}
+                          isCreatorOrMod={isCreatorOrMod}
+                          onOpenFlexModal={(log) => {
+                            setFlexModalLog(log || null);
+                            setIsFlexModalOpen(true);
+                          }}
+                          triggerToast={triggerToast}
+                        />
+                      )}
 
                       {activeTab === "payouts" && (
                         <PayoutsView
@@ -5465,6 +5491,54 @@ export default function App() {
             triggerToast={triggerToast}
             reason={proModalState.reason}
             onUpdateLocalProfile={(updated) => setProfile(updated)}
+          />
+
+          <TiltGuardModal
+            isOpen={isTiltGuardModalOpen}
+            onClose={() => setIsTiltGuardModalOpen(false)}
+            userId={currentUser.uid}
+            username={profile?.username || "Trader"}
+            pnlLogs={pnlLogs}
+            triggerToast={triggerToast}
+          />
+
+          <CleanFlexCardModal
+            isOpen={isFlexModalOpen}
+            onClose={() => {
+              setIsFlexModalOpen(false);
+              setFlexModalLog(null);
+            }}
+            tradeLog={flexModalLog}
+            dailyRecap={
+              !flexModalLog
+                ? {
+                    date: getLocalDateString(new Date()),
+                    totalPnl: pnlLogs
+                      .filter((l) => l.userId === currentUser.uid && l.date === getLocalDateString(new Date()))
+                      .reduce((sum, l) => sum + l.amount, 0),
+                    winRate: (() => {
+                      const today = pnlLogs.filter(
+                        (l) => l.userId === currentUser.uid && l.date === getLocalDateString(new Date())
+                      );
+                      const wins = today.filter((l) => l.amount >= 0).length;
+                      return today.length > 0 ? Math.round((wins / today.length) * 100) : 0;
+                    })(),
+                    tradesCount: pnlLogs.filter(
+                      (l) => l.userId === currentUser.uid && l.date === getLocalDateString(new Date())
+                    ).length,
+                    bestTrade: Math.max(
+                      0,
+                      ...pnlLogs
+                        .filter((l) => l.userId === currentUser.uid && l.date === getLocalDateString(new Date()))
+                        .map((l) => l.amount)
+                    ),
+                  }
+                : null
+            }
+            trader={profile}
+            deskName={activeRoom.name || "Trading Desk"}
+            roomCode={activeRoom.id}
+            triggerToast={triggerToast}
           />
 
           <UpdateNotifier />

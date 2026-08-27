@@ -16,11 +16,12 @@ import {
   Crown,
   Lock,
   AlertCircle,
-  Zap,
+  Share2,
 } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 import { isImageAvatar } from "../utils/presence";
+import CleanFlexCardModal from "./CleanFlexCardModal";
 
 interface LogsViewProps {
   pnlLogs: PnlLog[];
@@ -432,138 +433,14 @@ export default function LogsView({
       </div>
 
       {/* Shareable Flex Card Modal */}
-      {selectedFlexLog && (() => {
-        const logTrader = traders?.find((t) => t.username === selectedFlexLog.username);
-        const initials = selectedFlexLog.username.substring(0, 2).toUpperCase();
-        const avatarBgClass =
-          logTrader?.avatarColor === "pink"
-            ? "bg-pink-500/10 border-pink-500/30 text-pink-400"
-            : logTrader?.avatarColor === "emerald"
-            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-            : logTrader?.avatarColor === "amber"
-            ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-            : logTrader?.avatarColor === "sky"
-            ? "bg-sky-500/10 border-sky-500/30 text-sky-400"
-            : "bg-indigo-500/10 border-indigo-500/30 text-indigo-400";
-
-        const flexAcct = selectedFlexLog.accountType || "funded";
-        const flexAcctCfg = accountTypeConfig[flexAcct] || accountTypeConfig.funded;
-
-        return (
-          <div className="fixed inset-0 z-50 bg-[#0F1113]/90 flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="w-full max-w-sm animate-in zoom-in-95 duration-200">
-              <div className="glass-panel p-6 rounded-2xl border border-[#2A2D31] text-center relative overflow-hidden shadow-2xl bg-[#1E2023]">
-                {/* Ambient glow backgrounds */}
-                <div className="absolute -top-[20%] -right-[20%] w-[60%] h-[60%] rounded-full bg-indigo-500/10 filter blur-3xl" />
-                <div className="absolute -bottom-[20%] -left-[20%] w-[60%] h-[60%] rounded-full bg-pink-500/10 filter blur-3xl" />
-
-                {/* Card Header Info */}
-                <div className="flex justify-between items-center mb-6 relative z-10">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded text-white">
-                      <Award className="w-4 h-4" />
-                    </div>
-                    <span className="text-[10px] font-black tracking-widest text-indigo-300 uppercase">
-                      SYNCPL VERIFIED
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono font-extrabold text-[#8E9297] uppercase">
-                    {selectedFlexLog.date.replace(/-/g, "/")}
-                  </span>
-                </div>
-
-                {/* Main performance stats */}
-                <div className="space-y-4 relative z-10 my-6">
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-xs text-[#8E9297] font-bold tracking-widest uppercase">
-                      LEDGER PERFORMANCE FLEX
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${flexAcctCfg.bg} ${flexAcctCfg.text} ${flexAcctCfg.border}`}
-                    >
-                      {flexAcctCfg.label}
-                    </span>
-                  </div>
-                  <p
-                    className={`text-4xl font-black tracking-tight ${
-                      selectedFlexLog.amount >= 0 ? "text-[#43B581]" : "text-[#F04747]"
-                    }`}
-                  >
-                    {selectedFlexLog.amount >= 0 ? "+" : ""}
-                    {formatCurrency(selectedFlexLog.amount)}
-                  </p>
-
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#08090A] border border-[#2A2D31] rounded-lg text-xs font-mono uppercase font-bold text-gray-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2]" />
-                    <span>{selectedFlexLog.asset}</span>
-                  </div>
-
-                  <p className="text-xs text-gray-300 italic max-w-xs mx-auto px-4">
-                    {selectedFlexLog.notes
-                      ? `"${selectedFlexLog.notes}"`
-                      : '"Executed technical breakout set support level."'}
-                  </p>
-                </div>
-
-                {/* Footer containing authentication & matching profile picture */}
-                <div className="pt-4 border-t border-[#2A2D31] mt-6 relative z-10 flex justify-between items-center text-left text-xs">
-                  <div className="flex items-center space-x-2.5 min-w-0">
-                    {/* Trader Profile Picture */}
-                    {isImageAvatar(logTrader?.avatarType, logTrader?.avatarVal) ? (
-                      <div className="w-8 h-8 rounded-full border border-[#2A2D31] overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0">
-                        <img
-                          src={logTrader.avatarVal}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs shrink-0 ${avatarBgClass}`}
-                      >
-                        {typeof logTrader?.avatarVal === "string" && logTrader.avatarVal.length < 8 ? logTrader.avatarVal : initials}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <span className="block text-[8px] text-[#72767D] uppercase tracking-wider font-extrabold">
-                        AUTHENTICATED TRADER
-                      </span>
-                      <span className="font-bold text-gray-200 truncate block">
-                        {selectedFlexLog.username}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <span className="block text-[8px] text-[#72767D] uppercase tracking-wider font-extrabold">
-                      VERIFICATION SIGN
-                    </span>
-                    <span className="font-mono font-bold text-indigo-400">
-                      {selectedFlexLog.id.substring(0, 8).toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex gap-3">
-                <button
-                  onClick={() => setSelectedFlexLog(null)}
-                  className="w-1/3 bg-[#121417] hover:bg-[#08090A] border border-[#2A2D31] text-gray-300 font-semibold text-xs py-2 rounded transition cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleCopyFlexCardText}
-                  className="w-2/3 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs py-2 rounded transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Clipboard className="w-4 h-4" /> {copiedState ? "Copied to Clipboard!" : "Copy Verification Text"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <CleanFlexCardModal
+        isOpen={!!selectedFlexLog}
+        onClose={() => setSelectedFlexLog(null)}
+        tradeLog={selectedFlexLog}
+        trader={traders?.find((t) => t.username === selectedFlexLog?.username)}
+        deskName="SyncPL Ledger"
+        roomCode={roomCode}
+      />
     </div>
   );
 }

@@ -33,6 +33,10 @@ import {
   Check,
   Monitor,
   Radio,
+  ShieldAlert,
+  Target,
+  Share2,
+  Flame,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 import { isImageAvatar } from "../utils/presence";
@@ -49,6 +53,8 @@ interface ActiveRoomSidebarProps {
   activeTab: string;
   onSwitchTab: (tab: string) => void;
   onOpenLogModal: () => void;
+  onOpenTiltGuardModal?: () => void;
+  onOpenFlexModal?: () => void;
   onDisconnectVoice: () => void;
   isMuted: boolean;
   isDeafened: boolean;
@@ -92,6 +98,8 @@ export default function ActiveRoomSidebar({
   activeTab,
   onSwitchTab,
   onOpenLogModal,
+  onOpenTiltGuardModal,
+  onOpenFlexModal,
   onDisconnectVoice,
   isMuted,
   isDeafened,
@@ -313,6 +321,21 @@ export default function ActiveRoomSidebar({
           <div className="flex items-center space-x-2.5">
             <Trophy className="w-4 h-4" />
             <span>Leaderboard Board</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => onSwitchTab("challenges")}
+          className={getNavBtnClass("challenges")}
+        >
+          <div className="flex items-center space-x-2.5">
+            <Target className="w-4 h-4 text-amber-400" />
+            <span className="flex items-center gap-1.5">
+              <span>Co-Op Desk Goals</span>
+              <span className="bg-amber-500/20 text-amber-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-amber-500/30">
+                STREAKS
+              </span>
+            </span>
           </div>
         </button>
 
@@ -1171,11 +1194,35 @@ export default function ActiveRoomSidebar({
         })()}
       </div>
 
-      {/* Log Trade Button at Bottom */}
-      <div className="p-3 border-t border-[#2A2D31] bg-[#08090A]">
+      {/* Action Buttons at Bottom */}
+      <div className="p-3 border-t border-[#2A2D31] bg-[#08090A] space-y-2">
+        <div className="grid grid-cols-2 gap-1.5">
+          {onOpenTiltGuardModal && (
+            <button
+              onClick={onOpenTiltGuardModal}
+              className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-[11px] py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer"
+              title="Desk Tilt Guard & Risk Contract"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+              <span>Tilt Guard</span>
+            </button>
+          )}
+
+          {onOpenFlexModal && (
+            <button
+              onClick={onOpenFlexModal}
+              className="bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-bold text-[11px] py-1.5 px-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer"
+              title="Generate Verified Clean Flex Card"
+            >
+              <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Flex Card</span>
+            </button>
+          )}
+        </div>
+
         <button
           onClick={onOpenLogModal}
-          className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs py-2.5 px-4 rounded shadow-lg flex items-center justify-center space-x-2 transition active:scale-[0.98]"
+          className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition active:scale-[0.98] cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
           <span>Log New Trade</span>
