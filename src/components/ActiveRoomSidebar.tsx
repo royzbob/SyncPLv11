@@ -25,6 +25,7 @@ import {
   Settings,
   Wifi,
   Users,
+  User,
   Banknote,
   ArrowUpDown,
   ChevronUp,
@@ -292,13 +293,31 @@ export default function ActiveRoomSidebar({
       {/* Primary Navigation Tabs */}
       <div className="p-3 border-b border-[#2A2D31] space-y-1 bg-[#0F1113]/10">
         <button
+          id="nav-my-dashboard"
           onClick={() => onSwitchTab("dashboard")}
           className={getNavBtnClass("dashboard")}
         >
           <div className="flex items-center space-x-2.5">
-            <LayoutDashboard className="w-4 h-4" />
-            <span>Dashboard Overview</span>
+            <User className="w-4 h-4 text-indigo-400" />
+            <span className="font-bold">My Dashboard</span>
           </div>
+          <span className="text-[9px] bg-indigo-500/20 text-indigo-300 font-bold px-1.5 py-0.2 rounded border border-indigo-500/30">
+            YOU
+          </span>
+        </button>
+
+        <button
+          id="nav-desk-dashboard"
+          onClick={() => onSwitchTab("group-dashboard")}
+          className={getNavBtnClass("group-dashboard")}
+        >
+          <div className="flex items-center space-x-2.5">
+            <Users className="w-4 h-4 text-emerald-400" />
+            <span className="font-bold">Desk Dashboard</span>
+          </div>
+          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
+            ROOM
+          </span>
         </button>
 
         <button

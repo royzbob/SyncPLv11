@@ -4544,14 +4544,25 @@ export default function App() {
                     </div>
                   ) : (
                     <>
-                      {activeTab === "dashboard" && (
+                      {(activeTab === "dashboard" || activeTab === "group-dashboard") && (
                         <DashboardView
                           pnlLogs={pnlLogs}
                           userId={currentUser.uid}
+                          userProfile={profile}
+                          traders={traders}
+                          roomName={activeRoom.name}
+                          roomCode={activeRoom.id}
+                          initialMode={activeTab === "group-dashboard" ? "group" : "personal"}
                           payouts={payouts}
                           onSwitchTab={setActiveTab}
                           isPremium={subscriptionState.isPremium}
                           onOpenUpgradeModal={handleOpenProModal}
+                          onOpenTiltGuardModal={() => setIsTiltGuardModalOpen(true)}
+                          onOpenFlexModal={() => {
+                            setFlexModalLog(null);
+                            setIsFlexModalOpen(true);
+                          }}
+                          onOpenLogModal={() => setIsLogModalOpen(true)}
                         />
                       )}
 
