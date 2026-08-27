@@ -673,7 +673,7 @@ export default function GettingStartedGuideModal({
               <h3 className="text-sm font-black text-white flex items-center gap-2">
                 <span>SyncPL Quick Start Guide</span>
                 <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-bold">
-                  v1.0.21
+                  v1.0.27
                 </span>
               </h3>
               <p className="text-[11px] text-gray-400">Master the core trading desk workflow in 2 minutes</p>

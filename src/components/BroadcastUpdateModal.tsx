@@ -22,7 +22,7 @@ export default function BroadcastUpdateModal({
   triggerToast,
 }: BroadcastUpdateModalProps) {
   const [title, setTitle] = useState("");
-  const [version, setVersion] = useState("v1.0.22");
+  const [version, setVersion] = useState("v1.0.27");
   const [tag, setTag] = useState("Feature Release");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,7 +34,7 @@ export default function BroadcastUpdateModal({
       fetchHistory();
       if (!message) {
         setMessage(
-          "• Added manual update announcements and custom release notes\n• Enhanced Trade Desk & chat screen workflows\n• Improved P&L ledger performance and mobile responsiveness"
+          "• Interactive Live Screen Spotlight & Getting Started Guide\n• 100% Clear UI Component Locators with dynamic visual highlights\n• Desk Tilt Guard loss lockout & automated acoustic alarms\n• Real-time P&L sync, Consistency Calendars, and multi-trader race charts\n• Instant Social Flex Card receipts & Twitter/Discord exports"
         );
       }
     }
@@ -68,7 +68,7 @@ export default function BroadcastUpdateModal({
     const previewData: AppUpdateData = {
       id: "preview_" + Date.now(),
       title: title.trim() || `SyncPL Update ${version}`,
-      version: version.trim() || "v1.0.22",
+      version: version.trim() || "v1.0.27",
       tag: tag || "Feature Release",
       message: message.trim(),
       authorName: currentUsername || "Nathan (App Owner)",
@@ -102,7 +102,7 @@ export default function BroadcastUpdateModal({
       const payload: AppUpdateData = {
         id: updateId,
         title: title.trim() || `SyncPL Update ${version}`,
-        version: version.trim() || "v1.0.22",
+        version: version.trim() || "v1.0.27",
         tag: tag || "Feature Release",
         message: message.trim(),
         authorName: currentUsername || "Nathan (App Owner)",
@@ -209,7 +209,7 @@ export default function BroadcastUpdateModal({
                 value={version}
                 disabled={!isAppOwner}
                 onChange={(e) => setVersion(e.target.value)}
-                placeholder="e.g. v1.0.22"
+                placeholder="e.g. v1.0.27"
                 className="w-full bg-[#121417] border border-[#2A2D31] disabled:opacity-60 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-indigo-500 transition"
               />
             </div>

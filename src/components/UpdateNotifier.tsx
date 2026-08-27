@@ -40,7 +40,7 @@ export default function UpdateNotifier() {
   const [showDebug, setShowDebug] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const [currentVersion, setCurrentVersion] = useState("1.0.20");
+  const [currentVersion, setCurrentVersion] = useState("1.0.27");
 
   useEffect(() => {
     if (!isTauri) return;

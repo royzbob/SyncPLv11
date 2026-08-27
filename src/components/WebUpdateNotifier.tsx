@@ -43,11 +43,11 @@ export default function WebUpdateNotifier() {
             setActiveUpdate(data);
           } else {
             setActiveUpdate({
-              id: "default_v1.0.22",
-              title: "SyncPL Trading Dashboard v1.0.22",
-              version: "v1.0.22",
+              id: "default_v1.0.27",
+              title: "SyncPL Trading Dashboard v1.0.27",
+              version: "v1.0.27",
               tag: "Feature Release",
-              message: "• In-App Update Broadcaster: Real-time update notifications with instant reload\n• Prop Firm Payouts: Track and share verified prop firm withdrawals\n• Pre-Trade Checklist: Enforce trading discipline with customizable entry checklist rules\n• Live Trade Tracker: Real-time TP/SL and risk-to-reward position monitoring\n• Voice & Desk Chat: Low-latency WebRTC voice rooms and PIN-secured trading channels",
+              message: "• Interactive Live Screen Spotlight & Getting Started Guide\n• 100% Clear UI Component Locators with dynamic visual highlights\n• Desk Tilt Guard loss lockout & automated acoustic alarms\n• Real-time P&L sync, Consistency Calendars, and multi-trader race charts\n• Instant Social Flex Card receipts & Twitter/Discord exports",
               authorName: "Nathan (App Owner)",
               createdAt: new Date().toISOString(),
             });

@@ -58,7 +58,7 @@ export default function ProfileSettingsTab({
     }
   });
 
-  const [runningVersion, setRunningVersion] = useState("1.0.16");
+  const [runningVersion, setRunningVersion] = useState("1.0.27");
   const [latestBroadcastUpdate, setLatestBroadcastUpdate] = useState<AppUpdateData | null>(null);
   const [updateState, setUpdateState] = useState<{
     status: "idle" | "checking" | "up-to-date" | "available" | "downloading" | "installed" | "error" | "web";
@@ -150,14 +150,14 @@ export default function ProfileSettingsTab({
           setLatestBroadcastUpdate(updateData);
           setUpdateState({
             status: "web",
-            version: updateData.version || "v1.0.22",
+            version: updateData.version || "v1.0.27",
             body: updateData.message || "Latest custom release notes synced.",
             errorMsg: `Web edition is active. Latest announcement: "${updateData.title || updateData.version}"`,
           });
         } else {
           setUpdateState({
             status: "web",
-            version: "v1.0.22",
+            version: "v1.0.27",
             errorMsg: "Web edition is active and synced with the latest deployed build.",
           });
         }
