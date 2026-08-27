@@ -693,10 +693,10 @@ export default function ProfileSettingsTab({
                 }
               }}
               className="bg-[#121417] border border-[#2A2D31] hover:bg-[#1E2023] text-gray-300 font-bold text-xs py-2.5 px-3 rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
-              title="View the latest update announcement popup"
+              title="View latest update release notes, changelog archive & prior versions"
             >
-              <Eye className="w-3.5 h-3.5 text-gray-400" />
-              View Notes
+              <History className="w-3.5 h-3.5 text-indigo-400" />
+              Changelog
             </button>
           </div>
         </div>
