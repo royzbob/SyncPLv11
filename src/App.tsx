@@ -132,7 +132,6 @@ import FriendsView from "./components/FriendsView";
 import PrivateMessagesView from "./components/PrivateMessagesView";
 import PayoutsView from "./components/PayoutsView";
 import RoomChallengesView from "./components/RoomChallengesView";
-import TradingCourseView from "./components/TradingCourseView";
 import CleanFlexCardModal from "./components/CleanFlexCardModal";
 import TiltGuardModal from "./components/TiltGuardModal";
 import GettingStartedGuideModal from "./components/GettingStartedGuideModal";
@@ -4808,16 +4807,6 @@ export default function App() {
                         />
                       )}
 
-                      {(activeTab === "academy" || activeTab === "course") && (
-                        <TradingCourseView
-                          currentUserId={currentUser.uid}
-                          userProfile={profile}
-                          onOpenLogModal={() => setIsLogModalOpen(true)}
-                          onOpenTiltGuardModal={() => setIsTiltGuardModalOpen(true)}
-                          onSwitchTab={setActiveTab}
-                          triggerToast={triggerToast}
-                        />
-                      )}
 
                       {activeTab === "leaderboard" && (
                         <LeaderboardView

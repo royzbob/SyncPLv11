@@ -56,7 +56,7 @@ export default function BillingSettingsTab({
   const handleCancelDeskSubscription = async (roomId: string) => {
     if (!currentUser?.uid) return;
     const confirmCancel = window.confirm(
-      `Are you sure you want to cancel your paid pass for room #${roomId}? You will lose access to its paid course & private room streams.`
+      `Are you sure you want to cancel your paid pass for room #${roomId}? You will lose access to its premium features & private room streams.`
     );
     if (!confirmCancel) return;
 

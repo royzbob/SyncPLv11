@@ -693,7 +693,7 @@ export default function WorkspaceMonetizationSection({
             </span>
             <span className="text-xs text-gray-400">/ yr</span>
           </div>
-          <p className="text-[10px] text-gray-500">Projected 12-month course revenue</p>
+          <p className="text-[10px] text-gray-500">Projected 12-month membership revenue</p>
         </div>
       </div>
 

@@ -382,7 +382,7 @@ export default function SettingsView({
                     </label>
                     <input
                       type="text"
-                      defaultValue={profile?.username ? `${profile.username} Trading Desk` : "Trading Academy LLC"}
+                      defaultValue={profile?.username ? `${profile.username} Trading Desk` : "Trading Desk LLC"}
                       className="w-full bg-[#0F1113] border border-[#2A2D31] rounded-lg px-3 py-2 text-xs text-white"
                     />
                   </div>
