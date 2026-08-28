@@ -27,6 +27,8 @@ import {
   Zap,
   ChevronDown,
   ChevronUp,
+  FlaskConical,
+  GraduationCap,
 } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
@@ -50,31 +52,39 @@ interface LogsViewProps {
 
 const accountTypeConfig: Record<
   AccountType,
-  { label: string; bg: string; text: string; border: string }
+  { label: string; shortLabel: string; bg: string; text: string; border: string; dot: string }
 > = {
   funded: {
-    label: "Funded",
+    label: "Funded Prop",
+    shortLabel: "Funded",
     bg: "bg-emerald-500/10",
     text: "text-emerald-400",
     border: "border-emerald-500/30",
+    dot: "bg-emerald-400",
   },
   live: {
-    label: "Live",
+    label: "Live Capital",
+    shortLabel: "Live",
     bg: "bg-indigo-500/10",
     text: "text-indigo-400",
     border: "border-indigo-500/30",
+    dot: "bg-indigo-400",
   },
   eval: {
-    label: "Eval",
+    label: "Combine / Eval",
+    shortLabel: "Eval",
     bg: "bg-amber-500/10",
     text: "text-amber-400",
     border: "border-amber-500/30",
+    dot: "bg-amber-400",
   },
   practice: {
-    label: "Practice",
-    bg: "bg-sky-500/10",
-    text: "text-sky-400",
-    border: "border-sky-500/30",
+    label: "Practice (Sim)",
+    shortLabel: "Practice",
+    bg: "bg-sky-500/15",
+    text: "text-sky-300",
+    border: "border-sky-500/40",
+    dot: "bg-sky-400",
   },
 };
 
@@ -167,6 +177,28 @@ export default function LogsView({
 
     return { total, net, wins, losses, winRate, avgTrade };
   }, [filteredLogs]);
+
+  // Overall account breakdown across all safeLogs
+  const accountBreakdown = useMemo(() => {
+    const stats: Record<AccountType, { count: number; net: number; wins: number }> = {
+      funded: { count: 0, net: 0, wins: 0 },
+      live: { count: 0, net: 0, wins: 0 },
+      eval: { count: 0, net: 0, wins: 0 },
+      practice: { count: 0, net: 0, wins: 0 },
+    };
+
+    safeLogs.forEach((log) => {
+      const type = (log.accountType || "funded") as AccountType;
+      if (stats[type]) {
+        const amt = Number(log.amount) || 0;
+        stats[type].count++;
+        stats[type].net += amt;
+        if (amt > 0) stats[type].wins++;
+      }
+    });
+
+    return stats;
+  }, [safeLogs]);
 
   const handleExportCSV = () => {
     if (safeLogs.length === 0) return;
@@ -462,22 +494,25 @@ export default function LogsView({
                 : "text-[#8E9297] hover:text-white border border-transparent"
             }`}
           >
-            All Accounts
+            All Accounts ({safeLogs.length})
           </button>
           {(["funded", "live", "eval", "practice"] as const).map((type) => {
             const cfg = accountTypeConfig[type];
             const isActive = accountFilter === type;
+            const count = accountBreakdown[type].count;
             return (
               <button
                 key={type}
                 onClick={() => setAccountFilter(type)}
-                className={`px-2.5 py-1 rounded text-xs font-black uppercase tracking-wider transition cursor-pointer border ${
+                className={`px-2.5 py-1 rounded text-xs font-black uppercase tracking-wider transition cursor-pointer border flex items-center gap-1.5 ${
                   isActive
                     ? `${cfg.bg} ${cfg.text} ${cfg.border}`
-                    : "border-transparent text-gray-500 hover:text-gray-300"
+                    : "border-transparent text-gray-400 hover:text-gray-200"
                 }`}
               >
-                {cfg.label}
+                {type === "practice" && <FlaskConical className="w-3 h-3 text-sky-400" />}
+                <span>{cfg.shortLabel}</span>
+                <span className="text-[10px] opacity-75 font-mono">({count})</span>
               </button>
             );
           })}
@@ -504,6 +539,79 @@ export default function LogsView({
             </select>
           </div>
         )}
+      </div>
+
+      {/* 🌟 Interactive Account Composition Quick Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {/* Funded */}
+        <div
+          onClick={() => setAccountFilter(accountFilter === "funded" ? "all" : "funded")}
+          className={`p-2.5 rounded-xl border transition cursor-pointer ${
+            accountFilter === "funded"
+              ? "bg-emerald-500/15 border-emerald-500/50 shadow-sm"
+              : "bg-[#121417] border-[#2A2D31] hover:border-emerald-500/30"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Funded Prop</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          </div>
+          <p className="text-sm font-black text-white mt-1">{formatCurrency(accountBreakdown.funded.net)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{accountBreakdown.funded.count} recorded trades</p>
+        </div>
+
+        {/* Eval */}
+        <div
+          onClick={() => setAccountFilter(accountFilter === "eval" ? "all" : "eval")}
+          className={`p-2.5 rounded-xl border transition cursor-pointer ${
+            accountFilter === "eval"
+              ? "bg-amber-500/15 border-amber-500/50 shadow-sm"
+              : "bg-[#121417] border-[#2A2D31] hover:border-amber-500/30"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Combine / Eval</span>
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+          </div>
+          <p className="text-sm font-black text-white mt-1">{formatCurrency(accountBreakdown.eval.net)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{accountBreakdown.eval.count} recorded trades</p>
+        </div>
+
+        {/* Live */}
+        <div
+          onClick={() => setAccountFilter(accountFilter === "live" ? "all" : "live")}
+          className={`p-2.5 rounded-xl border transition cursor-pointer ${
+            accountFilter === "live"
+              ? "bg-indigo-500/15 border-indigo-500/50 shadow-sm"
+              : "bg-[#121417] border-[#2A2D31] hover:border-indigo-500/30"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Live Broker</span>
+            <span className="w-2 h-2 rounded-full bg-indigo-400" />
+          </div>
+          <p className="text-sm font-black text-white mt-1">{formatCurrency(accountBreakdown.live.net)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{accountBreakdown.live.count} recorded trades</p>
+        </div>
+
+        {/* Practice - Specially Highlighted */}
+        <div
+          onClick={() => setAccountFilter(accountFilter === "practice" ? "all" : "practice")}
+          className={`p-2.5 rounded-xl border transition cursor-pointer ${
+            accountFilter === "practice"
+              ? "bg-sky-500/20 border-sky-500/60 shadow-sm"
+              : "bg-[#121417] border-[#2A2D31] hover:border-sky-500/40"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black text-sky-400 uppercase tracking-wider flex items-center gap-1">
+              <FlaskConical className="w-3 h-3" /> Practice (Sim)
+            </span>
+            <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+          </div>
+          <p className="text-sm font-black text-sky-300 mt-1">{formatCurrency(accountBreakdown.practice.net)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{accountBreakdown.practice.count} sim rehearsal drills</p>
+        </div>
       </div>
 
       {/* Ledger Table */}
@@ -541,11 +649,19 @@ export default function LogsView({
                   const isProfit = log.amount >= 0;
                   const amtStr = formatCurrency(log.amount);
                   const isOwner = !log.userId || log.userId === userId || log.username === username;
-                  const acct = log.accountType || "funded";
+                  const acct = (log.accountType || "funded") as AccountType;
                   const acctCfg = accountTypeConfig[acct] || accountTypeConfig.funded;
+                  const isPractice = acct === "practice";
 
                   return (
-                    <tr key={`${log.id}_${idx}`} className="hover:bg-[#1E2023]/40 transition duration-150">
+                    <tr
+                      key={`${log.id}_${idx}`}
+                      className={`transition duration-150 ${
+                        isPractice
+                          ? "bg-sky-950/10 hover:bg-sky-950/20"
+                          : "hover:bg-[#1E2023]/40"
+                      }`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-[#8E9297] font-medium">
                         {log.date}
                       </td>
@@ -554,9 +670,10 @@ export default function LogsView({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase border ${acctCfg.bg} ${acctCfg.text} ${acctCfg.border}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase border ${acctCfg.bg} ${acctCfg.text} ${acctCfg.border}`}
                         >
-                          {acctCfg.label}
+                          {isPractice && <FlaskConical className="w-3 h-3 text-sky-400" />}
+                          <span>{acctCfg.label}</span>
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -575,6 +692,15 @@ export default function LogsView({
                           {isProfit ? "+" : ""}
                           {amtStr}
                         </span>
+                        {isPractice ? (
+                          <span className="block text-[9px] font-black uppercase tracking-wider text-sky-400">
+                            🧪 Simulated
+                          </span>
+                        ) : (
+                          <span className="block text-[9px] text-gray-500 uppercase tracking-wider">
+                            {acct === "live" ? "Real Live" : acct === "eval" ? "Eval Test" : "Funded Prop"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                         <div className="flex items-center justify-end space-x-1.5">

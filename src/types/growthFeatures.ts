@@ -34,6 +34,19 @@ export interface TraderStreakBounty {
   username: string;
   currentWinStreak: number;
   bestWinStreak: number;
-  bountyBadge?: "🔥 3-Streak" | "⚡ 5-Streak Sniper" | "👑 10-Streak Legend" | "🛡️ Iron Risk Guard" | "💎 Diamond Discipline";
+  bountyBadge?:
+    | "🔥 3-Streak"
+    | "⚡ 5-Streak Sniper"
+    | "👑 10-Streak Legend"
+    | "🛡️ Iron Risk Guard"
+    | "💎 Diamond Discipline"
+    | "🧪 Lab Scientist"
+    | "🎯 Sim Sniper (5W)"
+    | "🧘 Zero-Risk Discipline";
   dailyPnl: number;
+  practiceTradesToday?: number;
+  practicePnlToday?: number;
+  fundedTradesToday?: number;
+  liveTradesToday?: number;
+  evalTradesToday?: number;
 }
