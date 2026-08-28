@@ -24,6 +24,7 @@ import {
   SlidersHorizontal,
   MessageSquareCode,
   Flame,
+  GraduationCap,
 } from "lucide-react";
 
 interface GettingStartedGuideModalProps {
@@ -681,6 +682,20 @@ export default function GettingStartedGuideModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {onSwitchTab && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onSwitchTab("academy");
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-black transition cursor-pointer shadow-sm"
+                title="Launch Fast-Track Starter Academy"
+              >
+                <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Trading Course</span>
+              </button>
+            )}
+
             {/* Quick Spotlight Mode Trigger in Header */}
             <button
               onClick={() => startSpotlightMode()}

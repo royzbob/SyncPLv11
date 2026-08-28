@@ -39,6 +39,7 @@ import {
   Share2,
   Flame,
   BookOpen,
+  GraduationCap,
 } from "lucide-react";
 import { Room, Channel, VoiceUser, UserProfile } from "../types";
 import { isImageAvatar } from "../utils/presence";
@@ -335,6 +336,23 @@ export default function ActiveRoomSidebar({
           {activeTab !== "chat" && isChatSidePanelOpen && (
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" title="Side Panel Open" />
           )}
+        </button>
+
+        <button
+          id="nav-academy"
+          onClick={() => onSwitchTab("academy")}
+          className={getNavBtnClass("academy")}
+          title="Fast-Track Trading Course: Zero to First Profit"
+        >
+          <div className="flex items-center space-x-2.5">
+            <GraduationCap className="w-4 h-4 text-amber-400" />
+            <span className="flex items-center gap-1.5">
+              <span>Starter Academy</span>
+              <span className="bg-amber-500/20 text-amber-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-amber-500/30">
+                COURSE
+              </span>
+            </span>
+          </div>
         </button>
 
         <button

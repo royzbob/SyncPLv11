@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Compass, LogOut, MessageSquare } from "lucide-react";
+import { Plus, Compass, LogOut, MessageSquare, GraduationCap } from "lucide-react";
 import { Room } from "../types";
 
 interface SidebarRailProps {
@@ -28,6 +28,7 @@ export default function SidebarRail({
   onLogout,
 }: SidebarRailProps) {
   const isPmActive = activeTab === "pms";
+  const isAcademyActive = activeTab === "academy" || activeTab === "course";
 
   return (
     <div className="w-[72px] bg-[#08090A] flex flex-col items-center py-4 justify-between h-full border-r border-[#2A2D31] shrink-0 select-none">
@@ -40,6 +41,26 @@ export default function SidebarRail({
           title="SyncPL Home Terminal"
         >
           <Compass className="w-5 h-5 animate-pulse" />
+        </div>
+
+        {/* Starter Academy Course Rail Button */}
+        <div className="relative group flex items-center justify-center w-full">
+          <div
+            className={`absolute left-0 w-1 bg-amber-400 rounded-r-md transition-all duration-300 ${
+              isAcademyActive ? "h-10" : "h-0 group-hover:h-5"
+            }`}
+          />
+          <button
+            onClick={() => onSwitchTab && onSwitchTab("academy")}
+            className={`w-12 h-12 rounded-3xl flex items-center justify-center transition-all duration-300 relative cursor-pointer ${
+              isAcademyActive
+                ? "bg-gradient-to-tr from-amber-500 to-orange-500 text-black font-black rounded-xl shadow-lg shadow-amber-500/30"
+                : "bg-[#16181D] text-amber-400 border border-amber-500/20 hover:bg-amber-950/40 hover:text-amber-200 hover:rounded-xl"
+            }`}
+            title="Fast-Track Trading Course (Starter Academy)"
+          >
+            <GraduationCap className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Private Messages (PMs) Dedicated Rail Button */}

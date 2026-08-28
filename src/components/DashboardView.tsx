@@ -37,6 +37,7 @@ import {
   SlidersHorizontal,
   Filter,
   Check,
+  GraduationCap,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -820,6 +821,18 @@ export default function DashboardView({
               </button>
             )}
 
+            {onSwitchTab && (
+              <button
+                id="btn-dashboard-academy"
+                onClick={() => onSwitchTab("academy")}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-black transition cursor-pointer shadow-sm"
+                title="Open Fast-Track Trading Course: Zero to First Profit"
+              >
+                <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Starter Course</span>
+              </button>
+            )}
+
             {onOpenGuide && (
               <button
                 id="btn-dashboard-quick-guide"
@@ -928,6 +941,43 @@ export default function DashboardView({
           </div>
         </div>
       )}
+
+      {/* Fast-Track Trading Academy Banner for Beginners & Next-Gen Traders */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-[#161920] to-[#121417] border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 font-black text-base shadow-inner">
+            <GraduationCap className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">
+                SyncPL Starter Academy
+              </span>
+              <span className="bg-amber-500/20 text-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-500/30">
+                5 Fast-Track Modules 🚀
+              </span>
+            </div>
+            <h3 className="text-sm sm:text-base font-black text-white mt-0.5">
+              Zero to Your First $100+ Profit: Fast-Track Trading Course
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Master 15m trend pullbacks, 1:2 R:R math, prop firm combine rules, and interactive trade simulation drills.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 justify-end">
+          {onSwitchTab && (
+            <button
+              onClick={() => onSwitchTab("academy")}
+              className="w-full md:w-auto px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <GraduationCap className="w-4 h-4" />
+              <span>Launch Course & Sim Drills</span>
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Free Tier Upgrade CTA Banner */}
       {!isPremium && (
