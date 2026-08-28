@@ -384,10 +384,11 @@ export default function ActiveRoomSidebar({
           id="nav-logs"
           onClick={() => onSwitchTab("logs")}
           className={getNavBtnClass("logs")}
+          title="Trade Journal & Ledger Records"
         >
           <div className="flex items-center space-x-2.5">
-            <History className="w-4 h-4" />
-            <span>Ledger Records</span>
+            <BookOpen className="w-4 h-4" />
+            <span>Trade Journal</span>
           </div>
         </button>
 

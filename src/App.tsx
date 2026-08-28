@@ -4209,8 +4209,8 @@ export default function App() {
                       </>
                     ) : activeTab === "logs" ? (
                       <>
-                        <span className="hidden sm:inline">P&L Ledger log sheets</span>
-                        <span className="sm:hidden">P&L Logs</span>
+                        <span className="hidden sm:inline">Trade Journal & Ledger records</span>
+                        <span className="sm:hidden">Trade Journal</span>
                       </>
                     ) : activeTab === "pms" ? (
                       <>

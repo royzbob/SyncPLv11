@@ -31,6 +31,12 @@ import {
   DollarSign,
   Scale,
   BookOpen,
+  ShieldCheck,
+  Wallet,
+  Cpu,
+  SlidersHorizontal,
+  Filter,
+  Check,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,6 +52,78 @@ import {
 } from "recharts";
 import { PnlLog, PayoutRecord, AccountType, UserProfile } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
+
+export type DashboardAccountFilter = "all" | "real_only" | AccountType;
+
+export const accountTypeMeta: Record<
+  AccountType,
+  {
+    label: string;
+    shortLabel: string;
+    badge: string;
+    bg: string;
+    text: string;
+    border: string;
+    ring: string;
+    dotColor: string;
+    desc: string;
+    sublabel: string;
+    accentColor: string;
+  }
+> = {
+  funded: {
+    label: "Funded Account",
+    shortLabel: "Funded",
+    badge: "Funded Prop",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+    border: "border-emerald-500/30",
+    ring: "ring-emerald-500/40",
+    dotColor: "bg-emerald-400",
+    desc: "Prop firm funded accounts (real payout eligibility)",
+    sublabel: "Funded Capital",
+    accentColor: "#10b981",
+  },
+  live: {
+    label: "Live Brokerage",
+    shortLabel: "Live",
+    badge: "Direct Live",
+    bg: "bg-indigo-500/10",
+    text: "text-indigo-400",
+    border: "border-indigo-500/30",
+    ring: "ring-indigo-500/40",
+    dotColor: "bg-indigo-400",
+    desc: "Personal cash/margin brokerage account",
+    sublabel: "Personal Live Capital",
+    accentColor: "#6366f1",
+  },
+  eval: {
+    label: "Evaluation Challenge",
+    shortLabel: "Eval",
+    badge: "Challenge Phase",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+    border: "border-amber-500/30",
+    ring: "ring-amber-500/40",
+    dotColor: "bg-amber-400",
+    desc: "Prop firm evaluation / combine phase testing",
+    sublabel: "Evaluation Target Phase",
+    accentColor: "#f59e0b",
+  },
+  practice: {
+    label: "Practice / Demo",
+    shortLabel: "Practice (Sim)",
+    badge: "Simulated Sandbox",
+    bg: "bg-sky-500/10",
+    text: "text-sky-400",
+    border: "border-sky-500/30",
+    ring: "ring-sky-500/40",
+    dotColor: "bg-sky-400",
+    desc: "Simulated paper trading sandbox & setup testing (zero capital risk)",
+    sublabel: "Paper / Simulation",
+    accentColor: "#38bdf8",
+  },
+};
 
 interface DashboardViewProps {
   pnlLogs: PnlLog[];
@@ -83,7 +161,7 @@ export default function DashboardView({
   onOpenGuide,
 }: DashboardViewProps) {
   const [viewMode, setViewMode] = useState<"personal" | "group">(initialMode);
-  const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
+  const [accountFilter, setAccountFilter] = useState<DashboardAccountFilter>("all");
 
   // Sync initialMode if prop changes
   useEffect(() => {
@@ -95,13 +173,129 @@ export default function DashboardView({
   // Filter logs by selected account type if specified
   const filteredRoomLogs = useMemo(() => {
     if (accountFilter === "all") return pnlLogs;
+    if (accountFilter === "real_only") {
+      return pnlLogs.filter((l) => (l.accountType || "funded") !== "practice");
+    }
     return pnlLogs.filter((l) => (l.accountType || "funded") === accountFilter);
   }, [pnlLogs, accountFilter]);
 
-  // 1. Calculate stats for current user
+  // Unfiltered base user logs for multi-account metrics
+  const allUserLogs = useMemo(() => {
+    return pnlLogs.filter((l) => l.userId === userId);
+  }, [pnlLogs, userId]);
+
+  // 1. Calculate stats for current user under active filter
   const userLogs = useMemo(() => {
     return filteredRoomLogs.filter((l) => l.userId === userId);
   }, [filteredRoomLogs, userId]);
+
+  // Account Counts for quick badges
+  const accountCounts = useMemo(() => {
+    const targetBase = viewMode === "personal" ? allUserLogs : pnlLogs;
+    const funded = targetBase.filter((l) => (l.accountType || "funded") === "funded").length;
+    const live = targetBase.filter((l) => l.accountType === "live").length;
+    const evalCount = targetBase.filter((l) => l.accountType === "eval").length;
+    const practice = targetBase.filter((l) => l.accountType === "practice").length;
+    const realOnly = targetBase.filter((l) => (l.accountType || "funded") !== "practice").length;
+
+    return {
+      all: targetBase.length,
+      real_only: realOnly,
+      funded,
+      live,
+      eval: evalCount,
+      practice,
+    };
+  }, [viewMode, allUserLogs, pnlLogs]);
+
+  // Account Performance Breakdown Matrix (Individual Trader)
+  const personalAccountBreakdown = useMemo(() => {
+    const totalBase = allUserLogs.length;
+    const types: AccountType[] = ["funded", "eval", "live", "practice"];
+
+    return types.map((accType) => {
+      const logsForType = allUserLogs.filter((l) => (l.accountType || "funded") === accType);
+      let net = 0;
+      let wins = 0;
+      let losses = 0;
+      let grossProfit = 0;
+      let grossLoss = 0;
+      let best = 0;
+      let worst = 0;
+
+      logsForType.forEach((l) => {
+        const amt = l.amount;
+        net += amt;
+        if (amt > 0) {
+          wins++;
+          grossProfit += amt;
+          if (amt > best) best = amt;
+        } else if (amt < 0) {
+          losses++;
+          grossLoss += Math.abs(amt);
+          if (amt < worst) worst = amt;
+        }
+      });
+
+      const total = logsForType.length;
+      const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
+      const pf = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99.9 : 0;
+      const avg = total > 0 ? net / total : 0;
+      const volPct = totalBase > 0 ? Math.round((total / totalBase) * 100) : 0;
+
+      return {
+        type: accType,
+        meta: accountTypeMeta[accType],
+        total,
+        wins,
+        losses,
+        winRate: wr,
+        netPnl: net,
+        profitFactor: pf,
+        avgTrade: avg,
+        bestTrade: best,
+        worstTrade: worst,
+        volumePct: volPct,
+        isActive: accountFilter === accType,
+      };
+    });
+  }, [allUserLogs, accountFilter]);
+
+  // Account Performance Breakdown Matrix (Desk Group)
+  const groupAccountBreakdown = useMemo(() => {
+    const totalBase = pnlLogs.length;
+    const types: AccountType[] = ["funded", "eval", "live", "practice"];
+
+    return types.map((accType) => {
+      const logsForType = pnlLogs.filter((l) => (l.accountType || "funded") === accType);
+      let net = 0;
+      let wins = 0;
+      let losses = 0;
+
+      logsForType.forEach((l) => {
+        const amt = l.amount;
+        net += amt;
+        if (amt >= 0) wins++;
+        else losses++;
+      });
+
+      const total = logsForType.length;
+      const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
+      const volPct = totalBase > 0 ? Math.round((total / totalBase) * 100) : 0;
+
+      return {
+        type: accType,
+        meta: accountTypeMeta[accType],
+        total,
+        wins,
+        losses,
+        winRate: wr,
+        netPnl: net,
+        volumePct: volPct,
+        isActive: accountFilter === accType,
+      };
+    });
+  }, [pnlLogs, accountFilter]);
 
   // 2. Individual Trader Performance Stats
   const personalStats = useMemo(() => {
@@ -275,6 +469,7 @@ export default function DashboardView({
 
     const dailyPnLMap: Record<number, number> = {};
     const dailyTradesMap: Record<number, number> = {};
+    const dailyAccountMap: Record<number, Record<AccountType, number>> = {};
 
     targetLogs.forEach((log) => {
       if (!log.date) return;
@@ -287,6 +482,12 @@ export default function DashboardView({
       if (ly === year && lm === month) {
         dailyPnLMap[ld] = (dailyPnLMap[ld] || 0) + log.amount;
         dailyTradesMap[ld] = (dailyTradesMap[ld] || 0) + 1;
+
+        const accType = log.accountType || "funded";
+        if (!dailyAccountMap[ld]) {
+          dailyAccountMap[ld] = { funded: 0, eval: 0, live: 0, practice: 0 };
+        }
+        dailyAccountMap[ld][accType] = (dailyAccountMap[ld][accType] || 0) + 1;
       }
     });
 
@@ -308,6 +509,7 @@ export default function DashboardView({
       totalDays,
       dailyPnLMap,
       dailyTradesMap,
+      dailyAccountMap,
       greenDaysCount,
       redDaysCount,
       monthTotal,
@@ -317,14 +519,32 @@ export default function DashboardView({
     };
   }, [viewMode, userLogs, filteredRoomLogs, calDate]);
 
-  // 5. Personal Strategy Aggregates
+  // 5. Personal Strategy Aggregates with Account Type distribution
   const personalStrategyStats = useMemo(() => {
-    const map: Record<string, { wins: number; total: number; pnl: number }> = {};
+    const map: Record<
+      string,
+      {
+        wins: number;
+        total: number;
+        pnl: number;
+        accounts: Record<AccountType, number>;
+      }
+    > = {};
+
     userLogs.forEach((log) => {
       const strat = log.strategy || "Standard Execution";
-      if (!map[strat]) map[strat] = { wins: 0, total: 0, pnl: 0 };
+      const acc = log.accountType || "funded";
+      if (!map[strat]) {
+        map[strat] = {
+          wins: 0,
+          total: 0,
+          pnl: 0,
+          accounts: { funded: 0, eval: 0, live: 0, practice: 0 },
+        };
+      }
       map[strat].total++;
       map[strat].pnl += log.amount;
+      map[strat].accounts[acc] = (map[strat].accounts[acc] || 0) + 1;
       if (log.amount >= 0) map[strat].wins++;
     });
 
@@ -337,6 +557,7 @@ export default function DashboardView({
           total: data.total,
           winRate: wr,
           pnl: data.pnl,
+          accounts: data.accounts,
         };
       })
       .sort((a, b) => b.pnl - a.pnl);
@@ -495,39 +716,68 @@ export default function DashboardView({
 
         {/* Right Controls: Account Filter & Action Shortcuts */}
         <div className="flex items-center gap-2 flex-wrap justify-between md:justify-end">
-          {/* Account Filter Pill */}
-          <div id="dashboard-account-filters" className="flex items-center gap-1 bg-[#090A0C] p-1 rounded-xl border border-[#22262C]">
-            <Layers className="w-3.5 h-3.5 text-gray-400 ml-1.5" />
-            <span className="text-[10px] font-bold text-gray-400 uppercase hidden sm:inline mr-1">
-              Account:
-            </span>
+          {/* Account Filter Pill Selector */}
+          <div id="dashboard-account-filters" className="flex items-center gap-1 bg-[#090A0C] p-1 rounded-xl border border-[#22262C] flex-wrap">
+            <div className="flex items-center gap-1 pl-1.5 pr-1 text-gray-400">
+              <Filter className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-black uppercase hidden sm:inline tracking-wider">
+                Filter:
+              </span>
+            </div>
+
             <button
+              id="filter-acc-all"
               onClick={() => setAccountFilter("all")}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer flex items-center gap-1 ${
                 accountFilter === "all"
-                  ? "bg-white/15 text-white"
-                  : "text-gray-400 hover:text-white"
+                  ? "bg-white/20 text-white shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
               }`}
             >
-              All
+              <span>All Types</span>
+              <span className="text-[9px] bg-black/40 px-1.5 py-0.2 rounded-full font-mono text-gray-300">
+                {accountCounts.all}
+              </span>
             </button>
+
+            <button
+              id="filter-acc-real-only"
+              onClick={() => setAccountFilter("real_only")}
+              className={`px-2 py-1 rounded-lg text-[11px] font-black transition cursor-pointer flex items-center gap-1 ${
+                accountFilter === "real_only"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                  : "text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/5"
+              }`}
+              title="Exclude simulated practice demo trades"
+            >
+              <span>Real / Funded</span>
+              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-full font-mono">
+                {accountCounts.real_only}
+              </span>
+            </button>
+
             {(
               [
-                { id: "funded", label: "Funded", clr: "text-emerald-400" },
-                { id: "live", label: "Live", clr: "text-indigo-400" },
-                { id: "eval", label: "Eval", clr: "text-amber-400" },
+                { id: "funded", label: "Funded", count: accountCounts.funded, clr: "text-emerald-400", activeBg: "bg-emerald-500/20 border-emerald-500/40" },
+                { id: "eval", label: "Eval", count: accountCounts.eval, clr: "text-amber-400", activeBg: "bg-amber-500/20 border-amber-500/40" },
+                { id: "live", label: "Live", count: accountCounts.live, clr: "text-indigo-400", activeBg: "bg-indigo-500/20 border-indigo-500/40" },
+                { id: "practice", label: "Practice", count: accountCounts.practice, clr: "text-sky-400", activeBg: "bg-sky-500/20 border-sky-500/40" },
               ] as const
             ).map((t) => (
               <button
                 key={t.id}
+                id={`filter-acc-${t.id}`}
                 onClick={() => setAccountFilter(t.id)}
-                className={`px-2 py-1 rounded-lg text-[11px] font-black uppercase transition cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-black uppercase transition cursor-pointer flex items-center gap-1 border border-transparent ${
                   accountFilter === t.id
-                    ? `bg-white/15 ${t.clr}`
-                    : "text-gray-500 hover:text-gray-300"
+                    ? `${t.activeBg} ${t.clr} border`
+                    : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
                 }`}
               >
-                {t.label}
+                <span className={t.clr}>{t.label}</span>
+                <span className="text-[9px] bg-black/40 px-1 py-0.2 rounded-full font-mono text-gray-300">
+                  {t.count}
+                </span>
               </button>
             ))}
           </div>
@@ -889,6 +1139,137 @@ export default function DashboardView({
             </div>
           </div>
 
+          {/* 🌟 ACCOUNT TYPE DIFFERENTIATION MATRIX (Funded / Live / Eval / Practice) */}
+          <div id="dashboard-account-breakdown-matrix" className="bg-[#14171B] p-4 md:p-5 rounded-2xl border border-[#262A30] shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
+                  <h3 className="font-black text-white text-base">
+                    Account Type Performance Matrix
+                  </h3>
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-500/30">
+                    Live vs Eval vs Practice
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Differentiate your trading execution across <strong>Funded accounts</strong>, <strong>Eval challenges</strong>, <strong>Live brokerages</strong>, and <strong>Practice demo simulations</strong>.
+                </p>
+              </div>
+
+              {accountFilter !== "all" && (
+                <button
+                  onClick={() => setAccountFilter("all")}
+                  className="text-xs font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 self-start sm:self-auto bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/20 cursor-pointer"
+                >
+                  <span>Reset Filter (Showing {accountFilter})</span>
+                </button>
+              )}
+            </div>
+
+            {/* 4 Cards Grid for Account Types */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {personalAccountBreakdown.map((acc) => {
+                const isSelected = accountFilter === acc.type;
+                return (
+                  <div
+                    key={acc.type}
+                    id={`card-acc-${acc.type}`}
+                    onClick={() => setAccountFilter(isSelected ? "all" : acc.type)}
+                    className={`p-4 rounded-xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                      isSelected
+                        ? `${acc.meta.bg} ${acc.meta.border} ring-2 ${acc.meta.ring} shadow-lg`
+                        : "bg-[#090A0C] border-[#22262C] hover:border-gray-600/60 hover:bg-[#101216]"
+                    }`}
+                  >
+                    {/* Header */}
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${acc.meta.dotColor} shrink-0`} />
+                          <span className={`text-xs font-black uppercase tracking-wider ${acc.meta.text}`}>
+                            {acc.meta.shortLabel}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${acc.meta.bg} ${acc.meta.text} ${acc.meta.border}`}
+                        >
+                          {acc.meta.badge}
+                        </span>
+                      </div>
+
+                      {/* Net P&L */}
+                      <div className="my-2">
+                        <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">
+                          Net P&L
+                        </span>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span
+                            className={`text-xl font-black ${
+                              acc.netPnl > 0
+                                ? "text-emerald-400"
+                                : acc.netPnl < 0
+                                ? "text-rose-400"
+                                : "text-gray-300"
+                            }`}
+                          >
+                            {formatCurrency(acc.netPnl)}
+                          </span>
+                          {acc.type === "practice" && (
+                            <span className="text-[9px] text-sky-400 font-bold bg-sky-500/10 px-1 py-0.2 rounded">
+                              Sim
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stats Row */}
+                      <div className="grid grid-cols-2 gap-2 mt-3 pt-2.5 border-t border-[#22262C] text-xs">
+                        <div>
+                          <span className="text-[10px] text-gray-500 block">Win Rate</span>
+                          <span
+                            className={`font-black ${
+                              acc.winRate >= 50 ? "text-emerald-400" : acc.total > 0 ? "text-rose-400" : "text-gray-400"
+                            }`}
+                          >
+                            {acc.total > 0 ? `${acc.winRate}%` : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-gray-500 block">Total Volume</span>
+                          <span className="font-bold text-gray-300">
+                            {acc.total} trades ({acc.volumePct}%)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer / Quick Filter Action */}
+                    <div className="mt-3 pt-2.5 border-t border-[#22262C] flex items-center justify-between">
+                      <span className="text-[10px] text-gray-500 truncate max-w-[120px]">
+                        {acc.wins}W - {acc.losses}L
+                      </span>
+                      <span
+                        className={`text-[10px] font-black flex items-center gap-1 ${
+                          isSelected ? acc.meta.text : "text-gray-400 group-hover:text-white"
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <Check className="w-3 h-3" />
+                            <span>Active Filter</span>
+                          </>
+                        ) : (
+                          <span>Filter &rarr;</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Personal Consistency Calendar */}
           <div id="dashboard-consistency-calendar" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -898,7 +1279,7 @@ export default function DashboardView({
                   My Personal Consistency Calendar ({heatmapDays.monthName} {heatmapDays.year})
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Visualizing <strong className="text-indigo-300">your individual daily results</strong>. Green = profitable day, Red = loss day, Grey = flat/no trades.
+                  Visualizing <strong className="text-indigo-300">your individual daily results</strong> with colored dots distinguishing account types traded.
                 </p>
               </div>
 
@@ -945,13 +1326,14 @@ export default function DashboardView({
                 ))}
 
                 {Array.from({ length: heatmapDays.startDayIndex }).map((_, idx) => (
-                  <div key={`empty-${idx}`} className="h-11 bg-transparent" />
+                  <div key={`empty-${idx}`} className="h-14 bg-transparent" />
                 ))}
 
                 {Array.from({ length: heatmapDays.totalDays }).map((_, idx) => {
                   const dayNum = idx + 1;
                   const dayPnL = heatmapDays.dailyPnLMap[dayNum];
                   const dayTrades = heatmapDays.dailyTradesMap[dayNum] || 0;
+                  const dayAccs = heatmapDays.dailyAccountMap[dayNum] || { funded: 0, eval: 0, live: 0, practice: 0 };
 
                   let cellClass = "bg-[#090A0C]/50 text-gray-600 border border-[#22262C]";
                   let textClass = "text-gray-400";
@@ -982,24 +1364,67 @@ export default function DashboardView({
                   return (
                     <div
                       key={`personal-day-${dayNum}`}
-                      className={`h-12 rounded-xl flex flex-col justify-center items-center select-none transition cursor-help ${cellClass} ${
+                      className={`h-14 rounded-xl flex flex-col justify-between p-1.5 select-none transition cursor-help relative ${cellClass} ${
                         isToday ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-[#14171B]" : ""
                       }`}
                       title={
                         dayPnL !== undefined
-                          ? `My Net P&L: ${formatCurrency(dayPnL)} (${dayTrades} trades)`
+                          ? `My Net P&L: ${formatCurrency(dayPnL)} (${dayTrades} trades)\n• Funded: ${dayAccs.funded}\n• Eval: ${dayAccs.eval}\n• Live: ${dayAccs.live}\n• Practice: ${dayAccs.practice}`
                           : "No trades logged on this date"
                       }
                     >
-                      <span className="text-[10px] font-black">{dayNum}</span>
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[10px] font-black">{dayNum}</span>
+                        {/* Mini Account Type Indicator Dots */}
+                        {dayTrades > 0 && (
+                          <div className="flex items-center gap-0.5">
+                            {dayAccs.funded > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title={`Funded: ${dayAccs.funded}`} />
+                            )}
+                            {dayAccs.eval > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`Eval: ${dayAccs.eval}`} />
+                            )}
+                            {dayAccs.live > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" title={`Live: ${dayAccs.live}`} />
+                            )}
+                            {dayAccs.practice > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" title={`Practice: ${dayAccs.practice}`} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {amountLabel && (
-                        <span className={`text-[9px] font-black block truncate w-full px-1 text-center ${textClass}`}>
+                        <span className={`text-[9px] font-black block truncate w-full text-center ${textClass}`}>
                           {amountLabel}
                         </span>
                       )}
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Account Dot Legend */}
+            <div className="mt-3 pt-3 border-t border-[#22262C] flex items-center justify-between flex-wrap gap-2 text-[10px] text-gray-400">
+              <span className="font-bold text-gray-500 uppercase tracking-wider">Account Dots:</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <strong className="text-emerald-300">Funded</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <strong className="text-amber-300">Eval</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                  <strong className="text-indigo-300">Live</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-sky-400" />
+                  <strong className="text-sky-300">Practice (Sim)</strong>
+                </span>
               </div>
             </div>
           </div>
@@ -1092,7 +1517,7 @@ export default function DashboardView({
                   <BarChart2 className="text-indigo-400 w-4 h-4" /> My Strategy Playbook
                 </h3>
                 <p className="text-xs text-gray-400 mb-3">
-                  Your win rate & net P&L grouped by technical setup
+                  Your win rate & net P&L grouped by setup and account type
                 </p>
               </div>
 
@@ -1105,9 +1530,32 @@ export default function DashboardView({
                     >
                       <div>
                         <p className="text-xs font-black text-gray-200">{item.strategy}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">
-                          {item.total} setups executed
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="text-[10px] text-gray-500">
+                            {item.total} setups
+                          </span>
+                          {/* Mini Account Distribution Pills */}
+                          {item.accounts.funded > 0 && (
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.2 rounded font-bold">
+                              {item.accounts.funded} Funded
+                            </span>
+                          )}
+                          {item.accounts.eval > 0 && (
+                            <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.2 rounded font-bold">
+                              {item.accounts.eval} Eval
+                            </span>
+                          )}
+                          {item.accounts.live > 0 && (
+                            <span className="text-[9px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.2 rounded font-bold">
+                              {item.accounts.live} Live
+                            </span>
+                          )}
+                          {item.accounts.practice > 0 && (
+                            <span className="text-[9px] bg-sky-500/10 text-sky-400 px-1.5 py-0.2 rounded font-bold">
+                              {item.accounts.practice} Sim
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <p
@@ -1278,6 +1726,133 @@ export default function DashboardView({
             </div>
           </div>
 
+          {/* 🌟 GROUP ACCOUNT TYPE BREAKDOWN MATRIX */}
+          <div id="group-account-breakdown-matrix" className="bg-[#14171B] p-4 md:p-5 rounded-2xl border border-[#262A30] shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-emerald-400" />
+                  <h3 className="font-black text-white text-base">
+                    Desk Collective Account Matrix
+                  </h3>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                    Room Pool Breakdown
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Performance across all desk traders segregated by <strong>Funded</strong>, <strong>Eval</strong>, <strong>Live</strong>, and <strong>Practice</strong>.
+                </p>
+              </div>
+
+              {accountFilter !== "all" && (
+                <button
+                  onClick={() => setAccountFilter("all")}
+                  className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 self-start sm:self-auto bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 cursor-pointer"
+                >
+                  <span>Reset Filter (Showing {accountFilter})</span>
+                </button>
+              )}
+            </div>
+
+            {/* 4 Cards Grid for Group Account Types */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {groupAccountBreakdown.map((acc) => {
+                const isSelected = accountFilter === acc.type;
+                return (
+                  <div
+                    key={`group-acc-${acc.type}`}
+                    id={`group-card-acc-${acc.type}`}
+                    onClick={() => setAccountFilter(isSelected ? "all" : acc.type)}
+                    className={`p-4 rounded-xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                      isSelected
+                        ? `${acc.meta.bg} ${acc.meta.border} ring-2 ${acc.meta.ring} shadow-lg`
+                        : "bg-[#090A0C] border-[#22262C] hover:border-gray-600/60 hover:bg-[#101216]"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${acc.meta.dotColor} shrink-0`} />
+                          <span className={`text-xs font-black uppercase tracking-wider ${acc.meta.text}`}>
+                            {acc.meta.shortLabel}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${acc.meta.bg} ${acc.meta.text} ${acc.meta.border}`}
+                        >
+                          {acc.meta.badge}
+                        </span>
+                      </div>
+
+                      <div className="my-2">
+                        <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block">
+                          Desk Net P&L
+                        </span>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span
+                            className={`text-xl font-black ${
+                              acc.netPnl > 0
+                                ? "text-emerald-400"
+                                : acc.netPnl < 0
+                                ? "text-rose-400"
+                                : "text-gray-300"
+                            }`}
+                          >
+                            {formatCurrency(acc.netPnl)}
+                          </span>
+                          {acc.type === "practice" && (
+                            <span className="text-[9px] text-sky-400 font-bold bg-sky-500/10 px-1 py-0.2 rounded">
+                              Sim
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mt-3 pt-2.5 border-t border-[#22262C] text-xs">
+                        <div>
+                          <span className="text-[10px] text-gray-500 block">Win Rate</span>
+                          <span
+                            className={`font-black ${
+                              acc.winRate >= 50 ? "text-emerald-400" : acc.total > 0 ? "text-rose-400" : "text-gray-400"
+                            }`}
+                          >
+                            {acc.total > 0 ? `${acc.winRate}%` : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-gray-500 block">Desk Volume</span>
+                          <span className="font-bold text-gray-300">
+                            {acc.total} trades ({acc.volumePct}%)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-[#22262C] flex items-center justify-between">
+                      <span className="text-[10px] text-gray-500 truncate">
+                        {acc.wins}W - {acc.losses}L
+                      </span>
+                      <span
+                        className={`text-[10px] font-black flex items-center gap-1 ${
+                          isSelected ? acc.meta.text : "text-gray-400 group-hover:text-white"
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <Check className="w-3 h-3" />
+                            <span>Active</span>
+                          </>
+                        ) : (
+                          <span>Filter &rarr;</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Collective Desk Consistency Calendar */}
           <div id="group-dashboard-consistency-calendar" className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -1287,7 +1862,7 @@ export default function DashboardView({
                   Collective Desk Consistency Calendar ({heatmapDays.monthName} {heatmapDays.year})
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Visualizing the <strong className="text-emerald-300">aggregate team net P&L</strong> of all traders in this room.
+                  Visualizing the <strong className="text-emerald-300">aggregate team net P&L</strong> with account type indicator dots.
                 </p>
               </div>
 
@@ -1334,13 +1909,14 @@ export default function DashboardView({
                 ))}
 
                 {Array.from({ length: heatmapDays.startDayIndex }).map((_, idx) => (
-                  <div key={`group-empty-${idx}`} className="h-11 bg-transparent" />
+                  <div key={`group-empty-${idx}`} className="h-14 bg-transparent" />
                 ))}
 
                 {Array.from({ length: heatmapDays.totalDays }).map((_, idx) => {
                   const dayNum = idx + 1;
                   const dayPnL = heatmapDays.dailyPnLMap[dayNum];
                   const dayTrades = heatmapDays.dailyTradesMap[dayNum] || 0;
+                  const dayAccs = heatmapDays.dailyAccountMap[dayNum] || { funded: 0, eval: 0, live: 0, practice: 0 };
 
                   let cellClass = "bg-[#090A0C]/50 text-gray-600 border border-[#22262C]";
                   let textClass = "text-gray-400";
@@ -1371,24 +1947,67 @@ export default function DashboardView({
                   return (
                     <div
                       key={`group-day-${dayNum}`}
-                      className={`h-12 rounded-xl flex flex-col justify-center items-center select-none transition cursor-help ${cellClass} ${
+                      className={`h-14 rounded-xl flex flex-col justify-between p-1.5 select-none transition cursor-help relative ${cellClass} ${
                         isToday ? "ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#14171B]" : ""
                       }`}
                       title={
                         dayPnL !== undefined
-                          ? `Desk Combined P&L: ${formatCurrency(dayPnL)} (${dayTrades} room trades)`
+                          ? `Desk Combined P&L: ${formatCurrency(dayPnL)} (${dayTrades} room trades)\n• Funded: ${dayAccs.funded}\n• Eval: ${dayAccs.eval}\n• Live: ${dayAccs.live}\n• Practice: ${dayAccs.practice}`
                           : "No desk trades reported on this date"
                       }
                     >
-                      <span className="text-[10px] font-black">{dayNum}</span>
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[10px] font-black">{dayNum}</span>
+                        {/* Mini Account Indicator Dots */}
+                        {dayTrades > 0 && (
+                          <div className="flex items-center gap-0.5">
+                            {dayAccs.funded > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title={`Funded: ${dayAccs.funded}`} />
+                            )}
+                            {dayAccs.eval > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`Eval: ${dayAccs.eval}`} />
+                            )}
+                            {dayAccs.live > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" title={`Live: ${dayAccs.live}`} />
+                            )}
+                            {dayAccs.practice > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" title={`Practice: ${dayAccs.practice}`} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {amountLabel && (
-                        <span className={`text-[9px] font-black block truncate w-full px-1 text-center ${textClass}`}>
+                        <span className={`text-[9px] font-black block truncate w-full text-center ${textClass}`}>
                           {amountLabel}
                         </span>
                       )}
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Account Dot Legend */}
+            <div className="mt-3 pt-3 border-t border-[#22262C] flex items-center justify-between flex-wrap gap-2 text-[10px] text-gray-400">
+              <span className="font-bold text-gray-500 uppercase tracking-wider">Account Dots:</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <strong className="text-emerald-300">Funded</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <strong className="text-amber-300">Eval</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                  <strong className="text-indigo-300">Live</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-sky-400" />
+                  <strong className="text-sky-300">Practice (Sim)</strong>
+                </span>
               </div>
             </div>
           </div>

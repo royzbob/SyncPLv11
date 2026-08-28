@@ -19,6 +19,14 @@ import {
   AlertCircle,
   Share2,
   FileSpreadsheet,
+  BookOpen,
+  HelpCircle,
+  Info,
+  BarChart3,
+  CheckCircle2,
+  Zap,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
@@ -89,6 +97,7 @@ export default function LogsView({
   const [selectedFlexLog, setSelectedFlexLog] = useState<PnlLog | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [copiedState, setCopiedState] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const safeLogs = Array.isArray(pnlLogs) ? pnlLogs : [];
   const safeTraders = Array.isArray(traders) ? traders : [];
@@ -139,6 +148,26 @@ export default function LogsView({
     });
   }, [safeLogs, scope, userId, accountFilter, strategyFilter]);
 
+  // Computed summary stats for the active view
+  const journalStats = useMemo(() => {
+    const total = filteredLogs.length;
+    let net = 0;
+    let wins = 0;
+    let losses = 0;
+
+    filteredLogs.forEach((log) => {
+      const amt = Number(log.amount) || 0;
+      net += amt;
+      if (amt > 0) wins++;
+      else if (amt < 0) losses++;
+    });
+
+    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+    const avgTrade = total > 0 ? net / total : 0;
+
+    return { total, net, wins, losses, winRate, avgTrade };
+  }, [filteredLogs]);
+
   const handleExportCSV = () => {
     if (safeLogs.length === 0) return;
 
@@ -156,7 +185,7 @@ export default function LogsView({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `SyncPL-Ledger-${roomCode}-${getLocalDateString()}.csv`);
+    link.setAttribute("download", `SyncPL-TradeJournal-${roomCode}-${getLocalDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -183,10 +212,13 @@ export default function LogsView({
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6 overflow-y-auto h-full text-[#DCDDDE]">
       {/* Header */}
-      <div className="flex justify-between items-center flex-wrap gap-4">
+      <div className="flex justify-between items-start flex-wrap gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-black text-2xl text-white tracking-tight">Ledger Logs</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-black text-2xl text-white tracking-tight flex items-center gap-2">
+              <BookOpen className="w-6 h-6 text-indigo-400" />
+              <span>Trade Journal & Ledger</span>
+            </h3>
             {isUnlimitedUser ? (
               <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                 <Crown className="w-3 h-3 text-emerald-400" /> {isCreatorOrMod ? "Owner / Unlimited" : "Pro Unlimited"}
@@ -197,33 +229,54 @@ export default function LogsView({
               </span>
             )}
           </div>
-          <p className="text-xs text-[#8E9297] mt-1">
-            Comprehensive multi-account ledger logs reported within active workspace
+          <p className="text-xs text-[#8E9297] mt-1 max-w-2xl">
+            Your centralized trade execution journal. Track individual setups, import broker CSVs, and analyze multi-account P&L performance across your trading desk.
           </p>
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowGuide((prev) => !prev)}
+            className={`text-xs font-bold px-3 py-2 rounded-lg border transition flex items-center gap-1.5 cursor-pointer ${
+              showGuide
+                ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
+                : "bg-[#1E2023] hover:bg-[#24272C] border-[#2A2D31] text-gray-400 hover:text-white"
+            }`}
+            title="Learn how the Trade Journal & Ledger works"
+          >
+            <HelpCircle className="w-4 h-4 text-indigo-400" />
+            <span className="hidden sm:inline">What is this?</span>
+            <span className="sm:hidden">Guide</span>
+            {showGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+
           <button
             id="btn-ledger-import-trades"
             onClick={() => setIsImportModalOpen(true)}
-            className="bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 hover:text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer"
-            title="Import trades from CSV or JSON file"
+            className="bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 hover:text-white font-bold text-xs px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+            title="Import trades from NinjaTrader, Tradovate, MetaTrader, or CSV"
           >
             <Upload className="w-4 h-4 text-indigo-400" />
             <span className="hidden sm:inline">Import Trades</span>
             <span className="sm:hidden">Import</span>
           </button>
+          
           <button
             onClick={handleExportCSV}
-            className="bg-[#1E2023] hover:bg-[#24272C] border border-[#2A2D31] text-[#8E9297] hover:text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer"
+            className="bg-[#1E2023] hover:bg-[#24272C] border border-[#2A2D31] text-[#8E9297] hover:text-white font-bold text-xs px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+            title="Export full trade journal to CSV"
           >
-            <Download className="w-4 h-4" /> Export CSV
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export CSV</span>
           </button>
+
           <button
             onClick={handleAddRecordClick}
-            className={`font-bold text-xs px-3.5 py-2 rounded transition flex items-center gap-1.5 cursor-pointer shadow ${
+            className={`font-bold text-xs px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow ${
               isLimitReached
                 ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30"
-                : "bg-[#5865F2] hover:bg-[#4752C4] text-white"
+                : "bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-indigo-500/20"
             }`}
           >
             {isLimitReached ? (
@@ -234,12 +287,113 @@ export default function LogsView({
             ) : (
               <>
                 <Plus className="w-4 h-4" />
-                <span>Add Record</span>
+                <span>Log Trade</span>
               </>
             )}
           </button>
         </div>
       </div>
+
+      {/* Explainer / Guide Drawer Banner */}
+      {showGuide && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#1E222B] to-[#121417] border border-indigo-500/30 shadow-2xl space-y-4 animate-in fade-in">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                <Info className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-white">How the Trade Journal & Ledger Works</h4>
+                <p className="text-xs text-gray-400">Everything you log or import here powers your analytics, win-rates, and leaderboard rank.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowGuide(false)}
+              className="text-gray-500 hover:text-gray-300 p-1 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            <div className="p-3.5 rounded-xl bg-[#121417] border border-white/5 space-y-1.5">
+              <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs">
+                <Plus className="w-4 h-4 shrink-0" />
+                <span>1. Log Executions</span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Click <strong className="text-gray-300">Log Trade</strong> to save dollar P&L, ticker symbol, strategy tags (e.g. Breakout, Reversal, ICT), and psychological notes.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#121417] border border-white/5 space-y-1.5">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <Layers className="w-4 h-4 shrink-0" />
+                <span>2. Multi-Account Tagging</span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Organize trades by account type: <strong className="text-emerald-400">Funded</strong>, <strong className="text-indigo-400">Live</strong>, <strong className="text-amber-400">Eval / Challenge</strong>, or <strong className="text-sky-400">Practice</strong>.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#121417] border border-white/5 space-y-1.5">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                <Upload className="w-4 h-4 shrink-0" />
+                <span>3. One-Click Import</span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Import complete trade histories from <strong className="text-gray-300">NinjaTrader, Tradovate, MT4/5, Thinkorswim</strong>, or custom CSV files in seconds.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#121417] border border-white/5 space-y-1.5">
+              <div className="flex items-center gap-2 text-purple-400 font-bold text-xs">
+                <Award className="w-4 h-4 shrink-0" />
+                <span>4. Flex & Analytics</span>
+              </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                Click the <strong className="text-gray-300">Trophy icon</strong> next to any trade to generate shareable high-res P&L certificate cards for social channels.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mini Performance Summary Cards */}
+      {journalStats.total > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3.5 rounded-xl bg-[#121417] border border-[#2A2D31] flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filtered Net P&L</span>
+            <div className={`text-base sm:text-lg font-black tracking-tight mt-1 ${journalStats.net >= 0 ? "text-[#43B581]" : "text-[#F04747]"}`}>
+              {journalStats.net >= 0 ? "+" : ""}
+              {formatCurrency(journalStats.net)}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#121417] border border-[#2A2D31] flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Win Rate</span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-base sm:text-lg font-black text-white">{journalStats.winRate}%</span>
+              <span className="text-[10px] font-semibold text-gray-500">({journalStats.wins}W / {journalStats.losses}L)</span>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#121417] border border-[#2A2D31] flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Average Trade</span>
+            <div className={`text-base sm:text-lg font-black tracking-tight mt-1 ${journalStats.avgTrade >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {journalStats.avgTrade >= 0 ? "+" : ""}
+              {formatCurrency(journalStats.avgTrade)}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#121417] border border-[#2A2D31] flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Records</span>
+            <div className="text-base sm:text-lg font-black text-white mt-1">
+              {journalStats.total} {journalStats.total === 1 ? "Trade" : "Trades"}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Free Tier Limit Notification Banner */}
       {!isUnlimitedUser && isLimitReached && (
@@ -449,9 +603,52 @@ export default function LogsView({
             </table>
           </div>
         ) : (
-          <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center">
-            <FolderOpen className="w-12 h-12 text-gray-600 mb-2 animate-pulse" />
-            <p className="text-sm font-semibold">No P&L sync records found for selected filter.</p>
+          <div className="p-8 sm:p-12 text-center text-gray-400 flex flex-col items-center justify-center max-w-lg mx-auto space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-[#1E2023] border border-[#2A2D31] text-indigo-400 flex items-center justify-center shadow-inner">
+              <BookOpen className="w-8 h-8" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-white">
+                {safeLogs.length === 0 ? "Your Trade Journal is Empty" : "No Trades Match Current Filters"}
+              </h4>
+              <p className="text-xs text-[#8E9297] leading-relaxed">
+                {safeLogs.length === 0
+                  ? "Start tracking your trading executions to unlock real-time win-rate metrics, desk equity curves, strategy analytics, and shareable verified P&L cards."
+                  : "Try clearing your account or strategy filters to view your other logged trades."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap justify-center pt-2">
+              <button
+                type="button"
+                onClick={handleAddRecordClick}
+                className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-500/20"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Log First Trade</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 hover:text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Upload className="w-4 h-4 text-indigo-400" />
+                <span>Import Broker CSV</span>
+              </button>
+
+              {!showGuide && (
+                <button
+                  type="button"
+                  onClick={() => setShowGuide(true)}
+                  className="bg-[#1E2023] hover:bg-[#24272C] border border-[#2A2D31] text-gray-300 hover:text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>How It Works</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
