@@ -466,6 +466,8 @@ export default function LogsView({
           onImport={onImportTrades}
           currentAccountType={accountFilter === "all" ? "funded" : accountFilter}
           roomCode={roomCode}
+          existingLogs={pnlLogs}
+          currentUserId={traders.find((t) => t.username === username)?.id}
         />
       )}
     </div>

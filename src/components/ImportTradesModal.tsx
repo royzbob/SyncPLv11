@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import {
   Upload,
   FileSpreadsheet,
@@ -15,8 +15,10 @@ import {
   DollarSign,
   TrendingUp,
   RefreshCw,
+  Copy,
+  Check,
 } from "lucide-react";
-import { AccountType } from "../types";
+import { AccountType, PnlLog } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 
 export interface ParsedImportTrade {
@@ -37,6 +39,8 @@ interface ImportTradesModalProps {
   onImport: (trades: ParsedImportTrade[]) => Promise<void>;
   currentAccountType?: AccountType;
   roomCode: string;
+  existingLogs?: PnlLog[];
+  currentUserId?: string;
 }
 
 export default function ImportTradesModal({
@@ -45,12 +49,15 @@ export default function ImportTradesModal({
   onImport,
   currentAccountType = "funded",
   roomCode,
+  existingLogs = [],
+  currentUserId,
 }: ImportTradesModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [parsedTrades, setParsedTrades] = useState<ParsedImportTrade[]>([]);
   const [defaultAccountType, setDefaultAccountType] = useState<AccountType>(currentAccountType);
   const [defaultStrategy, setDefaultStrategy] = useState<string>("Imported Trade");
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
@@ -271,20 +278,79 @@ export default function ImportTradesModal({
     setIsDragging(false);
   };
 
+  const handleReset = () => {
+    setFile(null);
+    setFileName("");
+    setParsedTrades([]);
+    setErrorMsg("");
+  };
+
+  // Analyze duplicates against existing user logs
+  const evaluatedTrades = useMemo(() => {
+    const userLogs = existingLogs.filter(
+      (log) => !currentUserId || log.userId === currentUserId
+    );
+
+    // Track duplicates within the current import batch as well
+    const seenBatchKeys = new Set<string>();
+
+    return parsedTrades.map((trade) => {
+      const targetAccount = trade.accountType || defaultAccountType;
+      const targetStrat = trade.strategy || defaultStrategy;
+      const roundedAmt = Math.round(trade.amount * 100) / 100;
+
+      // Key for existing logs comparison: Date + Asset + Amount + AccountType
+      const isExistingDuplicate = userLogs.some((existing) => {
+        const existingRoundedAmt = Math.round(existing.amount * 100) / 100;
+        const sameDate = existing.date === trade.date;
+        const sameAsset = (existing.asset || "").toUpperCase() === trade.asset.toUpperCase();
+        const sameAmount = Math.abs(existingRoundedAmt - roundedAmt) < 0.01;
+        const sameAccount = !existing.accountType || existing.accountType === targetAccount;
+        return sameDate && sameAsset && sameAmount && sameAccount;
+      });
+
+      // Key within this batch to prevent duplicate rows inside the same CSV file
+      const batchKey = `${trade.date}_${trade.asset}_${roundedAmt}_${targetAccount}_${trade.time || ""}`;
+      const isBatchDuplicate = seenBatchKeys.has(batchKey);
+      seenBatchKeys.add(batchKey);
+
+      const isDuplicate = isExistingDuplicate || isBatchDuplicate;
+
+      return {
+        ...trade,
+        accountType: targetAccount,
+        strategy: targetStrat,
+        isDuplicate,
+        duplicateReason: isExistingDuplicate ? "Already in Ledger" : isBatchDuplicate ? "Duplicate in CSV" : undefined,
+      };
+    });
+  }, [parsedTrades, existingLogs, currentUserId, defaultAccountType, defaultStrategy]);
+
+  // Filtered trades to actually import
+  const tradesToImport = useMemo(() => {
+    if (skipDuplicates) {
+      return evaluatedTrades.filter((t) => !t.isDuplicate);
+    }
+    return evaluatedTrades;
+  }, [evaluatedTrades, skipDuplicates]);
+
+  const duplicateCount = evaluatedTrades.filter((t) => t.isDuplicate).length;
+
+  // Preview totals based on what will actually be imported
+  const totalNetPnl = tradesToImport.reduce((acc, t) => acc + t.amount, 0);
+  const totalWins = tradesToImport.filter((t) => t.amount >= 0).length;
+  const winRate = tradesToImport.length > 0 ? Math.round((totalWins / tradesToImport.length) * 100) : 0;
+
   const handleExecuteImport = async () => {
-    if (parsedTrades.length === 0) return;
+    if (tradesToImport.length === 0) {
+      setErrorMsg("No new trades to import. All records are duplicates or already exist in the ledger.");
+      return;
+    }
     setIsProcessing(true);
     setErrorMsg("");
 
     try {
-      // Re-apply any default account type or strategy if user adjusted them
-      const finalTrades = parsedTrades.map((t) => ({
-        ...t,
-        accountType: t.accountType || defaultAccountType,
-        strategy: t.strategy || defaultStrategy,
-      }));
-
-      await onImport(finalTrades);
+      await onImport(tradesToImport);
       handleReset();
       onClose();
     } catch (err: any) {
@@ -294,18 +360,6 @@ export default function ImportTradesModal({
       setIsProcessing(false);
     }
   };
-
-  const handleReset = () => {
-    setFile(null);
-    setFileName("");
-    setParsedTrades([]);
-    setErrorMsg("");
-  };
-
-  // Preview totals
-  const totalNetPnl = parsedTrades.reduce((acc, t) => acc + t.amount, 0);
-  const totalWins = parsedTrades.filter((t) => t.amount >= 0).length;
-  const winRate = parsedTrades.length > 0 ? Math.round((totalWins / parsedTrades.length) * 100) : 0;
 
   return (
     <div id="import-trades-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -450,32 +504,70 @@ export default function ImportTradesModal({
                 </button>
               </div>
 
-              {/* Summary Stats Cards */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-[#14171B] p-2.5 rounded-xl border border-[#22262C] text-center">
-                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
-                    Total Records
+              {/* Duplicate Avoidance Option */}
+              <div className="bg-[#0A0C0E] border border-[#22262C] p-3 rounded-xl flex items-center justify-between">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={skipDuplicates}
+                    onChange={(e) => setSkipDuplicates(e.target.checked)}
+                    className="w-4 h-4 rounded bg-[#14171B] border-[#2E333B] text-indigo-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      Avoid Duplicate Trades (Recommended)
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                        Smart Match
+                      </span>
+                    </span>
+                    <p className="text-[10px] text-gray-400">
+                      Prevents importing trades with identical Date, Asset, P&L, and Account Type already in your ledger.
+                    </p>
+                  </div>
+                </label>
+                {duplicateCount > 0 && (
+                  <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                    skipDuplicates
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                      : "bg-gray-800 text-gray-400 border-gray-700"
+                  }`}>
+                    {duplicateCount} duplicate{duplicateCount > 1 ? "s" : ""} detected {skipDuplicates ? "(will skip)" : "(will include)"}
                   </span>
-                  <span className="text-base font-black text-white">{parsedTrades.length}</span>
+                )}
+              </div>
+
+              {/* Summary Stats Cards */}
+              <div className="grid grid-cols-4 gap-2">
+                <div className="bg-[#14171B] p-2 rounded-xl border border-[#22262C] text-center">
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
+                    In File
+                  </span>
+                  <span className="text-sm font-black text-white">{parsedTrades.length}</span>
                 </div>
-                <div className="bg-[#14171B] p-2.5 rounded-xl border border-[#22262C] text-center">
+                <div className="bg-[#14171B] p-2 rounded-xl border border-[#22262C] text-center">
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
+                    Importing
+                  </span>
+                  <span className="text-sm font-black text-indigo-300">{tradesToImport.length}</span>
+                </div>
+                <div className="bg-[#14171B] p-2 rounded-xl border border-[#22262C] text-center">
                   <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
                     Net Sum P&L
                   </span>
                   <span
-                    className={`text-base font-black ${
+                    className={`text-sm font-black ${
                       totalNetPnl >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
                     {formatCurrency(totalNetPnl)}
                   </span>
                 </div>
-                <div className="bg-[#14171B] p-2.5 rounded-xl border border-[#22262C] text-center">
+                <div className="bg-[#14171B] p-2 rounded-xl border border-[#22262C] text-center">
                   <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">
                     Win Rate
                   </span>
                   <span
-                    className={`text-base font-black ${
+                    className={`text-sm font-black ${
                       winRate >= 50 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
@@ -493,12 +585,20 @@ export default function ImportTradesModal({
                       <th className="p-2">Asset</th>
                       <th className="p-2">Account</th>
                       <th className="p-2">Strategy</th>
+                      <th className="p-2">Status</th>
                       <th className="p-2 text-right">P&L</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#1D2127]">
-                    {parsedTrades.slice(0, 50).map((t, idx) => (
-                      <tr key={idx} className="hover:bg-white/5 transition">
+                    {evaluatedTrades.slice(0, 50).map((t, idx) => (
+                      <tr
+                        key={idx}
+                        className={`transition ${
+                          t.isDuplicate && skipDuplicates
+                            ? "bg-amber-950/15 opacity-60 hover:opacity-100"
+                            : "hover:bg-white/5"
+                        }`}
+                      >
                         <td className="p-2 text-gray-400">{t.date}</td>
                         <td className="p-2 font-bold text-indigo-300">{t.asset}</td>
                         <td className="p-2">
@@ -506,8 +606,28 @@ export default function ImportTradesModal({
                             {t.accountType || defaultAccountType}
                           </span>
                         </td>
-                        <td className="p-2 text-gray-300 truncate max-w-[120px]">
+                        <td className="p-2 text-gray-300 truncate max-w-[100px]">
                           {t.strategy || defaultStrategy}
+                        </td>
+                        <td className="p-2">
+                          {t.isDuplicate ? (
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
+                                skipDuplicates
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                                  : "bg-gray-800 text-gray-300 border-gray-700"
+                              }`}
+                              title={t.duplicateReason}
+                            >
+                              <AlertCircle className="w-2.5 h-2.5" />
+                              {skipDuplicates ? "Skip Duplicate" : "Duplicate"}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
+                              <Check className="w-2.5 h-2.5" />
+                              New
+                            </span>
+                          )}
                         </td>
                         <td
                           className={`p-2 font-black text-right ${
@@ -521,9 +641,9 @@ export default function ImportTradesModal({
                   </tbody>
                 </table>
               </div>
-              {parsedTrades.length > 50 && (
+              {evaluatedTrades.length > 50 && (
                 <p className="text-[10px] text-gray-500 italic text-center">
-                  Showing first 50 of {parsedTrades.length} trades. All records will be imported.
+                  Showing first 50 of {evaluatedTrades.length} trades. All valid records will be processed.
                 </p>
               )}
             </div>
@@ -565,18 +685,26 @@ export default function ImportTradesModal({
               <button
                 type="button"
                 onClick={handleExecuteImport}
-                disabled={isProcessing}
+                disabled={isProcessing || tradesToImport.length === 0}
                 className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-950/40 transition disabled:opacity-50 cursor-pointer"
               >
                 {isProcessing ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Importing {parsedTrades.length} Trades...</span>
+                    <span>Importing {tradesToImport.length} Trades...</span>
+                  </>
+                ) : tradesToImport.length === 0 ? (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-amber-300" />
+                    <span>All Records Already in Ledger</span>
                   </>
                 ) : (
                   <>
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Import {parsedTrades.length} Trades to Ledger</span>
+                    <span>
+                      Import {tradesToImport.length} New Trade{tradesToImport.length > 1 ? "s" : ""}
+                      {skipDuplicates && duplicateCount > 0 ? ` (${duplicateCount} Skipped)` : ""}
+                    </span>
                   </>
                 )}
               </button>
