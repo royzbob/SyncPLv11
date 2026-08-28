@@ -747,6 +747,52 @@ export default function App() {
     }
   }, [currentUser, db]);
 
+  // Auto-show Quick Start Guide for first-time / new users
+  useEffect(() => {
+    if (!currentUser || !profile) return;
+    const hasSeenLocal = localStorage.getItem(`syncpl_has_seen_guide_${currentUser.uid}`);
+    if (!hasSeenLocal && profile.hasSeenGuide !== true) {
+      const timer = setTimeout(() => {
+        setIsGuideModalOpen(true);
+      }, 900);
+      return () => clearTimeout(timer);
+    }
+  }, [currentUser?.uid, profile?.hasSeenGuide]);
+
+  const handleCloseGuide = () => {
+    setIsGuideModalOpen(false);
+    if (currentUser) {
+      try {
+        localStorage.setItem(`syncpl_has_seen_guide_${currentUser.uid}`, "true");
+      } catch {}
+      const profileRef = doc(db, "users", currentUser.uid, "profile", "info");
+      setDoc(profileRef, { hasSeenGuide: true }, { merge: true }).catch(() => {});
+    }
+  };
+
+  // Global Realtime listener for all registered traders & presence in the platform
+  useEffect(() => {
+    if (!currentUser) {
+      setPublicUsers([]);
+      return;
+    }
+    const usersQuery = query(collection(db, "users"), limit(150));
+    const unsub = onSnapshot(
+      usersQuery,
+      (snapshot) => {
+        const map = new Map<string, any>();
+        snapshot.forEach((d) => {
+          map.set(d.id, { id: d.id, ...d.data() });
+        });
+        setPublicUsers(Array.from(map.values()));
+      },
+      (error) => {
+        handleFirestoreErrorState(error, "Global Users onSnapshot");
+      }
+    );
+    return () => unsub();
+  }, [currentUser?.uid]);
+
   const handleOpenPmWithUser = (targetUserId: string) => {
     setSelectedPmUserId(targetUserId);
     setActiveTab("pms");
@@ -1205,6 +1251,15 @@ export default function App() {
             currentProfile.subscriptionStatus = "trialing";
             needsUpdate = true;
           }
+          // Ensure default room SYNC-ALPHA is joined for every user
+          if (!currentProfile.groupIds || currentProfile.groupIds.length === 0 || !currentProfile.groupIds.includes("SYNC-ALPHA")) {
+            currentProfile.groupIds = Array.from(new Set([...(currentProfile.groupIds || []), "SYNC-ALPHA"]));
+            needsUpdate = true;
+          }
+          if (!currentProfile.activeGroupId) {
+            currentProfile.activeGroupId = "SYNC-ALPHA";
+            needsUpdate = true;
+          }
           if (needsUpdate) {
             try {
               await setDoc(profileRef, currentProfile, { merge: true });
@@ -1240,12 +1295,13 @@ export default function App() {
           avatarColor: "indigo",
           avatarType: "emoji",
           avatarVal: "🐂",
-          groupIds: isCreator ? ["SYNC-ALPHA"] : [],
-          activeGroupId: isCreator ? "SYNC-ALPHA" : "",
+          groupIds: ["SYNC-ALPHA"],
+          activeGroupId: "SYNC-ALPHA",
           createdAt: now.toISOString(),
           trialEndDate: trialEnd.toISOString(),
           subscriptionStatus: isCreator ? "active" : "trialing",
           subscriptionTier: isCreator ? "premium" : "free",
+          hasSeenGuide: false,
         };
         try {
           await setDoc(profileRef, currentProfile);
@@ -1263,14 +1319,34 @@ export default function App() {
 
       setProfile(currentProfile);
 
-      // Setup list of room items dynamically from groupIds
-      if (currentProfile.groupIds && currentProfile.groupIds.length > 0) {
-        const preferredRoom = localStorage.getItem("syncpl_last_active_room") || currentProfile.activeGroupId || currentProfile.groupIds[0];
-        await fetchJoinedRooms(currentProfile.groupIds, preferredRoom);
-      } else {
-        setRooms([]);
-        setActiveRoom(null);
+      // Register public user directory entry immediately so user shows up in room rosters everywhere
+      try {
+        const publicUserRef = doc(db, "users", user.uid);
+        await setDoc(
+          publicUserRef,
+          {
+            uid: user.uid,
+            username: currentProfile.username || "Trader",
+            avatarColor: currentProfile.avatarColor || "indigo",
+            avatarType: currentProfile.avatarType || "emoji",
+            avatarVal: currentProfile.avatarVal || "🐂",
+            subscriptionTier: currentProfile.subscriptionTier || "free",
+            activeGroupId: currentProfile.activeGroupId || "SYNC-ALPHA",
+            marketPresence: "active",
+            customStatus: "Analyzing Markets",
+            lastActiveAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (publicErr) {
+        console.warn("Initial public user directory registration:", publicErr);
       }
+
+      // Setup list of room items dynamically from groupIds
+      const validGroupIds = currentProfile.groupIds && currentProfile.groupIds.length > 0 ? currentProfile.groupIds : ["SYNC-ALPHA"];
+      const preferredRoom = localStorage.getItem("syncpl_last_active_room") || currentProfile.activeGroupId || validGroupIds[0];
+      await fetchJoinedRooms(validGroupIds, preferredRoom);
     } catch (e: any) {
       handleFirestoreErrorState(e, "initUserProfileAndRoom");
     }
@@ -1523,19 +1599,6 @@ export default function App() {
     });
     unsubscribers.push(unsubVoice);
 
-    // Observe active users
-    const usersQuery = query(collection(db, "users"), limit(50));
-    const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
-      const map = new Map<string, any>();
-      snapshot.forEach((d) => {
-        map.set(d.id, { id: d.id, ...d.data() });
-      });
-      setPublicUsers(Array.from(map.values()));
-    }, (error) => {
-      handleFirestoreErrorState(error, "Users onSnapshot");
-    });
-    unsubscribers.push(unsubUsers);
-
     // Observe PNL logs and Live Trades in a single unified listener
     const logsQuery = query(collection(db, "pnl_logs"), where("groupId", "==", activeRoom.id), limit(200));
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
@@ -1604,7 +1667,9 @@ export default function App() {
   // Real presence heartbeat and active status synchronization
   const lastHeartbeatPingRef = useRef<number>(0);
   useEffect(() => {
-    if (!currentUser || !activeRoom) return;
+    if (!currentUser) return;
+
+    const currentRoomId = activeRoom?.id || profile?.activeGroupId || "SYNC-ALPHA";
 
     const syncPresenceHeartbeat = async (status: "active" | "idle" | "offline" = "active") => {
       try {
@@ -1617,7 +1682,7 @@ export default function App() {
             avatarColor: profile?.avatarColor || "indigo",
             avatarType: profile?.avatarType || "emoji",
             avatarVal: profile?.avatarVal || "🐂",
-            activeGroupId: activeRoom.id,
+            activeGroupId: currentRoomId,
             marketPresence: status,
             lastActiveAt: new Date().toISOString(),
           },
@@ -1672,7 +1737,7 @@ export default function App() {
       window.removeEventListener("pointerdown", onUserActivity);
       window.removeEventListener("keydown", onUserActivity);
     };
-  }, [currentUser?.uid, activeRoom?.id, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal]);
+  }, [currentUser?.uid, activeRoom?.id, profile?.activeGroupId, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal]);
 
   // Dynamically derive room traders with live presence, status, and custom settings (Optimized Memo)
   const traders = useMemo(() => {
@@ -1689,7 +1754,7 @@ export default function App() {
       avatarColor: profile?.avatarColor || "indigo",
       avatarType: profile?.avatarType || "emoji",
       avatarVal: profile?.avatarVal || "🐂",
-      groupIds: profile?.groupIds || [],
+      groupIds: profile?.groupIds || [activeRoom.id],
       activeGroupId: activeRoom.id,
       marketPresence: getComputedPresence(myPublicInfo, true),
       customStatus: myPublicInfo?.customStatus || "",
@@ -1699,7 +1764,13 @@ export default function App() {
 
     // 2. Other users in the same active room (from Firestore users list)
     publicUsers.forEach((user) => {
-      if (user.activeGroupId === activeRoom.id) {
+      const userActiveRoom = user.activeGroupId || "SYNC-ALPHA";
+      const isUserInRoom =
+        userActiveRoom === activeRoom.id ||
+        (user.groupIds && user.groupIds.includes(activeRoom.id)) ||
+        activeRoom.id === "SYNC-ALPHA";
+
+      if (isUserInRoom) {
         const lowerName = (user.username || "").toLowerCase();
         if (lowerName && !addedUsernames.has(lowerName)) {
           derivedTraders.push({
@@ -1708,7 +1779,7 @@ export default function App() {
             avatarType: user.avatarType || "emoji",
             avatarVal: user.avatarVal || "🐂",
             groupIds: user.groupIds || [activeRoom.id],
-            activeGroupId: activeRoom.id,
+            activeGroupId: user.activeGroupId || activeRoom.id,
             marketPresence: getComputedPresence(user, false),
             customStatus: user.customStatus || "",
             lastActiveAt: user.lastActiveAt,
@@ -1798,12 +1869,37 @@ export default function App() {
         avatarColor: "indigo",
         avatarType: "emoji",
         avatarVal: "🐂",
-        groupIds: [],
-        activeGroupId: "",
+        groupIds: ["SYNC-ALPHA"],
+        activeGroupId: "SYNC-ALPHA",
+        createdAt: new Date().toISOString(),
+        subscriptionStatus: "trialing",
+        subscriptionTier: "free",
+        hasSeenGuide: false,
       };
       await setDoc(profileRef, defaultProfile);
       setProfile(defaultProfile);
-      triggerToast("Welcome Guest!", `Logged in safely as ${name}.`, "success");
+
+      // Register public user document immediately
+      const publicUserRef = doc(db, "users", cred.user.uid);
+      await setDoc(
+        publicUserRef,
+        {
+          uid: cred.user.uid,
+          username: name,
+          avatarColor: "indigo",
+          avatarType: "emoji",
+          avatarVal: "🐂",
+          subscriptionTier: "free",
+          activeGroupId: "SYNC-ALPHA",
+          marketPresence: "active",
+          customStatus: "Analyzing Markets",
+          lastActiveAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      triggerToast("Welcome to SyncPL!", `Logged in safely as ${name}.`, "success");
     } catch (e: any) {
       throw new Error(e.message || "Guest authentication gateway rejected.");
     }
@@ -1830,18 +1926,44 @@ export default function App() {
   const handleEmailRegister = async (name: string, email: string, pass: string) => {
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
+      const isCreator = email.toLowerCase() === "1nathandrew6@gmail.com";
       const profileRef = doc(db, "users", cred.user.uid, "profile", "info");
       const newProfile: UserProfile = {
         username: name,
         avatarColor: "indigo",
         avatarType: "emoji",
         avatarVal: "🐂",
-        groupIds: [],
-        activeGroupId: "",
+        groupIds: ["SYNC-ALPHA"],
+        activeGroupId: "SYNC-ALPHA",
+        createdAt: new Date().toISOString(),
+        subscriptionStatus: isCreator ? "active" : "trialing",
+        subscriptionTier: isCreator ? "premium" : "free",
+        hasSeenGuide: false,
       };
       await setDoc(profileRef, newProfile);
       setProfile(newProfile);
-      triggerToast("Account Created", "Institutional profile saved.", "success");
+
+      // Register public user document immediately
+      const publicUserRef = doc(db, "users", cred.user.uid);
+      await setDoc(
+        publicUserRef,
+        {
+          uid: cred.user.uid,
+          username: name,
+          avatarColor: "indigo",
+          avatarType: "emoji",
+          avatarVal: "🐂",
+          subscriptionTier: isCreator ? "premium" : "free",
+          activeGroupId: "SYNC-ALPHA",
+          marketPresence: "active",
+          customStatus: "Analyzing Markets",
+          lastActiveAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      triggerToast("Account Created", "Welcome to SyncPL Trading Desk!", "success");
     } catch (e: any) {
       throw new Error(e.message || "Failed to register profile credentials.");
     }
@@ -2798,6 +2920,60 @@ export default function App() {
     } catch (err) {
       console.error(err);
       triggerToast("Sync Failed", "Check database synchronization connection.", "error");
+    }
+  };
+
+  // Bulk Import Trades to Ledger Logs
+  const handleImportTrades = async (importedTrades: Array<{
+    date: string;
+    time?: string;
+    asset: string;
+    amount: number;
+    strategy: string;
+    accountType?: AccountType;
+    notes?: string;
+    win: boolean;
+  }>) => {
+    if (!currentUser || !activeRoom) return;
+
+    if (subscriptionState.isExpired) {
+      triggerToast("Premium Required", "Your free trial period has ended. Please subscribe to continue importing trades.", "error");
+      return;
+    }
+
+    if (!importedTrades || importedTrades.length === 0) return;
+
+    try {
+      const logsCol = collection(db, "pnl_logs");
+      let count = 0;
+
+      // Batch or parallelize document creations
+      const promises = importedTrades.map((t) => {
+        const payload = {
+          userId: currentUser.uid,
+          username: profile?.username || "Trader",
+          groupId: activeRoom.id,
+          amount: t.amount,
+          date: t.date,
+          time: t.time || "12:00",
+          strategy: t.strategy || "Imported Trade",
+          asset: (t.asset || "NQ").toUpperCase(),
+          notes: t.notes || "Imported from file",
+          accountType: t.accountType || "funded",
+          win: t.amount >= 0,
+          timestamp: new Date().toISOString(),
+        };
+        count++;
+        return addDoc(logsCol, payload);
+      });
+
+      await Promise.all(promises);
+
+      triggerToast("Import Successful", `Successfully imported ${count} trades to the Ledger!`, "success");
+    } catch (err: any) {
+      console.error("Bulk trade import error:", err);
+      triggerToast("Import Failed", err.message || "Failed to commit imported trades.", "error");
+      throw err;
     }
   };
 
@@ -4662,6 +4838,7 @@ export default function App() {
                           username={profile?.username || "Trader"}
                           onDeleteLog={handleDeleteTradeLog}
                           onOpenLogModal={() => setIsLogModalOpen(true)}
+                          onImportTrades={handleImportTrades}
                           roomCode={activeRoom.id}
                           traders={traders}
                           isCreatorOrMod={isCreatorOrMod}
@@ -5578,18 +5755,18 @@ export default function App() {
 
           <GettingStartedGuideModal
             isOpen={isGuideModalOpen}
-            onClose={() => setIsGuideModalOpen(false)}
+            onClose={handleCloseGuide}
             onSwitchTab={setActiveTab}
             onOpenLogModal={() => {
-              setIsGuideModalOpen(false);
+              handleCloseGuide();
               setIsLogModalOpen(true);
             }}
             onOpenTiltGuardModal={() => {
-              setIsGuideModalOpen(false);
+              handleCloseGuide();
               setIsTiltGuardModalOpen(true);
             }}
             onOpenFlexModal={() => {
-              setIsGuideModalOpen(false);
+              handleCloseGuide();
               setFlexModalLog(null);
               setIsFlexModalOpen(true);
             }}

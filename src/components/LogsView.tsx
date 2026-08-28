@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import {
   Download,
+  Upload,
   Plus,
   Filter,
   Award,
@@ -17,11 +18,13 @@ import {
   Lock,
   AlertCircle,
   Share2,
+  FileSpreadsheet,
 } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
 import { isImageAvatar } from "../utils/presence";
 import CleanFlexCardModal from "./CleanFlexCardModal";
+import ImportTradesModal, { ParsedImportTrade } from "./ImportTradesModal";
 
 interface LogsViewProps {
   pnlLogs: PnlLog[];
@@ -29,6 +32,7 @@ interface LogsViewProps {
   username: string;
   onDeleteLog: (id: string, asset: string, amount: number) => Promise<void>;
   onOpenLogModal: () => void;
+  onImportTrades?: (trades: ParsedImportTrade[]) => Promise<void>;
   roomCode: string;
   traders: UserProfile[];
   isCreatorOrMod?: boolean;
@@ -72,6 +76,7 @@ export default function LogsView({
   username,
   onDeleteLog,
   onOpenLogModal,
+  onImportTrades,
   roomCode,
   traders,
   isCreatorOrMod = false,
@@ -82,6 +87,7 @@ export default function LogsView({
   const [accountFilter, setAccountFilter] = useState<"all" | AccountType>("all");
   const [strategyFilter, setStrategyFilter] = useState<string>("all");
   const [selectedFlexLog, setSelectedFlexLog] = useState<PnlLog | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [copiedState, setCopiedState] = useState(false);
 
   // Determine if user has unlimited access (Pro subscriber or Room Creator / App Owner / Mod)
@@ -188,6 +194,16 @@ export default function LogsView({
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            id="btn-ledger-import-trades"
+            onClick={() => setIsImportModalOpen(true)}
+            className="bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 hover:text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer"
+            title="Import trades from CSV or JSON file"
+          >
+            <Upload className="w-4 h-4 text-indigo-400" />
+            <span className="hidden sm:inline">Import Trades</span>
+            <span className="sm:hidden">Import</span>
+          </button>
           <button
             onClick={handleExportCSV}
             className="bg-[#1E2023] hover:bg-[#24272C] border border-[#2A2D31] text-[#8E9297] hover:text-white font-bold text-xs px-3 py-2 rounded transition flex items-center gap-1.5 cursor-pointer"
@@ -441,6 +457,17 @@ export default function LogsView({
         deskName="SyncPL Ledger"
         roomCode={roomCode}
       />
+
+      {/* Bulk Trade Import Modal */}
+      {onImportTrades && (
+        <ImportTradesModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onImport={onImportTrades}
+          currentAccountType={accountFilter === "all" ? "funded" : accountFilter}
+          roomCode={roomCode}
+        />
+      )}
     </div>
   );
 }

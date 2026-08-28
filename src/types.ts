@@ -41,6 +41,7 @@ export interface UserProfile {
   marketPresence?: "active" | "idle" | "dnd" | "offline";
   customStatus?: string;
   lastActiveAt?: string;
+  hasSeenGuide?: boolean;
 }
 
 export type AccountType = "funded" | "live" | "practice" | "eval";
