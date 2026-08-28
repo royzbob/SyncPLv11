@@ -62,7 +62,7 @@ import {
 
 import { auth, db } from "./lib/firebase";
 import { Room, Channel, VoiceUser, UserProfile, PnlLog, ChatMessage, LiveTrade, TradingRule, PayoutRecord, AccountType } from "./types";
-import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString, DEFAULT_STRATEGIES } from "./utils/helpers";
+import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, getLocalDateString, getLocalTimeString, DEFAULT_STRATEGIES, safeSendNotification } from "./utils/helpers";
 import { playJoinSound, playLeaveSound, playChatMessageSound, ChatNotificationSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
 import { getApiUrl, safeFetchJson } from "./utils/api";
@@ -389,7 +389,12 @@ export default function App() {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioContextClass) return;
-        audioCtx = new AudioContextClass();
+        try {
+          audioCtx = new AudioContextClass();
+        } catch (audioErr) {
+          console.debug("VAD AudioContext init skipped:", audioErr);
+          return;
+        }
         const source = audioCtx.createMediaStreamSource(micStream);
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
@@ -1215,8 +1220,12 @@ export default function App() {
 
   // Initialize Notification Permission
   useEffect(() => {
-    if ("Notification" in window) {
-      setNotificationPermission(Notification.permission);
+    try {
+      if (typeof window !== "undefined" && "Notification" in window) {
+        setNotificationPermission(Notification.permission);
+      }
+    } catch (e) {
+      console.debug("Notification permission query unavailable:", e);
     }
   }, []);
 
@@ -1558,19 +1567,15 @@ export default function App() {
                 text.includes("🚨 LIVE POSITION DEPLOYED");
 
               if (isTradeLog) {
-                if ("Notification" in window && Notification.permission === "granted") {
-                  new Notification("Desk Trade Alert", {
-                    body: text || `${msg.username || "Trader"} posted a trade update.`,
-                    icon: "/app_icon.png"
-                  });
-                }
+                safeSendNotification("Desk Trade Alert", {
+                  body: text || `${msg.username || "Trader"} posted a trade update.`,
+                  icon: "/app_icon.png"
+                });
               } else if (document.hidden) {
-                if ("Notification" in window && Notification.permission === "granted") {
-                  new Notification(`New message from ${msg.username || "Trader"}`, {
-                    body: text || (msg.imageUrl ? "Sent an image attachment" : "New chat message"),
-                    icon: "/app_icon.png"
-                  });
-                }
+                safeSendNotification(`New message from ${msg.username || "Trader"}`, {
+                  body: text || (msg.imageUrl ? "Sent an image attachment" : "New chat message"),
+                  icon: "/app_icon.png"
+                });
               }
             }
           }
@@ -3629,7 +3634,7 @@ export default function App() {
       setNotificationPermission(permission);
       if (permission === "granted") {
         triggerToast("Notifications Enabled", "Desk ledger and settlement desktop alerts active!", "success");
-        new Notification("ProDesk Ledger Alerts Active", {
+        safeSendNotification("ProDesk Ledger Alerts Active", {
           body: "You will now receive push notifications for trade broadcasts and AI settlements.",
           icon: "/app_icon.png"
         });
@@ -3651,30 +3656,34 @@ export default function App() {
       console.log(`Speech synthesis for user ${speakerUserId} ignored because they are locally muted.`);
       return;
     }
-    if ("speechSynthesis" in window) {
-      // Cancel prior synth
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.pitch = 1.0;
-      utterance.rate = 1.0;
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined") {
+        // Cancel prior synth
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.pitch = 1.0;
+        utterance.rate = 1.0;
 
-      let userVol = 100;
-      if (speakerUserId && userVolumes[speakerUserId] !== undefined) {
-        userVol = userVolumes[speakerUserId];
+        let userVol = 100;
+        if (speakerUserId && userVolumes[speakerUserId] !== undefined) {
+          userVol = userVolumes[speakerUserId];
+        }
+        utterance.volume = (globalVolume / 100) * (userVol / 100);
+
+        // Select firm risk analyst voice accent
+        const voices = window.speechSynthesis.getVoices();
+        const targetVoice = voices.find(
+          (v) =>
+            v.name.includes("Google US English") ||
+            v.name.includes("Samantha") ||
+            v.name.includes("Zira")
+        );
+        if (targetVoice) utterance.voice = targetVoice;
+
+        window.speechSynthesis.speak(utterance);
       }
-      utterance.volume = (globalVolume / 100) * (userVol / 100);
-
-      // Select firm risk analyst voice accent
-      const voices = window.speechSynthesis.getVoices();
-      const targetVoice = voices.find(
-        (v) =>
-          v.name.includes("Google US English") ||
-          v.name.includes("Samantha") ||
-          v.name.includes("Zira")
-      );
-      if (targetVoice) utterance.voice = targetVoice;
-
-      window.speechSynthesis.speak(utterance);
+    } catch (speechErr) {
+      console.debug("Speech synthesis notice:", speechErr);
     }
   };
 

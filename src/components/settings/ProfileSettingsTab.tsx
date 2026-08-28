@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Megaphone,
   Eye,
+  History,
 } from "lucide-react";
 import { UserProfile } from "../../types";
 import { doc, getDoc } from "firebase/firestore";

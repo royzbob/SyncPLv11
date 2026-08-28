@@ -103,7 +103,14 @@ export default function AudioSettingsTab({
       streamRef.current = stream;
 
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioContextClass();
+      if (!AudioContextClass) return;
+      let audioCtx: AudioContext;
+      try {
+        audioCtx = new AudioContextClass();
+      } catch (err) {
+        console.debug("AudioContext unavailable:", err);
+        return;
+      }
       audioCtxRef.current = audioCtx;
 
       const source = audioCtx.createMediaStreamSource(stream);

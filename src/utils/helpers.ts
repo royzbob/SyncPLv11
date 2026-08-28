@@ -144,3 +144,38 @@ export const DEFAULT_STRATEGIES: string[] = [
   "Wyckoff Accumulation / Distribution",
   "Discretionary / Price Action",
 ];
+
+/**
+ * Safely send a browser desktop notification without throwing 'Illegal constructor'
+ * in environments like mobile Chrome, WebView, or sandboxed iframes.
+ */
+export function safeSendNotification(title: string, options?: NotificationOptions): boolean {
+  try {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return false;
+    }
+    if (Notification.permission !== "granted") {
+      return false;
+    }
+    // In restricted iframes or Android Chrome, new Notification throws TypeError: Illegal constructor
+    if (typeof Notification === "function") {
+      try {
+        const notif = new Notification(title, options);
+        return !!notif;
+      } catch (innerErr) {
+        // Fallback to ServiceWorker registration notification if available
+        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready
+            .then((reg) => reg.showNotification(title, options))
+            .catch(() => {});
+          return true;
+        }
+        return false;
+      }
+    }
+    return false;
+  } catch (err) {
+    console.debug("Desktop notification skipped or unsupported:", err);
+    return false;
+  }
+}
