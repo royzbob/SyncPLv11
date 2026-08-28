@@ -63,8 +63,6 @@ export default function ImportTradesModal({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
-
   // CSV parsing helper
   const parseCSVText = (text: string): ParsedImportTrade[] => {
     const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);
@@ -340,6 +338,8 @@ export default function ImportTradesModal({
   const totalNetPnl = tradesToImport.reduce((acc, t) => acc + t.amount, 0);
   const totalWins = tradesToImport.filter((t) => t.amount >= 0).length;
   const winRate = tradesToImport.length > 0 ? Math.round((totalWins / tradesToImport.length) * 100) : 0;
+
+  if (!isOpen) return null;
 
   const handleExecuteImport = async () => {
     if (tradesToImport.length === 0) {

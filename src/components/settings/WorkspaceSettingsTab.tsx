@@ -467,10 +467,11 @@ export default function WorkspaceSettingsTab({
                                     {chan.name}
                                   </span>
                                   {hasPin && (
-                                    <Lock
-                                      className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0"
-                                      title={`Locked with PIN: ${chan.pin}`}
-                                    />
+                                    <span title={`Locked with PIN: ${chan.pin}`}>
+                                      <Lock
+                                        className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0"
+                                      />
+                                    </span>
                                   )}
                                 </div>
 
@@ -614,10 +615,11 @@ export default function WorkspaceSettingsTab({
                                     {chan.name}
                                   </span>
                                   {hasPin && (
-                                    <Lock
-                                      className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0"
-                                      title={`Locked with PIN: ${chan.pin}`}
-                                    />
+                                    <span title={`Locked with PIN: ${chan.pin}`}>
+                                      <Lock
+                                        className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0"
+                                      />
+                                    </span>
                                   )}
                                 </div>
 

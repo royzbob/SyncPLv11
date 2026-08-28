@@ -66,6 +66,7 @@ import { generateRandomRoomCode, initialTickers, TickerInfo, formatCurrency, get
 import { playJoinSound, playLeaveSound, playChatMessageSound, ChatNotificationSound } from "./utils/audio";
 import { WebRtcVoiceManager } from "./lib/webrtcVoice";
 import { getApiUrl, safeFetchJson } from "./utils/api";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const isMobileOrTablet = typeof window !== "undefined" && (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 1024);
 
@@ -659,7 +660,7 @@ export default function App() {
 
     const activateUserProMembership = async () => {
       const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const updateData = {
+      const updateData: Partial<UserProfile> = {
         subscriptionStatus: "active",
         subscriptionTier: "premium",
         subscriptionPeriodEnd: nextMonth,
@@ -4744,7 +4745,7 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    <>
+                    <ErrorBoundary key={activeTab} fallbackTitle={`View Notice (${activeTab})`}>
                       {(activeTab === "dashboard" || activeTab === "group-dashboard") && (
                         <DashboardView
                           pnlLogs={pnlLogs}
@@ -4891,61 +4892,63 @@ export default function App() {
                           triggerToast={triggerToast}
                         />
                       )}
-                    </>
+                    </ErrorBoundary>
                   )}
 
                   {activeTab === "partners" && (
-                    <SettingsView
-                      profile={profile}
-                      activeRoom={activeRoom}
-                      channels={channels}
-                      onUpdateProfile={handleUpdateProfile}
-                      onAddChannel={handleAddChannel}
-                      onDeleteChannel={handleDeleteChannel}
-                      onRenameChannel={handleRenameChannelTrigger}
-                      onSetChannelPin={handleSetChannelPin}
-                      onMoveChannel={handleMoveChannel}
-                      onCopyRoomCode={() => {
-                        navigator.clipboard.writeText(activeRoom.id);
-                        triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
-                      }}
-                      onJoinRoomCode={handleJoinRoom}
-                      onCreateNewRoom={handleCreateRoom}
-                      onRenameRoom={handleRenameRoom}
-                      onDeleteRoom={handleDeleteRoom}
-                      isCreatorOrMod={isCreatorOrMod}
-                      onConsultAiAdvisor={handleConsultAiAdvisor}
-                      voiceName={voiceName}
-                      setVoiceName={setVoiceName}
-                      vocalPrompt={vocalPrompt}
-                      setVocalPrompt={setVocalPrompt}
-                      subscriptionState={subscriptionState}
-                      stripeConfig={stripeConfig}
-                      onSubscribe={handleSubscribe}
-                      onManageBilling={handleManageBilling}
-                      onUpdateSubscriptionTier={handleUpdateSubscriptionTier}
-                      onUpdateRoomMonetization={handleUpdateRoomMonetization}
-                      onUpdateStripeConnect={handleUpdateStripeConnect}
-                      onUpdateDiscordWebhook={handleUpdateDiscordWebhook}
-                      chatSoundEnabled={chatSoundEnabled}
-                      onToggleChatSound={handleToggleChatSound}
-                      chatSoundType={chatSoundType}
-                      onChangeChatSoundType={handleChangeChatSoundType}
-                      chatSoundVolume={chatSoundVolume}
-                      onChangeChatSoundVolume={handleChangeChatSoundVolume}
-                      isRoomOwner={
-                        activeRoom.creatorId === currentUser?.uid ||
-                        currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
-                        profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
-                        profile?.role === "owner"
-                      }
-                      currentUser={currentUser}
-                      userRooms={rooms}
-                      onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
-                      triggerToast={triggerToast}
-                      onOpenUpgradeModal={handleOpenProModal}
-                      isAppOwner={Boolean(currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.role === "owner")}
-                    />
+                    <ErrorBoundary key="partners" fallbackTitle="Settings View Notice">
+                      <SettingsView
+                        profile={profile}
+                        activeRoom={activeRoom}
+                        channels={channels}
+                        onUpdateProfile={handleUpdateProfile}
+                        onAddChannel={handleAddChannel}
+                        onDeleteChannel={handleDeleteChannel}
+                        onRenameChannel={handleRenameChannelTrigger}
+                        onSetChannelPin={handleSetChannelPin}
+                        onMoveChannel={handleMoveChannel}
+                        onCopyRoomCode={() => {
+                          navigator.clipboard.writeText(activeRoom.id);
+                          triggerToast("Room Code Copied", "Share invite code with your partners.", "info");
+                        }}
+                        onJoinRoomCode={handleJoinRoom}
+                        onCreateNewRoom={handleCreateRoom}
+                        onRenameRoom={handleRenameRoom}
+                        onDeleteRoom={handleDeleteRoom}
+                        isCreatorOrMod={isCreatorOrMod}
+                        onConsultAiAdvisor={handleConsultAiAdvisor}
+                        voiceName={voiceName}
+                        setVoiceName={setVoiceName}
+                        vocalPrompt={vocalPrompt}
+                        setVocalPrompt={setVocalPrompt}
+                        subscriptionState={subscriptionState}
+                        stripeConfig={stripeConfig}
+                        onSubscribe={handleSubscribe}
+                        onManageBilling={handleManageBilling}
+                        onUpdateSubscriptionTier={handleUpdateSubscriptionTier}
+                        onUpdateRoomMonetization={handleUpdateRoomMonetization}
+                        onUpdateStripeConnect={handleUpdateStripeConnect}
+                        onUpdateDiscordWebhook={handleUpdateDiscordWebhook}
+                        chatSoundEnabled={chatSoundEnabled}
+                        onToggleChatSound={handleToggleChatSound}
+                        chatSoundType={chatSoundType}
+                        onChangeChatSoundType={handleChangeChatSoundType}
+                        chatSoundVolume={chatSoundVolume}
+                        onChangeChatSoundVolume={handleChangeChatSoundVolume}
+                        isRoomOwner={
+                          activeRoom.creatorId === currentUser?.uid ||
+                          currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+                          profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" ||
+                          profile?.role === "owner"
+                        }
+                        currentUser={currentUser}
+                        userRooms={rooms}
+                        onUnsubscribeFromRoom={handleUnsubscribeFromRoom}
+                        triggerToast={triggerToast}
+                        onOpenUpgradeModal={handleOpenProModal}
+                        isAppOwner={Boolean(currentUser?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.email?.toLowerCase() === "1nathandrew6@gmail.com" || profile?.role === "owner")}
+                      />
+                    </ErrorBoundary>
                   )}
                 </div>
 

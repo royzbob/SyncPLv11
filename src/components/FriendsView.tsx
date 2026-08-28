@@ -750,7 +750,9 @@ export default function FriendsView({
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="text-xs font-black text-white hover:text-indigo-400 transition truncate">{f.username}</span>
                                   {f.subscriptionTier === "premium" && (
-                                    <Crown className="w-3.5 h-3.5 text-indigo-400" title="Premium Workspace" />
+                                    <span title="Premium Workspace">
+                                      <Crown className="w-3.5 h-3.5 text-indigo-400" />
+                                    </span>
                                   )}
                                   {f.activeGroupId && (
                                     <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-bold">

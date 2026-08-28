@@ -7,9 +7,10 @@ export function generateRandomRoomCode(): string {
   return code;
 }
 
-export function formatCurrency(val: number): string {
-  const sign = val < 0 ? "-" : "";
-  return `${sign}$${Math.abs(val).toLocaleString(undefined, {
+export function formatCurrency(val: number | string | null | undefined): string {
+  const num = typeof val === "number" ? val : parseFloat(String(val || 0)) || 0;
+  const sign = num < 0 ? "-" : "";
+  return `${sign}$${Math.abs(num).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

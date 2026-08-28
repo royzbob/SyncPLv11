@@ -71,14 +71,14 @@ const accountTypeConfig: Record<
 };
 
 export default function LogsView({
-  pnlLogs,
+  pnlLogs = [],
   userId,
-  username,
+  username = "Trader",
   onDeleteLog,
   onOpenLogModal,
   onImportTrades,
-  roomCode,
-  traders,
+  roomCode = "DESK",
+  traders = [],
   isCreatorOrMod = false,
   isPremium = false,
   onOpenUpgradeModal,
@@ -90,13 +90,16 @@ export default function LogsView({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [copiedState, setCopiedState] = useState(false);
 
+  const safeLogs = Array.isArray(pnlLogs) ? pnlLogs : [];
+  const safeTraders = Array.isArray(traders) ? traders : [];
+
   // Determine if user has unlimited access (Pro subscriber or Room Creator / App Owner / Mod)
   const isUnlimitedUser = isPremium || isCreatorOrMod;
 
   // Compute how many logs the current user has created
   const userLogsCount = useMemo(() => {
-    return pnlLogs.filter((l) => l.userId === userId).length;
-  }, [pnlLogs, userId]);
+    return safeLogs.filter((l) => l && l.userId === userId).length;
+  }, [safeLogs, userId]);
 
   const FREE_LOG_LIMIT = 10;
   const isLimitReached = !isUnlimitedUser && userLogsCount >= FREE_LOG_LIMIT;
@@ -112,37 +115,42 @@ export default function LogsView({
   // Collect all unique strategies present in the logs
   const availableStrategies = useMemo(() => {
     const set = new Set<string>();
-    pnlLogs.forEach((log) => {
-      if (log.strategy && log.strategy.trim()) {
+    safeLogs.forEach((log) => {
+      if (log && log.strategy && typeof log.strategy === "string" && log.strategy.trim()) {
         set.add(log.strategy.trim());
       }
     });
     return Array.from(set).sort();
-  }, [pnlLogs]);
+  }, [safeLogs]);
 
   // Filter list
-  const filteredLogs = pnlLogs.filter((log) => {
-    if (scope === "me" && log.userId !== userId) return false;
-    if (accountFilter !== "all") {
-      const logAcct = log.accountType || "funded";
-      if (logAcct !== accountFilter) return false;
-    }
-    if (strategyFilter !== "all" && log.strategy !== strategyFilter) {
-      return false;
-    }
-    return true;
-  });
+  const filteredLogs = useMemo(() => {
+    return safeLogs.filter((log) => {
+      if (!log) return false;
+      if (scope === "me" && log.userId !== userId) return false;
+      if (accountFilter !== "all") {
+        const logAcct = log.accountType || "funded";
+        if (logAcct !== accountFilter) return false;
+      }
+      if (strategyFilter !== "all" && log.strategy !== strategyFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [safeLogs, scope, userId, accountFilter, strategyFilter]);
 
   const handleExportCSV = () => {
-    if (pnlLogs.length === 0) return;
+    if (safeLogs.length === 0) return;
 
     let csvContent = "data:text/csv;charset=utf-8,Date,Trader,Asset,Account Type,Strategy,Notes,P&L Amount,Status\n";
 
-    pnlLogs.forEach((log) => {
-      const status = log.amount >= 0 ? "Profit" : "Loss";
-      const notesClean = log.notes ? log.notes.replace(/"/g, '""') : "";
-      const acctClean = (log.accountType || "Funded").toUpperCase();
-      csvContent += `"${log.date}","${log.username}","${log.asset}","${acctClean}","${log.strategy}","${notesClean}",${log.amount},"${status}"\n`;
+    safeLogs.forEach((log) => {
+      if (!log) return;
+      const amt = Number(log.amount) || 0;
+      const status = amt >= 0 ? "Profit" : "Loss";
+      const notesClean = log.notes ? String(log.notes).replace(/"/g, '""') : "";
+      const acctClean = String(log.accountType || "Funded").toUpperCase();
+      csvContent += `"${log.date || ""}","${log.username || "Trader"}","${log.asset || "N/A"}","${acctClean}","${log.strategy || ""}","${notesClean}",${amt},"${status}"\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -453,7 +461,7 @@ export default function LogsView({
         isOpen={!!selectedFlexLog}
         onClose={() => setSelectedFlexLog(null)}
         tradeLog={selectedFlexLog}
-        trader={traders?.find((t) => t.username === selectedFlexLog?.username)}
+        trader={safeTraders.find((t) => t && t.username === selectedFlexLog?.username)}
         deskName="SyncPL Ledger"
         roomCode={roomCode}
       />
@@ -466,8 +474,8 @@ export default function LogsView({
           onImport={onImportTrades}
           currentAccountType={accountFilter === "all" ? "funded" : accountFilter}
           roomCode={roomCode}
-          existingLogs={pnlLogs}
-          currentUserId={traders.find((t) => t.username === username)?.id}
+          existingLogs={safeLogs}
+          currentUserId={safeTraders.find((t) => t && t.username === username)?.id}
         />
       )}
     </div>

@@ -557,7 +557,9 @@ export default function ActiveRoomSidebar({
                     <span className="text-indigo-400/50 font-black text-sm shrink-0">#</span>
                     <span className="truncate">{chan.name}</span>
                     {chan.pin && (
-                      <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0 ml-1" title="PIN Protected" />
+                      <span title="PIN Protected">
+                        <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0 ml-1" />
+                      </span>
                     )}
                   </button>
 
@@ -705,7 +707,9 @@ export default function ActiveRoomSidebar({
                       )}
                       <span className="truncate">{chan.name}</span>
                       {chan.pin && (
-                        <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0" title="PIN Protected" />
+                        <span title="PIN Protected">
+                          <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0" />
+                        </span>
                       )}
                     </button>
 
@@ -825,8 +829,16 @@ export default function ActiveRoomSidebar({
                                   <span>LIVE</span>
                                 </button>
                               )}
-                              {user.muted && <MicOff className="w-2.5 h-2.5 text-rose-400/80" title="Muted" />}
-                              {user.deafened && <VolumeX className="w-2.5 h-2.5 text-rose-400/80" title="Deafened" />}
+                              {user.muted && (
+                                <span title="Muted">
+                                  <MicOff className="w-2.5 h-2.5 text-rose-400/80" />
+                                </span>
+                              )}
+                              {user.deafened && (
+                                <span title="Deafened">
+                                  <VolumeX className="w-2.5 h-2.5 text-rose-400/80" />
+                                </span>
+                              )}
 
                               {/* Discord-style User volume control button */}
                               <button

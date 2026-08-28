@@ -347,7 +347,9 @@ export default function DashboardView({
     const sortedLogs = [...userLogs].sort((a, b) => {
       const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
       if (dateDiff !== 0) return dateDiff;
-      return (a.timestamp || 0) - (b.timestamp || 0);
+      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return aTime - bTime;
     });
 
     let runningEquity = 0;

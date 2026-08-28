@@ -1552,7 +1552,7 @@ export default function ChatView({
                 {friendshipStatus !== "self" && onOpenPmWithUser && (
                   <button
                     onClick={() => {
-                      const partnerUid = selectedPartner.userId || selectedPartner.id;
+                      const partnerUid = selectedPartner.id;
                       if (partnerUid) {
                         onOpenPmWithUser(partnerUid);
                         setSelectedPartner(null);
