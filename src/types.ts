@@ -78,6 +78,7 @@ export interface Channel {
   createdAt: string;
   pin?: string;
   order?: number;
+  isAiRoom?: boolean;
 }
 
 export interface ChatMessage {

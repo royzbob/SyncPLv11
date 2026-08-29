@@ -2298,8 +2298,12 @@ export default function App() {
       return;
     }
 
-    setActiveChannelName(name);
-    setActiveTab("chat");
+    if (type === "voice") {
+      handleToggleVoiceRoom(name);
+    } else {
+      setActiveChannelName(name);
+      setActiveTab("chat");
+    }
     if (isMobile) {
       setIsMobileSidebarOpen(false);
     }
@@ -3917,7 +3921,7 @@ export default function App() {
                 />
                 
                 {/* Drawer Content container */}
-                <div className="relative flex h-full w-[312px] max-w-[85vw] bg-[#08090A] animate-in slide-in-from-left duration-200 z-10 shadow-2xl shrink-0">
+                <div className="relative flex h-full w-[328px] sm:w-[360px] max-w-[90vw] bg-[#08090A] animate-in slide-in-from-left duration-200 z-10 shadow-2xl shrink-0">
                   <SidebarRail
                     rooms={rooms}
                     activeRoomId={activeRoom.id}

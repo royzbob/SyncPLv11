@@ -46,6 +46,7 @@ import {
   PhoneOff,
   Radio,
   Tv,
+  ChevronDown,
 } from "lucide-react";
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { User as FirebaseUser } from "firebase/auth";
@@ -135,6 +136,7 @@ export default function ChatView({
 
   // Mobile member drawer state & member filter
   const [isMobileMembersOpen, setIsMobileMembersOpen] = useState(false);
+  const [isMobileChannelPickerOpen, setIsMobileChannelPickerOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
 
   // Selected partner modal state
@@ -503,10 +505,36 @@ export default function ChatView({
       {/* Middle Chat Panel */}
       <div className="flex-grow flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
         {/* Top Header / Channel Switcher Bar */}
-        <div className="flex flex-wrap items-center justify-between bg-[#121417]/95 border-b border-[#2A2D31]/40 px-3 py-2 shrink-0 gap-2 shadow-sm">
-          {/* Channel buttons list */}
-          <div className="flex items-center overflow-x-auto no-scrollbar gap-1.5 flex-1 min-w-0">
-            <span className="text-[9px] font-black uppercase text-[#72767D] tracking-wider select-none pr-1 whitespace-nowrap hidden sm:inline">
+        <div className="flex items-center justify-between bg-[#121417]/95 border-b border-[#2A2D31]/40 px-2.5 sm:px-3 py-2 shrink-0 gap-2 shadow-sm">
+          {/* Mobile Sidebar & Channel Picker Triggers */}
+          <div className="flex items-center gap-1.5 shrink-0 md:hidden">
+            {onOpenSidebar && (
+              <button
+                type="button"
+                onClick={onOpenSidebar}
+                className="flex items-center justify-center p-2 bg-[#1E2023] hover:bg-[#2A2D31] text-indigo-400 rounded-lg border border-[#2A2D31] shrink-0 cursor-pointer shadow-sm active:scale-95 transition"
+                title="Open Desk Navigation & Channels"
+                aria-label="Open Desk Navigation"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsMobileChannelPickerOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 rounded-lg text-xs font-bold shrink-0 cursor-pointer transition active:scale-95"
+              title="Quick Switch Channel"
+            >
+              <Hash className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="truncate max-w-[90px]">{activeChannelName}</span>
+              <ChevronDown className="w-3 h-3 text-indigo-400 opacity-80 shrink-0" />
+            </button>
+          </div>
+
+          {/* Channel buttons list (scrollable on tablet/desktop, and touch swipe on mobile) */}
+          <div className="hidden sm:flex items-center overflow-x-auto no-scrollbar gap-1.5 flex-1 min-w-0">
+            <span className="text-[9px] font-black uppercase text-[#72767D] tracking-wider select-none pr-1 whitespace-nowrap">
               Channels:
             </span>
             {textChannels.map((chan) => {
@@ -515,7 +543,7 @@ export default function ChatView({
                 <button
                   key={chan.id}
                   onClick={() => onSelectChannel && onSelectChannel(chan.name, "text")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 border select-none cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 border select-none cursor-pointer ${
                     isSelected
                       ? "bg-indigo-600/25 border-indigo-500 text-white shadow-md shadow-indigo-600/15"
                       : "bg-[#1E2023] border-[#2A2D31]/50 text-gray-400 hover:text-white hover:border-[#2A2D31]"
@@ -538,7 +566,7 @@ export default function ChatView({
                 <button
                   key={chan.id}
                   onClick={() => onToggleVoiceRoom && onToggleVoiceRoom(chan.name)}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 border select-none cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 border select-none cursor-pointer ${
                     isConnected
                       ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-300 shadow-md shadow-emerald-900/20"
                       : "bg-[#1E2023] border-[#2A2D31]/50 text-gray-400 hover:text-white hover:border-[#2A2D31]"
@@ -1576,6 +1604,168 @@ export default function ChatView({
                   Mention in #{activeChannelName}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Channel & Voice Desk Picker Bottom Sheet / Modal */}
+      {isMobileChannelPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-150">
+          <div
+            className="w-full max-w-md bg-[#121417] border-t sm:border border-[#2A2D31] rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#2A2D31] bg-[#181A1D]">
+              <div>
+                <h3 className="text-sm font-black text-white tracking-wide">Channels & Voice Desks</h3>
+                <p className="text-[11px] text-gray-400 font-medium">Select a channel to switch conversations or join calls</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileChannelPickerOpen(false)}
+                className="p-1.5 rounded-lg bg-[#2A2D31]/60 hover:bg-[#2A2D31] text-gray-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Channels & Voice List */}
+            <div className="p-3 overflow-y-auto space-y-4 no-scrollbar">
+              {/* Text Channels */}
+              <div>
+                <div className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2 px-1 flex items-center justify-between">
+                  <span>Text Channels</span>
+                  <span className="text-[9px] font-semibold text-gray-500">{textChannels.length} total</span>
+                </div>
+                <div className="space-y-1">
+                  {textChannels.map((chan) => {
+                    const isSelected = activeChannelName === chan.name;
+                    return (
+                      <button
+                        key={chan.id}
+                        type="button"
+                        onClick={() => {
+                          if (onSelectChannel) onSelectChannel(chan.name, "text");
+                          setIsMobileChannelPickerOpen(false);
+                        }}
+                        className={`w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-left cursor-pointer ${
+                          isSelected
+                            ? "bg-indigo-600/20 border-indigo-500 text-white shadow-sm"
+                            : "bg-[#1E2023] border-[#2A2D31]/60 text-gray-300 hover:text-white hover:border-[#3A3D42]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`text-sm ${isSelected ? "text-indigo-400 font-bold" : "text-[#72767D]"}`}>#</span>
+                          <span className="truncate">{chan.name}</span>
+                          {chan.pin && (
+                            <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                          )}
+                        </div>
+                        {isSelected && (
+                          <span className="text-[10px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md">
+                            Active
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Voice Channels */}
+              {voiceChannels.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-black uppercase text-emerald-400 tracking-wider mb-2 px-1 flex items-center justify-between">
+                    <span>Voice & Live Desks</span>
+                    <span className="text-[9px] font-semibold text-emerald-500/80">{voiceChannels.length} active</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {voiceChannels.map((chan) => {
+                      const isConnected = activeVoiceChannel === chan.name;
+                      const hasStream = voiceUsers.some((u) => u.isStreaming && (u.channel === chan.name || isConnected));
+                      const occupants = voiceUsers.filter((u) => u.channel === chan.name);
+
+                      return (
+                        <div
+                          key={chan.id}
+                          className={`w-full p-3 rounded-xl border transition-all ${
+                            isConnected
+                              ? "bg-emerald-950/30 border-emerald-500/50 shadow-sm"
+                              : "bg-[#1E2023] border-[#2A2D31]/60"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? "bg-emerald-400 animate-ping" : "bg-gray-500"}`} />
+                              <Radio className={`w-4 h-4 shrink-0 ${isConnected ? "text-emerald-400" : "text-gray-400"}`} />
+                              <span className="text-xs font-bold text-white truncate">{chan.name}</span>
+                              {hasStream && (
+                                <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                                  LIVE
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-mono text-gray-400">
+                              {occupants.length} in room
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onToggleVoiceRoom) onToggleVoiceRoom(chan.name);
+                                setIsMobileChannelPickerOpen(false);
+                              }}
+                              className={`flex-1 min-h-[38px] flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                isConnected
+                                  ? "bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300"
+                                  : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30"
+                              }`}
+                            >
+                              <Radio className="w-3.5 h-3.5" />
+                              <span>{isConnected ? "Disconnect Call" : "Join Voice Call"}</span>
+                            </button>
+
+                            {onToggleScreenShare && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!isConnected && onToggleVoiceRoom) onToggleVoiceRoom(chan.name);
+                                  onToggleScreenShare();
+                                  setIsMobileChannelPickerOpen(false);
+                                }}
+                                className={`min-h-[38px] px-3 py-2 rounded-lg text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 ${
+                                  isScreenSharing
+                                    ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-500 animate-pulse"
+                                    : "bg-[#2A2D31] hover:bg-[#3A3D42] text-gray-200 border-[#3A3D42]"
+                                }`}
+                                title="Share Screen / Charts"
+                              >
+                                <Tv className="w-3.5 h-3.5 text-indigo-400" />
+                                <span>{isScreenSharing ? "Stop Share" : "Share"}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Dismiss */}
+            <div className="p-3 bg-[#181A1D] border-t border-[#2A2D31]">
+              <button
+                type="button"
+                onClick={() => setIsMobileChannelPickerOpen(false)}
+                className="w-full min-h-[42px] bg-[#2A2D31] hover:bg-[#3A3D42] text-gray-200 font-bold text-xs py-2.5 rounded-xl transition cursor-pointer flex items-center justify-center"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
