@@ -310,6 +310,18 @@ export default function ActiveRoomSidebar({
           </button>
           <button
             type="button"
+            onClick={() => setSidebarSection("views")}
+            className={`py-1.5 px-1 rounded text-center transition cursor-pointer flex items-center justify-center gap-1 ${
+              sidebarSection === "views"
+                ? "bg-indigo-600 text-white shadow-sm font-black"
+                : "text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            <LayoutDashboard className="w-3 h-3 text-emerald-400" />
+            <span>Views</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setSidebarSection("channels")}
             className={`py-1.5 px-1 rounded text-center transition cursor-pointer flex items-center justify-center gap-1 ${
               sidebarSection === "channels"
@@ -321,23 +333,187 @@ export default function ActiveRoomSidebar({
             <span>Channels</span>
             <span className="text-[8px] opacity-80 font-mono">({textChans.length + voiceChans.length})</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setSidebarSection("views")}
-            className={`py-1.5 px-1 rounded text-center transition cursor-pointer flex items-center justify-center gap-1 ${
-              sidebarSection === "views"
-                ? "bg-indigo-600 text-white shadow-sm font-black"
-                : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            <LayoutDashboard className="w-3 h-3 text-emerald-400" />
-            <span>Views</span>
-          </button>
         </div>
       </div>
 
-      {/* Unified Scrollable Container for Channels and Views */}
+      {/* Unified Scrollable Container for Views and Channels */}
       <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-[#2A2D31]/40 custom-scrollbar">
+        {/* PRIMARY NAVIGATION VIEWS & TOOLS (Placed at top above Channels) */}
+        {(sidebarSection === "all" || sidebarSection === "views") && (
+          <div className="p-3 space-y-1 bg-[#0F1113]/20">
+            <div className="px-2 pb-1.5 text-[9px] font-black text-gray-500 uppercase tracking-widest">
+              Desk Views & Tools
+            </div>
+
+            <button
+              id="nav-my-dashboard"
+              onClick={() => onSwitchTab("dashboard")}
+              className={getNavBtnClass("dashboard")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <User className="w-4 h-4 text-indigo-400" />
+                <span className="font-bold">My Dashboard</span>
+              </div>
+              <span className="text-[9px] bg-indigo-500/20 text-indigo-300 font-bold px-1.5 py-0.2 rounded border border-indigo-500/30">
+                YOU
+              </span>
+            </button>
+
+            <button
+              id="nav-desk-dashboard"
+              onClick={() => onSwitchTab("group-dashboard")}
+              className={getNavBtnClass("group-dashboard")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Users className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold">Desk Dashboard</span>
+              </div>
+              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
+                ROOM
+              </span>
+            </button>
+
+            <button
+              id="nav-chat"
+              onClick={() => onSwitchTab("chat")}
+              className={getNavBtnClass("chat")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <MessageSquareCode className="w-4 h-4 text-indigo-400" />
+                <span className="font-bold">Trading Desk Chat</span>
+              </div>
+              {activeTab !== "chat" && isChatSidePanelOpen && (
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" title="Side Panel Open" />
+              )}
+            </button>
+
+            <button
+              id="nav-leaderboard"
+              onClick={() => onSwitchTab("leaderboard")}
+              className={getNavBtnClass("leaderboard")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Trophy className="w-4 h-4" />
+                <span>Leaderboard Board</span>
+              </div>
+            </button>
+
+            <button
+              id="nav-challenges"
+              onClick={() => onSwitchTab("challenges")}
+              className={getNavBtnClass("challenges")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Target className="w-4 h-4 text-amber-400" />
+                <span className="flex items-center gap-1.5">
+                  <span>Co-Op Desk Goals</span>
+                  <span className="bg-amber-500/20 text-amber-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-amber-500/30">
+                    STREAKS
+                  </span>
+                </span>
+              </div>
+            </button>
+
+            <button
+              id="nav-payouts"
+              onClick={() => onSwitchTab("payouts")}
+              className={getNavBtnClass("payouts")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Banknote className="w-4 h-4 text-emerald-400" />
+                <span className="flex items-center gap-1.5">
+                  <span>Payout Leaderboard</span>
+                  <span className="bg-emerald-500/20 text-emerald-400 text-[9px] font-black px-1.5 py-0.2 rounded border border-emerald-500/30">
+                    NEW
+                  </span>
+                </span>
+              </div>
+            </button>
+
+            <button
+              id="nav-logs"
+              onClick={() => onSwitchTab("logs")}
+              className={getNavBtnClass("logs")}
+              title="Trade Journal & Ledger Records"
+            >
+              <div className="flex items-center space-x-2.5">
+                <BookOpen className="w-4 h-4" />
+                <span>Trade Journal</span>
+              </div>
+            </button>
+
+            <button
+              id="nav-checklist"
+              onClick={() => onSwitchTab("checklist")}
+              className={getNavBtnClass("checklist")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <ListTodo className="w-4 h-4" />
+                <span>Trading Checklist</span>
+              </div>
+            </button>
+
+            <button
+              id="nav-friends"
+              onClick={() => onSwitchTab("friends")}
+              className={getNavBtnClass("friends")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span>Friends & Co-Traders</span>
+              </div>
+            </button>
+
+            <button
+              id="nav-pms"
+              onClick={() => onSwitchTab("pms")}
+              className={getNavBtnClass("pms")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <MessageSquare className="w-4 h-4 text-indigo-400" />
+                <span className="flex items-center gap-1.5">
+                  <span>Direct Messages</span>
+                  <span className="bg-indigo-500/20 text-indigo-400 text-[9px] font-black px-1.5 py-0.2 rounded border border-indigo-500/30">
+                    PM
+                  </span>
+                </span>
+              </div>
+              {unreadPmCount > 0 && (
+                <span className="px-1.5 py-0.2 bg-rose-500 text-white font-black text-[9px] rounded-full animate-bounce shadow">
+                  {unreadPmCount > 9 ? "9+" : unreadPmCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              id="nav-partners"
+              onClick={() => onSwitchTab("partners")}
+              className={getNavBtnClass("partners")}
+            >
+              <div className="flex items-center space-x-2.5">
+                <SlidersHorizontal className="w-4 h-4" />
+                <span>Workspace Settings</span>
+              </div>
+            </button>
+
+            {onOpenGuide && (
+              <button
+                id="nav-quick-start-guide"
+                onClick={onOpenGuide}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-amber-300/90 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition cursor-pointer mt-1 shadow-sm"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <BookOpen className="w-4 h-4 text-amber-400" />
+                  <span>Getting Started Guide</span>
+                </div>
+                <span className="text-[9px] bg-amber-400 text-black font-black px-1.5 py-0.2 rounded shadow">
+                  HELP
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* CHANNELS SECTION (Text and Voice/Calls) */}
         {(sidebarSection === "all" || sidebarSection === "channels") && (
           <div id="channels-section" className="p-3 space-y-4 bg-[#121417]">
@@ -834,519 +1010,6 @@ export default function ActiveRoomSidebar({
             </div>
           </div>
         )}
-
-        {/* PRIMARY NAVIGATION VIEWS & TOOLS */}
-        {(sidebarSection === "all" || sidebarSection === "views") && (
-          <div className="p-3 space-y-1 bg-[#0F1113]/20">
-            <div className="px-2 pb-1.5 text-[9px] font-black text-gray-500 uppercase tracking-widest">
-              Desk Views & Tools
-            </div>
-
-            <button
-              id="nav-my-dashboard"
-              onClick={() => onSwitchTab("dashboard")}
-              className={getNavBtnClass("dashboard")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <User className="w-4 h-4 text-indigo-400" />
-                <span className="font-bold">My Dashboard</span>
-              </div>
-              <span className="text-[9px] bg-indigo-500/20 text-indigo-300 font-bold px-1.5 py-0.2 rounded border border-indigo-500/30">
-                YOU
-              </span>
-            </button>
-
-            <button
-              id="nav-desk-dashboard"
-              onClick={() => onSwitchTab("group-dashboard")}
-              className={getNavBtnClass("group-dashboard")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Users className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold">Desk Dashboard</span>
-              </div>
-              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
-                ROOM
-              </span>
-            </button>
-
-            <button
-              id="nav-chat"
-              onClick={() => onSwitchTab("chat")}
-              className={getNavBtnClass("chat")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <MessageSquareCode className="w-4 h-4 text-indigo-400" />
-                <span className="font-bold">Trading Desk Chat</span>
-              </div>
-              {activeTab !== "chat" && isChatSidePanelOpen && (
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" title="Side Panel Open" />
-              )}
-            </button>
-
-            <button
-              id="nav-leaderboard"
-              onClick={() => onSwitchTab("leaderboard")}
-              className={getNavBtnClass("leaderboard")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Trophy className="w-4 h-4" />
-                <span>Leaderboard Board</span>
-              </div>
-            </button>
-
-            <button
-              id="nav-challenges"
-              onClick={() => onSwitchTab("challenges")}
-              className={getNavBtnClass("challenges")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Target className="w-4 h-4 text-amber-400" />
-                <span className="flex items-center gap-1.5">
-                  <span>Co-Op Desk Goals</span>
-                  <span className="bg-amber-500/20 text-amber-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-amber-500/30">
-                    STREAKS
-                  </span>
-                </span>
-              </div>
-            </button>
-
-            <button
-              id="nav-payouts"
-              onClick={() => onSwitchTab("payouts")}
-              className={getNavBtnClass("payouts")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Banknote className="w-4 h-4 text-emerald-400" />
-                <span className="flex items-center gap-1.5">
-                  <span>Payout Leaderboard</span>
-                  <span className="bg-emerald-500/20 text-emerald-400 text-[9px] font-black px-1.5 py-0.2 rounded border border-emerald-500/30">
-                    NEW
-                  </span>
-                </span>
-              </div>
-            </button>
-
-            <button
-              id="nav-logs"
-              onClick={() => onSwitchTab("logs")}
-              className={getNavBtnClass("logs")}
-              title="Trade Journal & Ledger Records"
-            >
-              <div className="flex items-center space-x-2.5">
-                <BookOpen className="w-4 h-4" />
-                <span>Trade Journal</span>
-              </div>
-            </button>
-
-            <button
-              id="nav-checklist"
-              onClick={() => onSwitchTab("checklist")}
-              className={getNavBtnClass("checklist")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <ListTodo className="w-4 h-4" />
-                <span>Trading Checklist</span>
-              </div>
-            </button>
-
-            <button
-              id="nav-friends"
-              onClick={() => onSwitchTab("friends")}
-              className={getNavBtnClass("friends")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Users className="w-4 h-4 text-indigo-400" />
-                <span>Friends & Co-Traders</span>
-              </div>
-            </button>
-
-            <button
-              id="nav-pms"
-              onClick={() => onSwitchTab("pms")}
-              className={getNavBtnClass("pms")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <MessageSquare className="w-4 h-4 text-indigo-400" />
-                <span className="flex items-center gap-1.5">
-                  <span>Direct Messages</span>
-                  <span className="bg-indigo-500/20 text-indigo-400 text-[9px] font-black px-1.5 py-0.2 rounded border border-indigo-500/30">
-                    PM
-                  </span>
-                </span>
-              </div>
-              {unreadPmCount > 0 && (
-                <span className="px-1.5 py-0.2 bg-rose-500 text-white font-black text-[9px] rounded-full animate-bounce shadow">
-                  {unreadPmCount > 9 ? "9+" : unreadPmCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              id="nav-partners"
-              onClick={() => onSwitchTab("partners")}
-              className={getNavBtnClass("partners")}
-            >
-              <div className="flex items-center space-x-2.5">
-                <SlidersHorizontal className="w-4 h-4" />
-                <span>Workspace Settings</span>
-              </div>
-            </button>
-
-            {onOpenGuide && (
-              <button
-                id="nav-quick-start-guide"
-                onClick={onOpenGuide}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-amber-300/90 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition cursor-pointer mt-1 shadow-sm"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <BookOpen className="w-4 h-4 text-amber-400" />
-                  <span>Getting Started Guide</span>
-                </div>
-                <span className="text-[9px] bg-amber-400 text-black font-black px-1.5 py-0.2 rounded shadow">
-                  HELP
-                </span>
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Voice Channels */}
-        <div>
-          <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">
-              Voice Rooms
-            </span>
-            {isCreatorOrMod && (
-              <div className="flex items-center gap-1">
-                {voiceChans.length > 1 && onMoveChannel && (
-                  <button
-                    onClick={() => setIsReorderingVoice(!isReorderingVoice)}
-                    className={`transition cursor-pointer p-0.5 rounded ${
-                      isReorderingVoice
-                        ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
-                        : "text-gray-500 hover:text-white"
-                    }`}
-                    title={isReorderingVoice ? "Finish Reordering" : "Reorder Voice Rooms"}
-                  >
-                    {isReorderingVoice ? <Check className="w-3.5 h-3.5" /> : <ArrowUpDown className="w-3.5 h-3.5" />}
-                  </button>
-                )}
-                <button
-                  onClick={() => onAddChannelClick("voice")}
-                  className="text-gray-500 hover:text-white transition cursor-pointer p-0.5"
-                  title="Create Voice Channel"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            {voiceChans.map((chan, idx) => {
-              const isConnected = activeVoiceChannel === chan.name;
-              const chanUsers = voiceUsers.filter((v) => v.channel === chan.name);
-              const count = chanUsers.length;
-              const isAi =
-                chan.name.includes("🤖") || chan.name.toLowerCase().includes("ai");
-              const isFirst = idx === 0;
-              const isLast = idx === voiceChans.length - 1;
-              const isBeingDragged = draggedChanId === chan.id;
-              const isDraggedOver = dragOverChanId === chan.id;
-
-              return (
-                <div key={chan.id} className="space-y-0.5">
-                  <div
-                    draggable={isCreatorOrMod && (isReorderingVoice || true)}
-                    onDragStart={(e) => {
-                      setDraggedChanId(chan.id);
-                      e.dataTransfer.setData("text/plain", chan.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      if (draggedChanId && draggedChanId !== chan.id) {
-                        setDragOverChanId(chan.id);
-                      }
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverChanId === chan.id) setDragOverChanId(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragOverChanId(null);
-                      setDraggedChanId(null);
-                      const sourceId = e.dataTransfer.getData("text/plain");
-                      if (sourceId && sourceId !== chan.id && onMoveChannel) {
-                        const sourceIdx = voiceChans.findIndex((c) => c.id === sourceId);
-                        if (sourceIdx !== -1) {
-                          const dir = sourceIdx < idx ? "down" : "up";
-                          onMoveChannel(sourceId, dir);
-                        }
-                      }
-                    }}
-                    className={`group relative flex items-center justify-between px-2 py-1.5 rounded text-xs font-semibold transition-all duration-150 border ${
-                      isDraggedOver ? "border-emerald-500 bg-emerald-500/10" : ""
-                    } ${
-                      isBeingDragged ? "opacity-40" : "opacity-100"
-                    } ${
-                      isConnected
-                        ? isAi
-                          ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/10 hover:bg-indigo-500/15"
-                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/10 hover:bg-emerald-500/15"
-                        : "text-[#8E9297] hover:bg-[#1E2023]/60 hover:text-white border-transparent"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => onToggleVoiceRoom(chan.name)}
-                      className="flex items-center space-x-2 truncate flex-1 text-left cursor-pointer"
-                    >
-                      {isReorderingVoice && (
-                        <GripVertical className="w-3.5 h-3.5 text-gray-500 shrink-0 cursor-grab" />
-                      )}
-                      {isAi ? (
-                        <Bot className={`w-3.5 h-3.5 ${isConnected ? "animate-pulse text-indigo-400" : "text-gray-500"}`} />
-                      ) : (
-                        <Volume2 className={`w-3.5 h-3.5 ${isConnected ? "text-emerald-400" : "text-gray-500"}`} />
-                      )}
-                      <span className="truncate">{chan.name}</span>
-                      {chan.pin && (
-                        <span title="PIN Protected">
-                          <Lock className="w-3 h-3 text-amber-500 fill-amber-500/10 shrink-0" />
-                        </span>
-                      )}
-                    </button>
-
-                    <div className="flex items-center gap-1">
-                      {isCreatorOrMod && onMoveChannel && (
-                        <div className={`items-center gap-0.5 shrink-0 ${isReorderingVoice ? "flex" : "hidden group-hover:flex"}`}>
-                          <button
-                            type="button"
-                            disabled={isFirst}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMoveChannel(chan.id, "up");
-                            }}
-                            className={`p-0.5 rounded transition ${
-                              isFirst
-                                ? "text-gray-600 cursor-not-allowed opacity-30"
-                                : "text-gray-400 hover:text-white hover:bg-[#32353B] cursor-pointer"
-                            }`}
-                            title="Move Up"
-                          >
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isLast}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMoveChannel(chan.id, "down");
-                            }}
-                            className={`p-0.5 rounded transition ${
-                              isLast
-                                ? "text-gray-600 cursor-not-allowed opacity-30"
-                                : "text-gray-400 hover:text-white hover:bg-[#32353B] cursor-pointer"
-                            }`}
-                            title="Move Down"
-                          >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
-
-                      <span className="text-[10px] bg-[#1E2023] px-2 py-0.5 rounded-full text-gray-400 font-medium border border-[#2A2D31]/30 shrink-0">
-                        {count}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Render players joined underneath this voice room */}
-                  {count > 0 && (
-                    <div className="pl-5 pr-1 py-1 space-y-1">
-                      {chanUsers.map((user) => {
-                        const initials = user.username.substring(0, 2).toUpperCase();
-                        const avatarBgClass =
-                          user.avatarColor === "pink"
-                            ? "bg-pink-500/10 border-pink-500/20 text-pink-400"
-                            : user.avatarColor === "emerald"
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                            : user.avatarColor === "amber"
-                            ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                            : user.avatarColor === "sky"
-                            ? "bg-sky-500/10 border-sky-500/20 text-sky-400"
-                            : "bg-indigo-500/10 border-indigo-500/20 text-indigo-400";
-
-                        return (
-                          <div
-                            key={user.id}
-                            className="flex items-center justify-between py-1 px-2 rounded hover:bg-[#1E2023]/40 transition-all duration-150 text-[10px]"
-                          >
-                            <div className="flex items-center space-x-2 min-w-0">
-                              {isImageAvatar(user.avatarType, user.avatarVal) ? (
-                                <div className={`w-4.5 h-4.5 rounded border overflow-hidden flex items-center justify-center bg-[#08090A] shrink-0 transition-all duration-200 ${
-                                  user.speaking
-                                    ? "ring-1.5 ring-emerald-500 border-emerald-500"
-                                    : "border-[#2A2D31]"
-                                }`}>
-                                  <img
-                                    src={user.avatarVal}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                </div>
-                              ) : (
-                                <div
-                                  className={`w-4.5 h-4.5 rounded-full border flex items-center justify-center font-bold text-[8px] shrink-0 transition-all duration-200 ${
-                                    user.speaking
-                                      ? "ring-1.5 ring-emerald-500 border-emerald-500 text-emerald-400"
-                                      : "border-white/10"
-                                  } ${avatarBgClass}`}
-                                >
-                                  {typeof user.avatarVal === "string" && user.avatarVal.length < 8 ? user.avatarVal : initials}
-                                </div>
-                              )}
-                              <span className={`font-medium truncate transition-colors duration-150 ${user.speaking ? "text-emerald-400" : "text-[#DCDDDE]"}`}>
-                                {user.username}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center space-x-1.5 shrink-0 relative">
-                              {user.speaking && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#23a55a] animate-pulse" />
-                              )}
-                              {/* Live Screen Sharing Stream Badge */}
-                              {((isScreenSharing && (user.id === profile?.id || user.userId === profile?.id)) || (remoteScreenStreams && remoteScreenStreams.has(user.userId || user.id))) && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onOpenScreenShareModal) {
-                                      onOpenScreenShareModal(user.userId || user.id);
-                                    }
-                                  }}
-                                  className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 transition cursor-pointer animate-pulse shrink-0 shadow-sm"
-                                  title="Click to watch live screen stream"
-                                >
-                                  <Radio className="w-2.5 h-2.5 text-rose-400" />
-                                  <span>LIVE</span>
-                                </button>
-                              )}
-                              {user.muted && (
-                                <span title="Muted">
-                                  <MicOff className="w-2.5 h-2.5 text-rose-400/80" />
-                                </span>
-                              )}
-                              {user.deafened && (
-                                <span title="Deafened">
-                                  <VolumeX className="w-2.5 h-2.5 text-rose-400/80" />
-                                </span>
-                              )}
-
-                              {/* Discord-style User volume control button */}
-                              <button
-                                id={`chan-vol-btn-${user.id}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveUserPopover(activeUserPopover === user.id ? null : user.id);
-                                }}
-                                className={`flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition cursor-pointer ${
-                                  mutedUsers[user.id] 
-                                    ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20" 
-                                    : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20"
-                                }`}
-                                title="Adjust User Volume"
-                              >
-                                {mutedUsers[user.id] ? (
-                                  <VolumeX className="w-3 h-3 text-rose-400" />
-                                ) : (
-                                  <Volume2 className="w-3 h-3" />
-                                )}
-                                <span>
-                                  {mutedUsers[user.id] ? "Muted" : `${userVolumes[user.id] !== undefined ? userVolumes[user.id] : 100}%`}
-                                </span>
-                              </button>
-
-                              {/* Admin/Mod disconnect user button */}
-                              {isCreatorOrMod && onKickVoiceUser && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onKickVoiceUser(user.userId || user.id, user.username);
-                                  }}
-                                  className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition cursor-pointer"
-                                  title={`Remove ${user.username} from voice channel`}
-                                >
-                                  <PhoneOff className="w-2.5 h-2.5" />
-                                </button>
-                              )}
-
-                              {/* Discord-style User Volume Popover */}
-                              {activeUserPopover === user.id && (
-                                <div 
-                                  className="absolute right-0 bottom-7 z-50 bg-[#1e1f22] border border-[#2b2d31] rounded-lg p-3 shadow-2xl w-48 space-y-2.5 text-left"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-widest text-[#949ba4]">
-                                    <span>User Volume</span>
-                                    <span className="font-mono text-[#f2f3f5]">
-                                      {mutedUsers[user.id] ? "0%" : `${userVolumes[user.id] !== undefined ? userVolumes[user.id] : 100}%`}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <input
-                                      type="range"
-                                      min="0"
-                                      max="200"
-                                      value={userVolumes[user.id] !== undefined ? userVolumes[user.id] : 100}
-                                      onChange={(e) => onChangeUserVolume(user.id, Number(e.target.value))}
-                                      disabled={!!mutedUsers[user.id]}
-                                      className="w-full h-1.5 bg-[#4e5058] rounded-lg appearance-none cursor-pointer accent-[#5865f2] disabled:opacity-40"
-                                    />
-                                  </div>
-                                  <div className="border-t border-[#2b2d31] pt-2 flex items-center justify-between">
-                                    <span className="text-[9px] font-bold text-[#949ba4] uppercase tracking-wider">Mute Locally</span>
-                                    <input
-                                      type="checkbox"
-                                      checked={!!mutedUsers[user.id]}
-                                      onChange={() => onToggleMuteUser(user.id)}
-                                      className="accent-[#5865f2] w-3.5 h-3.5 rounded border-gray-600 cursor-pointer"
-                                    />
-                                  </div>
-
-                                  {/* Admin Disconnect Option */}
-                                  {isCreatorOrMod && onKickVoiceUser && (
-                                    <div className="border-t border-[#2b2d31] pt-2 flex items-center justify-between">
-                                      <span className="text-[9px] font-bold text-rose-400 uppercase tracking-wider">Disconnect User</span>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setActiveUserPopover(null);
-                                          onKickVoiceUser(user.userId || user.id, user.username);
-                                        }}
-                                        className="px-2 py-0.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[9px] font-extrabold rounded transition cursor-pointer flex items-center gap-1"
-                                      >
-                                        <PhoneOff className="w-2.5 h-2.5" /> Remove
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
       {/* Voice Status Panel & Discord-style Profile Bar */}

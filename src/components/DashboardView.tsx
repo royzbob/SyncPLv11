@@ -227,8 +227,17 @@ export default function DashboardView({
     return filteredRoomLogs.filter((l) => l.userId === userId);
   }, [filteredRoomLogs, userId]);
 
-  // Basic Personal Stats
-  const personalStats = useMemo(() => {
+  // Active logs based on viewMode (Personal vs Desk)
+  const activeLogs = useMemo(() => {
+    return viewMode === "group" ? filteredRoomLogs : userLogs;
+  }, [viewMode, filteredRoomLogs, userLogs]);
+
+  const allActiveLogs = useMemo(() => {
+    return viewMode === "group" ? pnlLogs : allUserLogs;
+  }, [viewMode, pnlLogs, allUserLogs]);
+
+  // Comprehensive Active Stats (computes metrics for currently selected mode: Personal or Desk)
+  const activeStats = useMemo(() => {
     const todayStr = getLocalDateString(new Date());
     const now = new Date();
     const startOfWeek = new Date(now);
@@ -253,7 +262,7 @@ export default function DashboardView({
     let currentCumulative = 0;
 
     // Sort chronologically for equity curve
-    const sorted = [...userLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sorted = [...activeLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     sorted.forEach((log) => {
       const amt = log.amount;
@@ -290,7 +299,7 @@ export default function DashboardView({
       }
     });
 
-    const totalTrades = userLogs.length;
+    const totalTrades = activeLogs.length;
     const winRate = totalTrades > 0 ? Math.round((totalWins / totalTrades) * 100) : 0;
     const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99.9 : 0;
     const avgWin = totalWins > 0 ? grossProfit / totalWins : 0;
@@ -316,9 +325,9 @@ export default function DashboardView({
       maxDrawdown,
       expectancy,
     };
-  }, [userLogs]);
+  }, [activeLogs]);
 
-  // Group / Desk Stats
+  // Group / Desk Stats summary
   const groupStats = useMemo(() => {
     const todayStr = getLocalDateString(new Date());
     let deskTodaySum = 0;
@@ -346,10 +355,10 @@ export default function DashboardView({
     };
   }, [filteredRoomLogs]);
 
-  // Equity Curve Data
-  const personalChartData = useMemo(() => {
+  // Equity Curve Data (Active Mode)
+  const activeChartData = useMemo(() => {
     let running = 0;
-    const sorted = [...userLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sorted = [...activeLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     let filtered = sorted;
     if (timeRange === "7d") {
@@ -369,17 +378,18 @@ export default function DashboardView({
         amount: log.amount,
         equity: running,
         asset: log.asset || "SETUP",
+        trader: log.username || "Trader",
       };
     });
-  }, [userLogs, timeRange]);
+  }, [activeLogs, timeRange]);
 
   // 4-Way Account Performance Breakdown Matrix
-  const personalAccountBreakdown = useMemo(() => {
-    const totalBase = allUserLogs.length;
+  const activeAccountBreakdown = useMemo(() => {
+    const totalBase = allActiveLogs.length;
     const types: AccountType[] = ["funded", "eval", "live", "practice"];
 
     return types.map((accType) => {
-      const logsForType = allUserLogs.filter((l) => (l.accountType || "funded") === accType);
+      const logsForType = allActiveLogs.filter((l) => (l.accountType || "funded") === accType);
       let net = 0;
       let wins = 0;
       let losses = 0;
@@ -415,12 +425,12 @@ export default function DashboardView({
         isActive: accountFilter === accType,
       };
     });
-  }, [allUserLogs, accountFilter]);
+  }, [allActiveLogs, accountFilter]);
 
   // Strategy Playbook breakdown
   const strategyStats = useMemo(() => {
     const map: Record<string, { count: number; wins: number; netPnl: number }> = {};
-    userLogs.forEach((l) => {
+    activeLogs.forEach((l) => {
       const s = l.strategy || "General Setup";
       if (!map[s]) map[s] = { count: 0, wins: 0, netPnl: 0 };
       map[s].count++;
@@ -434,7 +444,7 @@ export default function DashboardView({
       netPnl: data.netPnl,
       winRate: data.count > 0 ? Math.round((data.wins / data.count) * 100) : 0,
     }));
-  }, [userLogs]);
+  }, [activeLogs]);
 
   // 30-Day Heatmap Matrix
   const heatmapDays = useMemo(() => {
@@ -444,7 +454,7 @@ export default function DashboardView({
       const d = new Date();
       d.setDate(now.getDate() - i);
       const dateStr = getLocalDateString(d);
-      const logsOnDay = userLogs.filter((l) => l.date === dateStr);
+      const logsOnDay = activeLogs.filter((l) => l.date === dateStr);
       let dayPnl = 0;
       logsOnDay.forEach((l) => (dayPnl += l.amount));
 
@@ -458,7 +468,7 @@ export default function DashboardView({
       });
     }
     return days;
-  }, [userLogs]);
+  }, [activeLogs]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0E1013] text-[#DCDDDE] overflow-y-auto p-4 md:p-6 space-y-5 font-sans pb-20">
@@ -587,37 +597,37 @@ export default function DashboardView({
             <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  Today's Result (P&L)
+                  {viewMode === "group" ? "Desk Today P&L" : "Today's Result (P&L)"}
                 </span>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    personalStats.dailySum > 0
+                    activeStats.dailySum > 0
                       ? "bg-emerald-500/20 text-emerald-300"
-                      : personalStats.dailySum < 0
+                      : activeStats.dailySum < 0
                       ? "bg-rose-500/20 text-rose-300"
                       : "bg-white/5 text-gray-400"
                   }`}
                 >
-                  {personalStats.dailySum > 0
+                  {activeStats.dailySum > 0
                     ? "Profitable Day"
-                    : personalStats.dailySum < 0
+                    : activeStats.dailySum < 0
                     ? "Drawdown"
                     : "No Trades Yet"}
                 </span>
               </div>
               <p
                 className={`text-3xl sm:text-4xl font-black tracking-tight ${
-                  personalStats.dailySum > 0
+                  activeStats.dailySum > 0
                     ? "text-emerald-400"
-                    : personalStats.dailySum < 0
+                    : activeStats.dailySum < 0
                     ? "text-rose-400"
                     : "text-white"
                 }`}
               >
-                {formatCurrency(personalStats.dailySum)}
+                {formatCurrency(activeStats.dailySum)}
               </p>
               <p className="text-xs text-gray-400">
-                {personalStats.todayTradesCount} execution{personalStats.todayTradesCount !== 1 ? "s" : ""} recorded today
+                {activeStats.todayTradesCount} execution{activeStats.todayTradesCount !== 1 ? "s" : ""} recorded today
               </p>
             </div>
 
@@ -625,17 +635,17 @@ export default function DashboardView({
             <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  Win Rate %
+                  {viewMode === "group" ? "Desk Win Rate %" : "Win Rate %"}
                 </span>
                 <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
-                  {personalStats.totalWins}W - {personalStats.totalLosses}L
+                  {activeStats.totalWins}W - {activeStats.totalLosses}L
                 </span>
               </div>
               <p className="text-3xl sm:text-4xl font-black tracking-tight text-white">
-                {personalStats.winRate}%
+                {activeStats.winRate}%
               </p>
               <p className="text-xs text-gray-400">
-                Avg Win: <span className="text-emerald-400 font-bold">+${Math.round(personalStats.avgWin)}</span> • Avg Loss: <span className="text-rose-400 font-bold">-${Math.round(personalStats.avgLoss)}</span>
+                Avg Win: <span className="text-emerald-400 font-bold">+${Math.round(activeStats.avgWin)}</span> • Avg Loss: <span className="text-rose-400 font-bold">-${Math.round(activeStats.avgLoss)}</span>
               </p>
             </div>
 
@@ -643,21 +653,21 @@ export default function DashboardView({
             <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  Cumulative P&L
+                  {viewMode === "group" ? "Desk Cumulative P&L" : "Cumulative P&L"}
                 </span>
                 <span className="text-[10px] font-bold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full">
-                  Total {userLogs.length} Trades
+                  Total {activeLogs.length} Trades
                 </span>
               </div>
               <p
                 className={`text-3xl sm:text-4xl font-black tracking-tight ${
-                  personalStats.netPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                  activeStats.netPnl >= 0 ? "text-emerald-400" : "text-rose-400"
                 }`}
               >
-                {formatCurrency(personalStats.netPnl)}
+                {formatCurrency(activeStats.netPnl)}
               </p>
               <p className="text-xs text-gray-400">
-                Profit Factor: <span className="font-bold text-white">{personalStats.profitFactor.toFixed(2)}</span>
+                Profit Factor: <span className="font-bold text-white">{activeStats.profitFactor.toFixed(2)}</span>
               </p>
             </div>
           </div>
@@ -667,7 +677,9 @@ export default function DashboardView({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <LineChartIcon className="w-4 h-4 text-emerald-400" />
-                <h3 className="font-black text-white text-base">Equity Growth Trajectory</h3>
+                <h3 className="font-black text-white text-base">
+                  {viewMode === "group" ? "Desk Equity Growth Trajectory" : "Equity Growth Trajectory"}
+                </h3>
               </div>
 
               {/* Timeframe selector */}
@@ -700,9 +712,9 @@ export default function DashboardView({
             </div>
 
             <div className="h-[220px] w-full pt-2">
-              {personalChartData.length > 0 ? (
+              {activeChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={personalChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <AreaChart data={activeChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                     <defs>
                       <linearGradient id="cleanSimpleGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
@@ -766,7 +778,7 @@ export default function DashboardView({
             </div>
 
             <div className="space-y-2">
-              {userLogs.slice(0, 4).map((log) => {
+              {activeLogs.slice(0, 4).map((log) => {
                 const isWin = log.amount >= 0;
                 return (
                   <div
@@ -793,6 +805,11 @@ export default function DashboardView({
                           >
                             {accountTypeMeta[log.accountType || "funded"].label}
                           </span>
+                          {viewMode === "group" && log.username && (
+                            <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-bold">
+                              @{log.username}
+                            </span>
+                          )}
                           {log.strategy && (
                             <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded-full hidden sm:inline">
                               {log.strategy}
@@ -810,9 +827,9 @@ export default function DashboardView({
                 );
               })}
 
-              {userLogs.length === 0 && (
+              {activeLogs.length === 0 && (
                 <div className="p-6 text-center text-gray-500 text-xs">
-                  No trades recorded yet. Start by logging your first practice or funded trade!
+                  {viewMode === "group" ? "No trades recorded in this trading room yet." : "No trades recorded yet. Start by logging your first practice or funded trade!"}
                 </div>
               )}
             </div>
@@ -898,44 +915,54 @@ export default function DashboardView({
               {/* 4 Hero Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Today P&L</span>
+                  <span className="text-[10px] font-black uppercase text-gray-400">
+                    {viewMode === "group" ? "Desk Today P&L" : "Today P&L"}
+                  </span>
                   <p
                     className={`text-2xl sm:text-3xl font-black mt-1 ${
-                      personalStats.dailySum >= 0 ? "text-emerald-400" : "text-rose-400"
+                      activeStats.dailySum >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
-                    {formatCurrency(personalStats.dailySum)}
+                    {formatCurrency(activeStats.dailySum)}
                   </p>
-                  <span className="text-[11px] text-gray-500">{personalStats.todayTradesCount} trades today</span>
+                  <span className="text-[11px] text-gray-500">{activeStats.todayTradesCount} trades today</span>
                 </div>
 
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
-                  <span className="text-[10px] font-black uppercase text-gray-400">This Week</span>
+                  <span className="text-[10px] font-black uppercase text-gray-400">
+                    {viewMode === "group" ? "Desk This Week" : "This Week"}
+                  </span>
                   <p
                     className={`text-2xl sm:text-3xl font-black mt-1 ${
-                      personalStats.weeklySum >= 0 ? "text-emerald-400" : "text-rose-400"
+                      activeStats.weeklySum >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
-                    {formatCurrency(personalStats.weeklySum)}
+                    {formatCurrency(activeStats.weeklySum)}
                   </p>
-                  <span className="text-[11px] text-gray-500">Weekly aggregate</span>
-                </div>
-
-                <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Win Rate</span>
-                  <p className="text-2xl sm:text-3xl font-black text-white mt-1">{personalStats.winRate}%</p>
-                  <span className="text-[11px] text-indigo-400 font-bold">
-                    {personalStats.totalWins}W - {personalStats.totalLosses}L
+                  <span className="text-[11px] text-gray-500">
+                    {viewMode === "group" ? "Room weekly aggregate" : "Weekly aggregate"}
                   </span>
                 </div>
 
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
-                  <span className="text-[10px] font-black uppercase text-gray-400">Profit Factor</span>
+                  <span className="text-[10px] font-black uppercase text-gray-400">
+                    {viewMode === "group" ? "Desk Win Rate" : "Win Rate"}
+                  </span>
+                  <p className="text-2xl sm:text-3xl font-black text-white mt-1">{activeStats.winRate}%</p>
+                  <span className="text-[11px] text-indigo-400 font-bold">
+                    {activeStats.totalWins}W - {activeStats.totalLosses}L
+                  </span>
+                </div>
+
+                <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
+                  <span className="text-[10px] font-black uppercase text-gray-400">
+                    {viewMode === "group" ? "Desk Profit Factor" : "Profit Factor"}
+                  </span>
                   <p className="text-2xl sm:text-3xl font-black text-white mt-1">
-                    {personalStats.profitFactor.toFixed(2)}
+                    {activeStats.profitFactor.toFixed(2)}
                   </p>
                   <span className="text-[11px] text-emerald-400 font-bold">
-                    Net: {formatCurrency(personalStats.netPnl)}
+                    Net: {formatCurrency(activeStats.netPnl)}
                   </span>
                 </div>
               </div>
@@ -945,25 +972,25 @@ export default function DashboardView({
                 <div>
                   <span className="text-[10px] font-bold text-gray-500 uppercase">Avg Win Trade</span>
                   <p className="text-sm font-black text-emerald-400 mt-0.5">
-                    +${Math.round(personalStats.avgWin)}
+                    +${Math.round(activeStats.avgWin)}
                   </p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-gray-500 uppercase">Avg Loss Trade</span>
                   <p className="text-sm font-black text-rose-400 mt-0.5">
-                    -${Math.round(personalStats.avgLoss)}
+                    -${Math.round(activeStats.avgLoss)}
                   </p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-gray-500 uppercase">Max Drawdown</span>
                   <p className="text-sm font-black text-amber-400 mt-0.5">
-                    -${Math.round(personalStats.maxDrawdown)}
+                    -${Math.round(activeStats.maxDrawdown)}
                   </p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-gray-500 uppercase">Expectancy / Trade</span>
                   <p className="text-sm font-black text-indigo-400 mt-0.5">
-                    {formatCurrency(personalStats.expectancy)}
+                    {formatCurrency(activeStats.expectancy)}
                   </p>
                 </div>
               </div>
@@ -973,14 +1000,16 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <h3 className="font-black text-white text-base flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-emerald-400" />
-                    <span>Cumulative Performance Trajectory</span>
+                    <span>
+                      {viewMode === "group" ? "Desk Collective Performance Trajectory" : "Cumulative Performance Trajectory"}
+                    </span>
                   </h3>
-                  <span className="text-xs text-gray-400 font-mono">{personalChartData.length} executions plotted</span>
+                  <span className="text-xs text-gray-400 font-mono">{activeChartData.length} executions plotted</span>
                 </div>
 
                 <div className="h-[260px] w-full pt-2">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={personalChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <AreaChart data={activeChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                       <defs>
                         <linearGradient id="proGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
@@ -1073,7 +1102,7 @@ export default function DashboardView({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {personalAccountBreakdown.map((acc) => (
+                  {activeAccountBreakdown.map((acc) => (
                     <div
                       key={acc.type}
                       onClick={() => setAccountFilter(acc.type)}
