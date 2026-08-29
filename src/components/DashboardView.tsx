@@ -43,6 +43,7 @@ import {
   Zap,
   PlayCircle,
   Table,
+  Clock,
   LineChart as LineChartIcon,
 } from "lucide-react";
 import {
@@ -64,7 +65,7 @@ import { formatCurrency, getLocalDateString } from "../utils/helpers";
 
 export type DashboardAccountFilter = "all" | "real_only" | AccountType;
 export type DashboardExperienceLevel = "simple" | "pro";
-export type ProDashboardSubTab = "overview" | "calendar" | "accounts" | "desk";
+export type ProDashboardSubTab = "overview" | "calendar" | "accounts" | "group";
 
 export const accountTypeMeta: Record<
   AccountType,
@@ -175,6 +176,7 @@ export default function DashboardView({
   const [accountFilter, setAccountFilter] = useState<DashboardAccountFilter>("all");
   const [proTab, setProTab] = useState<ProDashboardSubTab>("overview");
   const [timeRange, setTimeRange] = useState<"7d" | "30d" | "all">("all");
+  const [selectedHeatmapDate, setSelectedHeatmapDate] = useState<string | null>(null);
 
   const [experienceLevel, setExperienceLevel] = useState<DashboardExperienceLevel>(() => {
     try {
@@ -355,7 +357,81 @@ export default function DashboardView({
     };
   }, [filteredRoomLogs]);
 
-  // Equity Curve Data (Active Mode)
+  // Trader Meta Helper
+  const getTraderMeta = (logUserId: string, fallbackUsername?: string) => {
+    const trader = traders.find((t) => t.id === logUserId);
+    const name = trader?.username || fallbackUsername || (logUserId === userId ? (userProfile?.username || "You") : "Trader");
+    const isMe = logUserId === userId;
+    const avatarColor = trader?.avatarColor || "indigo";
+    const avatarType = trader?.avatarType || "emoji";
+    const avatarVal = trader?.avatarVal || name.slice(0, 2).toUpperCase();
+
+    const colorClass = {
+      indigo: "bg-indigo-500/20 text-indigo-300 border-indigo-500/40",
+      pink: "bg-pink-500/20 text-pink-300 border-pink-500/40",
+      emerald: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+      amber: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+      sky: "bg-sky-500/20 text-sky-300 border-sky-500/40",
+    }[avatarColor] || "bg-indigo-500/20 text-indigo-300 border-indigo-500/40";
+
+    return { name, isMe, avatarColor, avatarType, avatarVal, colorClass, trader };
+  };
+
+  // Group Member Leaderboard & Contribution Stats
+  const traderLeaderboard = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        userId: string;
+        username: string;
+        avatarColor: string;
+        avatarType: string;
+        avatarVal: string;
+        tradesCount: number;
+        wins: number;
+        losses: number;
+        netPnl: number;
+        bestTrade: number;
+        worstTrade: number;
+        lastTradeDate: string;
+      }
+    > = {};
+
+    filteredRoomLogs.forEach((l) => {
+      const uId = l.userId;
+      if (!map[uId]) {
+        const meta = getTraderMeta(uId, l.username);
+        map[uId] = {
+          userId: uId,
+          username: meta.name,
+          avatarColor: meta.avatarColor,
+          avatarType: meta.avatarType,
+          avatarVal: meta.avatarVal,
+          tradesCount: 0,
+          wins: 0,
+          losses: 0,
+          netPnl: 0,
+          bestTrade: -Infinity,
+          worstTrade: Infinity,
+          lastTradeDate: l.date,
+        };
+      }
+      const entry = map[uId];
+      entry.tradesCount++;
+      entry.netPnl += l.amount;
+      if (l.amount > 0) entry.wins++;
+      else if (l.amount < 0) entry.losses++;
+      if (l.amount > entry.bestTrade) entry.bestTrade = l.amount;
+      if (l.amount < entry.worstTrade) entry.worstTrade = l.amount;
+      if (new Date(l.date) >= new Date(entry.lastTradeDate)) {
+        entry.lastTradeDate = `${l.date} ${l.time || ""}`.trim();
+      }
+    });
+
+    return Object.values(map).sort((a, b) => b.netPnl - a.netPnl);
+  }, [filteredRoomLogs, traders, userId, userProfile]);
+
+  // Equity Curve Data (Active Mode) with Trader Attribution
   const activeChartData = useMemo(() => {
     let running = 0;
     const sorted = [...activeLogs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -373,15 +449,21 @@ export default function DashboardView({
 
     return filtered.map((log) => {
       running += log.amount;
+      const meta = getTraderMeta(log.userId, log.username);
       return {
         date: log.date.slice(5),
+        fullDate: log.date,
+        time: log.time || "",
         amount: log.amount,
         equity: running,
         asset: log.asset || "SETUP",
-        trader: log.username || "Trader",
+        traderName: meta.name,
+        isMe: meta.isMe,
+        accountType: log.accountType || "funded",
+        strategy: log.strategy || "",
       };
     });
-  }, [activeLogs, timeRange]);
+  }, [activeLogs, timeRange, traders, userId, userProfile]);
 
   // 4-Way Account Performance Breakdown Matrix
   const activeAccountBreakdown = useMemo(() => {
@@ -470,6 +552,66 @@ export default function DashboardView({
     return days;
   }, [activeLogs]);
 
+  // Helper for Chart Tooltip
+  const renderChartTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const isWin = data.amount >= 0;
+      return (
+        <div className="bg-[#090A0C] border border-[#262A30] rounded-xl p-3 shadow-xl space-y-1.5 min-w-[200px] text-xs">
+          <div className="flex items-center justify-between border-b border-[#22262C] pb-1.5">
+            <span className="text-[10px] text-gray-400 font-bold">
+              {data.fullDate} {data.time}
+            </span>
+            <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded bg-white/10 text-white">
+              {data.asset}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between pt-0.5">
+            <span className="text-gray-400 text-[11px]">Trader:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-white font-bold">@{data.traderName}</span>
+              {data.isMe && (
+                <span className="text-[9px] bg-indigo-500/20 text-indigo-300 font-bold px-1 rounded border border-indigo-500/30">
+                  YOU
+                </span>
+              )}
+            </div>
+          </div>
+
+          {data.strategy && (
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-gray-400">Strategy:</span>
+              <span className="text-gray-300">{data.strategy}</span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1 border-t border-[#22262C]">
+            <span className="text-gray-400">Trade Result:</span>
+            <span className={`font-black ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+              {data.amount >= 0 ? "+" : ""}${Math.abs(data.amount).toLocaleString()}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">Cumulative P&L:</span>
+            <span className="font-black text-white">
+              {data.equity >= 0 ? "+" : ""}${Math.round(data.equity).toLocaleString()}
+            </span>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Selected Day Logs for Calendar Tab
+  const selectedDayLogs = useMemo(() => {
+    if (!selectedHeatmapDate) return [];
+    return activeLogs.filter((l) => l.date === selectedHeatmapDate);
+  }, [activeLogs, selectedHeatmapDate]);
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0E1013] text-[#DCDDDE] overflow-y-auto p-4 md:p-6 space-y-5 font-sans pb-20">
       {/* ========================================================================= */}
@@ -478,21 +620,26 @@ export default function DashboardView({
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#14171B] p-3.5 sm:p-4 rounded-2xl border border-[#262A30] shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-black font-black shadow-lg shadow-emerald-500/20">
-            <TrendingUp className="w-5 h-5" />
+            {viewMode === "personal" ? <TrendingUp className="w-5 h-5" /> : <Users className="w-5 h-5" />}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                {viewMode === "personal" ? "Trading Dashboard" : `${roomName} Desk`}
+                {viewMode === "personal" ? "Personal Dashboard" : "Group Dashboard"}
               </h2>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded-full border border-emerald-500/20">
+              {viewMode === "group" && (
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  {roomName}
+                </span>
+              )}
+              <span className="text-[10px] bg-white/10 text-gray-300 font-bold px-2 py-0.5 rounded-full border border-white/10">
                 {experienceLevel === "simple" ? "Simple View" : "Pro Analytics"}
               </span>
             </div>
             <p className="text-xs text-gray-400">
               {viewMode === "personal"
-                ? "Live execution summary, risk discipline, and verified account performance"
-                : "Collective trading room metrics and member activity"}
+                ? "Live personal execution summary, risk discipline, and verified account performance"
+                : `Collective trading performance, trader attribution, and group trade flow for ${roomName}`}
             </p>
           </div>
         </div>
@@ -523,13 +670,13 @@ export default function DashboardView({
             </button>
           </div>
 
-          {/* Personal vs Desk Toggle */}
+          {/* Personal vs Group Dashboard Toggle */}
           <div className="flex items-center bg-[#090A0C] p-1 rounded-xl border border-[#22262C]">
             <button
               onClick={() => setViewMode("personal")}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                 viewMode === "personal"
-                  ? "bg-white/10 text-white shadow-sm"
+                  ? "bg-white/15 text-white shadow-sm"
                   : "text-gray-400 hover:text-white"
               }`}
             >
@@ -538,14 +685,14 @@ export default function DashboardView({
             </button>
             <button
               onClick={() => setViewMode("group")}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                 viewMode === "group"
-                  ? "bg-white/10 text-white shadow-sm"
+                  ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 shadow-sm"
                   : "text-gray-400 hover:text-white"
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              <span>Desk</span>
+              <Users className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Group</span>
             </button>
           </div>
 
@@ -555,7 +702,7 @@ export default function DashboardView({
             onChange={(e) => setAccountFilter(e.target.value as DashboardAccountFilter)}
             className="bg-[#090A0C] border border-[#22262C] rounded-xl px-2.5 py-1.5 text-xs text-gray-300 font-bold focus:outline-none cursor-pointer"
           >
-            <option value="all">All Accounts ({allUserLogs.length})</option>
+            <option value="all">All Accounts ({viewMode === "group" ? pnlLogs.length : allUserLogs.length})</option>
             <option value="real_only">Real Money Only</option>
             <option value="funded">Funded Prop</option>
             <option value="live">Live Brokerage</option>
@@ -597,7 +744,7 @@ export default function DashboardView({
             <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  {viewMode === "group" ? "Desk Today P&L" : "Today's Result (P&L)"}
+                  {viewMode === "group" ? "Group Today P&L" : "Today's Result (P&L)"}
                 </span>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -627,7 +774,8 @@ export default function DashboardView({
                 {formatCurrency(activeStats.dailySum)}
               </p>
               <p className="text-xs text-gray-400">
-                {activeStats.todayTradesCount} execution{activeStats.todayTradesCount !== 1 ? "s" : ""} recorded today
+                {activeStats.todayTradesCount} execution{activeStats.todayTradesCount !== 1 ? "s" : ""}{" "}
+                {viewMode === "group" ? "across group today" : "recorded today"}
               </p>
             </div>
 
@@ -635,7 +783,7 @@ export default function DashboardView({
             <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  {viewMode === "group" ? "Desk Win Rate %" : "Win Rate %"}
+                  {viewMode === "group" ? "Group Win Rate %" : "Win Rate %"}
                 </span>
                 <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
                   {activeStats.totalWins}W - {activeStats.totalLosses}L
@@ -645,7 +793,8 @@ export default function DashboardView({
                 {activeStats.winRate}%
               </p>
               <p className="text-xs text-gray-400">
-                Avg Win: <span className="text-emerald-400 font-bold">+${Math.round(activeStats.avgWin)}</span> • Avg Loss: <span className="text-rose-400 font-bold">-${Math.round(activeStats.avgLoss)}</span>
+                Avg Win: <span className="text-emerald-400 font-bold">+${Math.round(activeStats.avgWin)}</span> • Avg
+                Loss: <span className="text-rose-400 font-bold">-${Math.round(activeStats.avgLoss)}</span>
               </p>
             </div>
 
@@ -653,7 +802,7 @@ export default function DashboardView({
             <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md flex flex-col justify-between space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  {viewMode === "group" ? "Desk Cumulative P&L" : "Cumulative P&L"}
+                  {viewMode === "group" ? "Group Cumulative P&L" : "Cumulative P&L"}
                 </span>
                 <span className="text-[10px] font-bold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full">
                   Total {activeLogs.length} Trades
@@ -678,7 +827,7 @@ export default function DashboardView({
               <div className="flex items-center gap-2">
                 <LineChartIcon className="w-4 h-4 text-emerald-400" />
                 <h3 className="font-black text-white text-base">
-                  {viewMode === "group" ? "Desk Equity Growth Trajectory" : "Equity Growth Trajectory"}
+                  {viewMode === "group" ? "Group Equity Growth Trajectory" : "Equity Growth Trajectory"}
                 </h3>
               </div>
 
@@ -730,15 +879,7 @@ export default function DashboardView({
                       axisLine={false}
                       tickFormatter={(v) => `$${v}`}
                     />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#090A0C",
-                        borderColor: "#262A30",
-                        borderRadius: "10px",
-                        color: "#fff",
-                        fontSize: "12px",
-                      }}
-                    />
+                    <Tooltip content={renderChartTooltip} />
                     <Area
                       type="monotone"
                       dataKey="equity"
@@ -753,18 +894,22 @@ export default function DashboardView({
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-gray-500 text-xs gap-2">
                   <Activity className="w-8 h-8 opacity-40 text-emerald-400" />
-                  <span>No trades logged yet. Click "+ Log Trade" to record your first trade!</span>
+                  <span>
+                    {viewMode === "group"
+                      ? "No group trades logged yet. Be the first to log a trade!"
+                      : "No trades logged yet. Click '+ Log Trade' to record your first trade!"}
+                  </span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Recent Executions (Streamlined 4 Items) */}
+          {/* Recent Executions with Trader Attribution */}
           <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-white text-base flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-400" />
-                <span>Recent Activity</span>
+                <span>{viewMode === "group" ? "Recent Group Executions" : "Recent Activity"}</span>
               </h3>
               {onOpenLogModal && (
                 <button
@@ -777,27 +922,44 @@ export default function DashboardView({
               )}
             </div>
 
-            <div className="space-y-2">
-              {activeLogs.slice(0, 4).map((log) => {
+            <div className="space-y-2.5">
+              {activeLogs.slice(0, 6).map((log) => {
                 const isWin = log.amount >= 0;
+                const traderMeta = getTraderMeta(log.userId, log.username);
+
                 return (
                   <div
                     key={log.id}
-                    className="p-3 rounded-xl bg-[#090A0C] border border-[#22262C] flex items-center justify-between gap-3 hover:border-[#323842] transition"
+                    className="p-3.5 rounded-xl bg-[#090A0C] border border-[#22262C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#323842] transition"
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
                           isWin
                             ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                             : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
                         }`}
                       >
-                        {isWin ? "W" : "L"}
+                        {isWin ? "WIN" : "LOSS"}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
+
+                      <div className="space-y-1">
+                        <div className="flex items-center flex-wrap gap-2">
+                          {/* Trader Identity Pill */}
+                          <div
+                            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${traderMeta.colorClass}`}
+                          >
+                            <span className="text-[11px]">{traderMeta.avatarVal}</span>
+                            <span>@{traderMeta.name}</span>
+                            {traderMeta.isMe && (
+                              <span className="text-[9px] bg-white/20 text-white font-black px-1 rounded">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+
                           <span className="font-black text-white text-sm">{log.asset || "SETUP"}</span>
+
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                               accountTypeMeta[log.accountType || "funded"].badge
@@ -805,31 +967,44 @@ export default function DashboardView({
                           >
                             {accountTypeMeta[log.accountType || "funded"].label}
                           </span>
-                          {viewMode === "group" && log.username && (
-                            <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-bold">
-                              @{log.username}
-                            </span>
-                          )}
+
                           {log.strategy && (
                             <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded-full hidden sm:inline">
                               {log.strategy}
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] text-gray-400">{log.date}</span>
+
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                          <span>{log.date}</span>
+                          {log.time && <span>• {log.time}</span>}
+                          {log.notes && (
+                            <span className="text-gray-500 truncate max-w-xs sm:max-w-md hidden sm:inline">
+                              - "{log.notes}"
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <span className={`text-base font-black ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                      {formatCurrency(log.amount)}
-                    </span>
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                      <span
+                        className={`text-base sm:text-lg font-black ${
+                          isWin ? "text-emerald-400" : "text-rose-400"
+                        }`}
+                      >
+                        {formatCurrency(log.amount)}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
 
               {activeLogs.length === 0 && (
                 <div className="p-6 text-center text-gray-500 text-xs">
-                  {viewMode === "group" ? "No trades recorded in this trading room yet." : "No trades recorded yet. Start by logging your first practice or funded trade!"}
+                  {viewMode === "group"
+                    ? "No trades recorded in this group yet. Log a trade to get started!"
+                    : "No trades recorded yet. Start by logging your first practice or funded trade!"}
                 </div>
               )}
             </div>
@@ -897,15 +1072,15 @@ export default function DashboardView({
             </button>
 
             <button
-              onClick={() => setProTab("desk")}
+              onClick={() => setProTab("group")}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                proTab === "desk"
-                  ? "bg-indigo-600 text-white shadow-md"
+                proTab === "group"
+                  ? "bg-emerald-600 text-white shadow-md"
                   : "text-gray-400 hover:text-white hover:bg-white/5"
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              <span>Desk Race & Room Stats</span>
+              <span>Group Leaderboard & Activity</span>
             </button>
           </div>
 
@@ -916,7 +1091,7 @@ export default function DashboardView({
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
                   <span className="text-[10px] font-black uppercase text-gray-400">
-                    {viewMode === "group" ? "Desk Today P&L" : "Today P&L"}
+                    {viewMode === "group" ? "Group Today P&L" : "Today P&L"}
                   </span>
                   <p
                     className={`text-2xl sm:text-3xl font-black mt-1 ${
@@ -925,12 +1100,14 @@ export default function DashboardView({
                   >
                     {formatCurrency(activeStats.dailySum)}
                   </p>
-                  <span className="text-[11px] text-gray-500">{activeStats.todayTradesCount} trades today</span>
+                  <span className="text-[11px] text-gray-500">
+                    {activeStats.todayTradesCount} trades {viewMode === "group" ? "in group" : "today"}
+                  </span>
                 </div>
 
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
                   <span className="text-[10px] font-black uppercase text-gray-400">
-                    {viewMode === "group" ? "Desk This Week" : "This Week"}
+                    {viewMode === "group" ? "Group This Week" : "This Week"}
                   </span>
                   <p
                     className={`text-2xl sm:text-3xl font-black mt-1 ${
@@ -940,13 +1117,13 @@ export default function DashboardView({
                     {formatCurrency(activeStats.weeklySum)}
                   </p>
                   <span className="text-[11px] text-gray-500">
-                    {viewMode === "group" ? "Room weekly aggregate" : "Weekly aggregate"}
+                    {viewMode === "group" ? "Group weekly sum" : "Weekly aggregate"}
                   </span>
                 </div>
 
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
                   <span className="text-[10px] font-black uppercase text-gray-400">
-                    {viewMode === "group" ? "Desk Win Rate" : "Win Rate"}
+                    {viewMode === "group" ? "Group Win Rate" : "Win Rate"}
                   </span>
                   <p className="text-2xl sm:text-3xl font-black text-white mt-1">{activeStats.winRate}%</p>
                   <span className="text-[11px] text-indigo-400 font-bold">
@@ -956,7 +1133,7 @@ export default function DashboardView({
 
                 <div className="bg-[#14171B] p-4 rounded-2xl border border-[#262A30]">
                   <span className="text-[10px] font-black uppercase text-gray-400">
-                    {viewMode === "group" ? "Desk Profit Factor" : "Profit Factor"}
+                    {viewMode === "group" ? "Group Profit Factor" : "Profit Factor"}
                   </span>
                   <p className="text-2xl sm:text-3xl font-black text-white mt-1">
                     {activeStats.profitFactor.toFixed(2)}
@@ -1001,7 +1178,9 @@ export default function DashboardView({
                   <h3 className="font-black text-white text-base flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-emerald-400" />
                     <span>
-                      {viewMode === "group" ? "Desk Collective Performance Trajectory" : "Cumulative Performance Trajectory"}
+                      {viewMode === "group"
+                        ? "Group Performance Trajectory"
+                        : "Cumulative Performance Trajectory"}
                     </span>
                   </h3>
                   <span className="text-xs text-gray-400 font-mono">{activeChartData.length} executions plotted</span>
@@ -1019,15 +1198,7 @@ export default function DashboardView({
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                       <XAxis dataKey="date" stroke="#6B7280" fontSize={11} tickLine={false} />
                       <YAxis stroke="#6B7280" fontSize={11} tickLine={false} tickFormatter={(v) => `$${v}`} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#090A0C",
-                          borderColor: "#262A30",
-                          borderRadius: "10px",
-                          color: "#fff",
-                          fontSize: "12px",
-                        }}
-                      />
+                      <Tooltip content={renderChartTooltip} />
                       <Area
                         type="monotone"
                         dataKey="equity"
@@ -1038,6 +1209,107 @@ export default function DashboardView({
                       />
                     </AreaChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Comprehensive Recent Trade Executions & Trader Flow Ledger */}
+              <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-white text-base flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-indigo-400" />
+                    <span>
+                      {viewMode === "group" ? "Group Trade Flow & Execution Ledger" : "Recent Trade Executions"}
+                    </span>
+                  </h3>
+                  <span className="text-xs text-gray-400 font-mono">
+                    Showing latest {Math.min(activeLogs.length, 12)} of {activeLogs.length} trades
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[#262A30] text-gray-500 uppercase text-[10px]">
+                        <th className="pb-2.5">Trader</th>
+                        <th className="pb-2.5">Asset / Strategy</th>
+                        <th className="pb-2.5">Account</th>
+                        <th className="pb-2.5">Date & Time</th>
+                        <th className="pb-2.5 text-right">Net P&L</th>
+                        <th className="pb-2.5 pl-4">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#22262C]">
+                      {activeLogs.slice(0, 12).map((log) => {
+                        const isWin = log.amount >= 0;
+                        const meta = getTraderMeta(log.userId, log.username);
+
+                        return (
+                          <tr key={log.id} className="hover:bg-white/5 transition">
+                            <td className="py-3">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${meta.colorClass}`}
+                                >
+                                  <span className="text-[11px]">{meta.avatarVal}</span>
+                                  <span>@{meta.name}</span>
+                                  {meta.isMe && (
+                                    <span className="text-[9px] bg-white/20 text-white font-black px-1 rounded">
+                                      YOU
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 font-black text-white">
+                              <div>
+                                <span>{log.asset || "SETUP"}</span>
+                                {log.strategy && (
+                                  <span className="block text-[10px] font-normal text-gray-400">
+                                    {log.strategy}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  accountTypeMeta[log.accountType || "funded"].badge
+                                }`}
+                              >
+                                {accountTypeMeta[log.accountType || "funded"].label}
+                              </span>
+                            </td>
+
+                            <td className="py-3 text-gray-400 font-mono text-[11px]">
+                              {log.date} {log.time || ""}
+                            </td>
+
+                            <td
+                              className={`py-3 text-right font-black text-sm ${
+                                isWin ? "text-emerald-400" : "text-rose-400"
+                              }`}
+                            >
+                              {formatCurrency(log.amount)}
+                            </td>
+
+                            <td className="py-3 pl-4 text-gray-400 text-[11px] italic max-w-xs truncate">
+                              {log.notes || "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {activeLogs.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-6 text-center text-gray-500">
+                            No trades recorded yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -1052,12 +1324,13 @@ export default function DashboardView({
                     <Calendar className="w-4 h-4 text-indigo-400" />
                     <h3 className="font-black text-white text-base">30-Day P&L Heatmap Matrix</h3>
                   </div>
-                  <span className="text-xs text-gray-400">Green = Profitable Day • Red = Loss</span>
+                  <span className="text-xs text-gray-400">Click any day to view trade executions & traders</span>
                 </div>
 
                 {/* Heatmap Grid */}
                 <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 gap-2">
                   {heatmapDays.map((day, idx) => {
+                    const isSelected = selectedHeatmapDate === day.dateStr;
                     let cellBg = "bg-[#090A0C] border-[#22262C] text-gray-600";
                     if (day.hasTrades) {
                       if (day.pnl > 0) {
@@ -1072,19 +1345,108 @@ export default function DashboardView({
                     return (
                       <div
                         key={idx}
-                        className={`p-2.5 rounded-xl border flex flex-col items-center justify-between min-h-[64px] transition hover:scale-105 ${cellBg}`}
+                        onClick={() => setSelectedHeatmapDate(day.dateStr)}
+                        className={`p-2.5 rounded-xl border flex flex-col items-center justify-between min-h-[68px] transition cursor-pointer hover:scale-105 ${cellBg} ${
+                          isSelected ? "ring-2 ring-indigo-500 shadow-lg scale-105" : ""
+                        }`}
                         title={`${day.dateStr}: ${formatCurrency(day.pnl)} (${day.tradeCount} trades)`}
                       >
-                        <span className="text-[10px] text-gray-400">{day.monthStr} {day.dayNum}</span>
+                        <span className="text-[10px] text-gray-400">
+                          {day.monthStr} {day.dayNum}
+                        </span>
                         <span className="text-xs font-black">
                           {day.hasTrades ? (day.pnl !== 0 ? formatCurrency(day.pnl) : "$0") : "-"}
                         </span>
-                        <span className="text-[9px] opacity-60">{day.tradeCount} tr</span>
+                        <span className="text-[9px] opacity-75 font-mono">{day.tradeCount} tr</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
+
+              {/* Selected Day Trade Details */}
+              {selectedHeatmapDate && (
+                <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-emerald-400" />
+                      <h4 className="font-black text-white text-base">
+                        Executions on {selectedHeatmapDate} ({selectedDayLogs.length} trades)
+                      </h4>
+                    </div>
+                    <button
+                      onClick={() => setSelectedHeatmapDate(null)}
+                      className="text-xs text-gray-400 hover:text-white font-bold"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {selectedDayLogs.map((log) => {
+                      const isWin = log.amount >= 0;
+                      const meta = getTraderMeta(log.userId, log.username);
+
+                      return (
+                        <div
+                          key={log.id}
+                          className="p-3 rounded-xl bg-[#090A0C] border border-[#22262C] flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${meta.colorClass}`}
+                            >
+                              <span>{meta.avatarVal}</span>
+                              <span>@{meta.name}</span>
+                              {meta.isMe && (
+                                <span className="text-[9px] bg-white/20 text-white font-black px-1 rounded">
+                                  YOU
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-white text-xs">{log.asset || "SETUP"}</span>
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                    accountTypeMeta[log.accountType || "funded"].badge
+                                  }`}
+                                >
+                                  {accountTypeMeta[log.accountType || "funded"].label}
+                                </span>
+                                {log.strategy && (
+                                  <span className="text-[9px] bg-white/10 text-gray-300 px-1.5 py-0.2 rounded">
+                                    {log.strategy}
+                                  </span>
+                                )}
+                              </div>
+                              {log.notes && <p className="text-[11px] text-gray-400 italic">"{log.notes}"</p>}
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span
+                              className={`text-sm font-black ${
+                                isWin ? "text-emerald-400" : "text-rose-400"
+                              }`}
+                            >
+                              {formatCurrency(log.amount)}
+                            </span>
+                            {log.time && <span className="block text-[10px] text-gray-500">{log.time}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {selectedDayLogs.length === 0 && (
+                      <p className="text-xs text-gray-500 py-3 text-center">
+                        No trades logged on this specific date.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1113,7 +1475,9 @@ export default function DashboardView({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${acc.meta.bg} ${acc.meta.text}`}>
+                        <span
+                          className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${acc.meta.bg} ${acc.meta.text}`}
+                        >
                           {acc.meta.label}
                         </span>
                         <span className="text-xs font-bold text-gray-400">{acc.total} trades</span>
@@ -1128,8 +1492,12 @@ export default function DashboardView({
                       </p>
 
                       <div className="flex items-center justify-between text-xs text-gray-400 pt-1 border-t border-[#22262C]">
-                        <span>Win Rate: <strong className="text-white">{acc.winRate}%</strong></span>
-                        <span>PF: <strong className="text-white">{acc.profitFactor.toFixed(1)}</strong></span>
+                        <span>
+                          Win Rate: <strong className="text-white">{acc.winRate}%</strong>
+                        </span>
+                        <span>
+                          PF: <strong className="text-white">{acc.profitFactor.toFixed(1)}</strong>
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -1183,33 +1551,125 @@ export default function DashboardView({
             </div>
           )}
 
-          {/* SUB-TAB 4: DESK RACE & ROOM STATS */}
-          {proTab === "desk" && (
+          {/* SUB-TAB 4: GROUP RACE & TRADER STATS */}
+          {proTab === "group" && (
             <div className="space-y-5">
+              {/* Summary Cards */}
               <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Trophy className="w-4 h-4 text-amber-400" />
-                    <h3 className="font-black text-white text-base">Desk Leaderboard & Volume</h3>
+                    <h3 className="font-black text-white text-base">Group Leaderboard & Contribution</h3>
                   </div>
-                  <span className="text-xs text-gray-400">Total Desk P&L: {formatCurrency(groupStats.deskTotalSum)}</span>
+                  <span className="text-xs text-emerald-400 font-bold">
+                    Total Group Net: {formatCurrency(groupStats.deskTotalSum)}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="p-4 rounded-xl bg-[#090A0C] border border-[#22262C]">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Desk Today P&L</span>
-                    <p className={`text-2xl font-black mt-1 ${groupStats.deskTodaySum >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Group Today P&L</span>
+                    <p
+                      className={`text-2xl font-black mt-1 ${
+                        groupStats.deskTodaySum >= 0 ? "text-emerald-400" : "text-rose-400"
+                      }`}
+                    >
                       {formatCurrency(groupStats.deskTodaySum)}
                     </p>
                   </div>
                   <div className="p-4 rounded-xl bg-[#090A0C] border border-[#22262C]">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Desk Win Rate</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Group Win Rate</span>
                     <p className="text-2xl font-black text-white mt-1">{groupStats.deskWinRate}%</p>
                   </div>
                   <div className="p-4 rounded-xl bg-[#090A0C] border border-[#22262C]">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Total Desk Executions</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Total Group Executions</span>
                     <p className="text-2xl font-black text-indigo-400 mt-1">{groupStats.deskTotalTrades}</p>
                   </div>
+                </div>
+              </div>
+
+              {/* Individual Trader Leaderboard Table */}
+              <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md space-y-3">
+                <h4 className="font-black text-white text-base flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-400" />
+                  <span>Member Performance Breakdown</span>
+                </h4>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[#262A30] text-gray-500 uppercase text-[10px]">
+                        <th className="pb-2.5">Rank</th>
+                        <th className="pb-2.5">Trader</th>
+                        <th className="pb-2.5">Trades</th>
+                        <th className="pb-2.5">Win Rate</th>
+                        <th className="pb-2.5">Best Trade</th>
+                        <th className="pb-2.5 text-right">Net P&L Contributed</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#22262C]">
+                      {traderLeaderboard.map((trader, idx) => {
+                        const isMe = trader.userId === userId;
+                        const winRate =
+                          trader.tradesCount > 0
+                            ? Math.round((trader.wins / trader.tradesCount) * 100)
+                            : 0;
+
+                        return (
+                          <tr key={trader.userId} className="hover:bg-white/5 transition">
+                            <td className="py-3 font-bold text-gray-400">
+                              {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`}
+                            </td>
+                            <td className="py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center font-bold text-xs">
+                                  {trader.avatarVal}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-white">@{trader.username}</span>
+                                    {isMe && (
+                                      <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 rounded border border-emerald-500/30">
+                                        YOU
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-gray-500">
+                                    Last trade: {trader.lastTradeDate}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 text-gray-300 font-bold">{trader.tradesCount}</td>
+                            <td className="py-3">
+                              <span className="font-bold text-indigo-300">{winRate}%</span>
+                              <span className="text-[10px] text-gray-500 block">
+                                {trader.wins}W - {trader.losses}L
+                              </span>
+                            </td>
+                            <td className="py-3 text-emerald-400 font-bold">
+                              {trader.bestTrade !== -Infinity ? formatCurrency(trader.bestTrade) : "—"}
+                            </td>
+                            <td
+                              className={`py-3 text-right font-black text-sm ${
+                                trader.netPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                              }`}
+                            >
+                              {formatCurrency(trader.netPnl)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {traderLeaderboard.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-6 text-center text-gray-500">
+                            No member trades recorded in this group yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -1246,12 +1706,17 @@ export default function DashboardView({
 
               <div className="p-3 rounded-xl bg-[#090A0C] border border-[#22262C]">
                 <strong className="text-amber-400 block mb-1">🎯 2. The 1:2 R:R Golden Rule</strong>
-                <p>Risk $50 on stop-loss to target $100 profit. This guarantees you make money even with only 4 wins out of 10 trades!</p>
+                <p>
+                  Risk $50 on stop-loss to target $100 profit. This guarantees you make money even with only 4 wins
+                  out of 10 trades!
+                </p>
               </div>
 
               <div className="p-3 rounded-xl bg-[#090A0C] border border-[#22262C]">
                 <strong className="text-rose-400 block mb-1">🛡️ 3. Tilt Guard Protection</strong>
-                <p>Tilt Guard prevents revenge trading by locking your desk after hitting your max daily loss limit.</p>
+                <p>
+                  Tilt Guard prevents revenge trading by locking your desk after hitting your max daily loss limit.
+                </p>
               </div>
             </div>
 

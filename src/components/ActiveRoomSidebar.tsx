@@ -360,16 +360,16 @@ export default function ActiveRoomSidebar({
             </button>
 
             <button
-              id="nav-desk-dashboard"
+              id="nav-group-dashboard"
               onClick={() => onSwitchTab("group-dashboard")}
               className={getNavBtnClass("group-dashboard")}
             >
               <div className="flex items-center space-x-2.5">
                 <Users className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold">Desk Dashboard</span>
+                <span className="font-bold">Group Dashboard</span>
               </div>
               <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
-                ROOM
+                GROUP
               </span>
             </button>
 
