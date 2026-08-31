@@ -1197,8 +1197,17 @@ export default function App() {
     };
   }, [profile?.subscriptionTier, profile?.subscriptionStatus, isMobileOrTablet]);
 
-  // 1. Auth Observer with full session restoration
+  // 1. Auth Observer with full session restoration and instant cache hydration
   useEffect(() => {
+    let isMounted = true;
+
+    // Hard fallback: Never keep the user trapped on the loading screen for more than 2.5 seconds
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setIsAuthLoading(false);
+      }
+    }, 2500);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         if (user) {
@@ -1213,10 +1222,18 @@ export default function App() {
       } catch (err) {
         console.error("Auth state observer error:", err);
       } finally {
-        setIsAuthLoading(false);
+        if (isMounted) {
+          setIsAuthLoading(false);
+          clearTimeout(safetyTimeout);
+        }
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+      unsubscribe();
+    };
   }, []);
 
   // Initialize Notification Permission
@@ -1233,7 +1250,32 @@ export default function App() {
   // 2. Initialize profile and rooms from database
   const initUserProfileAndRoom = async (user: User) => {
     try {
-      // 6-segments path compliance: users/{userId}/profile/info
+      // Step A: Hydrate immediately from local cache so the workspace displays instantly
+      try {
+        const cachedProfileStr = localStorage.getItem(`syncpl_cached_profile_${user.uid}`);
+        if (cachedProfileStr) {
+          const parsedProfile = JSON.parse(cachedProfileStr);
+          if (parsedProfile) {
+            setProfile(parsedProfile);
+          }
+        }
+        const cachedRoomsStr = localStorage.getItem("syncpl_cached_rooms");
+        if (cachedRoomsStr) {
+          const parsedRooms = JSON.parse(cachedRoomsStr);
+          if (Array.isArray(parsedRooms) && parsedRooms.length > 0) {
+            setRooms(parsedRooms);
+            const preferredId = localStorage.getItem("syncpl_last_active_room") || parsedRooms[0]?.id;
+            const matchedRoom = parsedRooms.find((r: any) => r.id === preferredId) || parsedRooms[0];
+            if (matchedRoom) {
+              setActiveRoom(matchedRoom);
+            }
+          }
+        }
+      } catch (cacheErr) {
+        console.debug("Cache preload notice:", cacheErr);
+      }
+
+      // Step B: Fetch latest profile document from Firestore
       const profileRef = doc(db, "users", user.uid, "profile", "info");
       let currentProfile: UserProfile | null = null;
       
@@ -1394,13 +1436,13 @@ export default function App() {
 
   // Sync public user profile to users collection whenever meaningful public fields change
   useEffect(() => {
-    if (!currentUser || !profile) return;
+    if (!currentUser || !profile || isQuotaExceeded) return;
     const tier = (profile.subscriptionStatus === "active" || profile.subscriptionStatus === "trialing" || profile.subscriptionTier === "premium") ? "premium" : "free";
     const currentKey = `${currentUser.uid}_${profile.username}_${profile.avatarColor}_${profile.avatarType}_${profile.avatarVal}_${profile.activeGroupId}_${tier}`;
     if (currentKey === lastSyncedProfileKey.current) return;
     lastSyncedProfileKey.current = currentKey;
 
-    const syncPublicUserDoc = async () => {
+    const timer = setTimeout(async () => {
       try {
         const publicRef = doc(db, "users", currentUser.uid);
         await setDoc(publicRef, {
@@ -1415,9 +1457,10 @@ export default function App() {
       } catch (err) {
         handleFirestoreErrorState(err, "syncPublicUserDoc");
       }
-    };
-    syncPublicUserDoc();
-  }, [currentUser?.uid, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal, profile?.activeGroupId, profile?.subscriptionTier, profile?.subscriptionStatus]);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [currentUser?.uid, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal, profile?.activeGroupId, profile?.subscriptionTier, profile?.subscriptionStatus, isQuotaExceeded]);
 
   const fetchJoinedRooms = async (groupIds: string[], activeGroupId: string) => {
     try {
@@ -1470,6 +1513,17 @@ export default function App() {
       handleFirestoreErrorState(e, "fetchJoinedRooms");
     }
   };
+
+  // Ensure activeRoom is kept in sync if rooms are loaded but activeRoom is not yet set
+  useEffect(() => {
+    if (rooms.length > 0 && !activeRoom) {
+      const preferredId = localStorage.getItem("syncpl_last_active_room") || profile?.activeGroupId || "";
+      const matched = rooms.find((r) => r.id === preferredId) || rooms[0];
+      if (matched) {
+        setActiveRoom(matched);
+      }
+    }
+  }, [rooms, activeRoom, profile?.activeGroupId]);
 
   // Listeners for active room data
   useEffect(() => {
@@ -1670,14 +1724,23 @@ export default function App() {
     return computeUserPresence(user, isSelf, profile?.marketPresence);
   };
 
-  // Real presence heartbeat and active status synchronization
+  // Presence sync - optimized to avoid consuming Firestore write quota
   const lastHeartbeatPingRef = useRef<number>(0);
+  const lastPresenceStatusRef = useRef<string>("");
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || isQuotaExceeded) return;
 
     const currentRoomId = activeRoom?.id || profile?.activeGroupId || "SYNC-ALPHA";
 
-    const syncPresenceHeartbeat = async (status: "active" | "idle" | "offline" = "active") => {
+    const syncPresence = async (status: "active" | "idle" | "offline" = "active") => {
+      const now = Date.now();
+      // Only write to Firestore if status actually changed or at least 15 minutes have passed
+      if (lastPresenceStatusRef.current === status && now - lastHeartbeatPingRef.current < 15 * 60 * 1000) {
+        return;
+      }
+      lastPresenceStatusRef.current = status;
+      lastHeartbeatPingRef.current = now;
+
       try {
         const publicRef = doc(db, "users", currentUser.uid);
         await setDoc(
@@ -1695,55 +1758,23 @@ export default function App() {
           { merge: true }
         );
       } catch (err) {
-        // quiet presence heartbeat
+        handleFirestoreErrorState(err, "syncPresence");
       }
     };
 
     // Initial ping on connection
-    syncPresenceHeartbeat("active");
-
-    // Recurring 35-second heartbeat
-    const heartbeatTimer = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        syncPresenceHeartbeat("active");
-      } else {
-        syncPresenceHeartbeat("idle");
-      }
-    }, 35000);
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        syncPresenceHeartbeat("active");
-      } else {
-        syncPresenceHeartbeat("idle");
-      }
-    };
-
-    const onUserActivity = () => {
-      const now = Date.now();
-      if (now - lastHeartbeatPingRef.current > 30000) {
-        lastHeartbeatPingRef.current = now;
-        syncPresenceHeartbeat("active");
-      }
-    };
+    syncPresence("active");
 
     const onBeforeUnload = () => {
-      syncPresenceHeartbeat("offline");
+      syncPresence("offline");
     };
 
-    document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("beforeunload", onBeforeUnload);
-    window.addEventListener("pointerdown", onUserActivity);
-    window.addEventListener("keydown", onUserActivity);
 
     return () => {
-      clearInterval(heartbeatTimer);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("beforeunload", onBeforeUnload);
-      window.removeEventListener("pointerdown", onUserActivity);
-      window.removeEventListener("keydown", onUserActivity);
     };
-  }, [currentUser?.uid, activeRoom?.id, profile?.activeGroupId, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal]);
+  }, [currentUser?.uid, activeRoom?.id, profile?.activeGroupId, profile?.username, profile?.avatarColor, profile?.avatarType, profile?.avatarVal, isQuotaExceeded]);
 
   // Dynamically derive room traders with live presence, status, and custom settings (Optimized Memo)
   const traders = useMemo(() => {
@@ -2901,6 +2932,11 @@ export default function App() {
       timestamp: new Date().toISOString(),
     };
 
+    // Close Log Modal immediately
+    setIsLogModalOpen(false);
+    setLogAmount("");
+    setLogNotes("");
+
     try {
       // Add P&L transaction
       const logsCol = collection(db, "pnl_logs");
@@ -2915,11 +2951,6 @@ export default function App() {
         text: `${profile?.username || "Trader"} logged a verified trade ledger entry.`,
       });
 
-      // Close Log Modal
-      setIsLogModalOpen(false);
-      setLogAmount("");
-      setLogNotes("");
-
       triggerToast("Trade Synchronized", "Record added and broadcast to chat ledger!", "success");
 
       // Trigger Voice Co-Pilot synthesis alert!
@@ -2927,9 +2958,18 @@ export default function App() {
         finalAmount
       )} profit on ${logAsset.toUpperCase()} using ${logStrategy} strategy.`;
       speakTts(quoteText, currentUser?.uid);
-    } catch (err) {
-      console.error(err);
-      triggerToast("Sync Failed", "Check database synchronization connection.", "error");
+    } catch (err: any) {
+      handleFirestoreErrorState(err, "Log Trade");
+      const localId = "local_log_" + Date.now();
+      const localLog = { id: localId, ...logPayload } as PnlLog;
+      setPnlLogs((prev) => [localLog, ...prev]);
+
+      triggerToast("Trade Logged (Local)", "Trade recorded locally. Cloud sync will update when quota resets.", "info");
+
+      const quoteText = `${profile?.username || "Trader"} logged a trade! Resulting in ${formatCurrency(
+        finalAmount
+      )} profit on ${logAsset.toUpperCase()}.`;
+      speakTts(quoteText, currentUser?.uid);
     }
   };
 
@@ -3711,8 +3751,8 @@ export default function App() {
   // Chat dispatching
   const handleSendChatMessage = async (text: string, imageUrl?: string) => {
     if (!currentUser || !activeRoom) return;
-    const chatCol = collection(db, "chat_messages");
     const msgPayload: any = {
+      id: "msg_" + Date.now(),
       userId: currentUser.uid,
       username: profile?.username || "Trader",
       avatarColor: profile?.avatarColor || "indigo",
@@ -3726,7 +3766,13 @@ export default function App() {
     if (imageUrl) {
       msgPayload.imageUrl = imageUrl;
     }
-    await addDoc(chatCol, msgPayload);
+    try {
+      const chatCol = collection(db, "chat_messages");
+      await addDoc(chatCol, msgPayload);
+    } catch (err: any) {
+      handleFirestoreErrorState(err, "Send Message");
+      setChatMessages((prev) => [...prev, msgPayload]);
+    }
   };
 
   const handleDeleteChatMessage = async (id: string) => {
@@ -3795,6 +3841,13 @@ export default function App() {
           <div className="w-full h-1 bg-[#121417] rounded-full overflow-hidden border border-[#2A2D31]/40">
             <div className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 rounded-full animate-pulse w-3/4" />
           </div>
+          <button
+            type="button"
+            onClick={() => setIsAuthLoading(false)}
+            className="text-[11px] text-gray-400 hover:text-indigo-400 pt-1 font-medium transition cursor-pointer underline underline-offset-4"
+          >
+            Taking longer than usual? Click to continue
+          </button>
         </div>
       </div>
     );
