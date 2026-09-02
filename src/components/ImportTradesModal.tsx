@@ -495,7 +495,7 @@ export default function ImportTradesModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div className="pt-1">
               <div>
                 <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
@@ -507,19 +507,6 @@ export default function ImportTradesModal({
                   onChange={(e) => setDefaultStrategy(e.target.value)}
                   placeholder="e.g. Breakout, Scalp, ORB, ICT"
                   className="w-full bg-[#14171B] border border-[#22262C] rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-[#14171B] rounded-lg border border-[#22262C]">
-                <div>
-                  <span className="text-xs font-bold text-gray-200 block">Skip Duplicates</span>
-                  <span className="text-[10px] text-gray-400">Ignore already logged trades</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={skipDuplicates}
-                  onChange={(e) => setSkipDuplicates(e.target.checked)}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 bg-[#0A0C0E] border-gray-700 cursor-pointer"
                 />
               </div>
             </div>
