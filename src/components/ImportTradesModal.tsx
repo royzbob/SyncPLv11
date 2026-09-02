@@ -393,48 +393,124 @@ export default function ImportTradesModal({
         {/* Content Body */}
         <div className="p-5 overflow-y-auto space-y-4 flex-grow text-gray-300 text-xs">
           {/* Target Account & Default Strategy Selector */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0A0C0E] p-3.5 rounded-xl border border-[#22262C]">
+          <div className="bg-[#0A0C0E] p-4 rounded-xl border border-[#22262C] space-y-3">
             <div>
-              <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                Default Account Category
-              </label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {(["funded", "live", "eval", "practice"] as const).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setDefaultAccountType(type)}
-                    className={`py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer border ${
-                      defaultAccountType === type
-                        ? type === "funded"
-                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                          : type === "live"
-                          ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
-                          : type === "eval"
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                          : "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                        : "bg-[#14171B] text-gray-400 border-[#22262C] hover:text-white"
-                    }`}
-                  >
-                    {type}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-emerald-400" />
+                  Select Target Account Type for this Import:
+                </label>
+                <span className="text-[10px] text-gray-400">
+                  Selected: <strong className="text-white uppercase">{defaultAccountType}</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {/* Funded */}
+                <button
+                  type="button"
+                  onClick={() => setDefaultAccountType("funded")}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    defaultAccountType === "funded"
+                      ? "bg-emerald-500/20 border-emerald-500/60 shadow-md ring-1 ring-emerald-500/50"
+                      : "bg-[#14171B] border-[#22262C] hover:border-emerald-500/30 text-gray-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                      Funded Prop
+                    </span>
+                    {defaultAccountType === "funded" && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                  </div>
+                  <span className="text-[9px] text-gray-400 mt-1">PA / Performance Prop</span>
+                </button>
+
+                {/* Eval */}
+                <button
+                  type="button"
+                  onClick={() => setDefaultAccountType("eval")}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    defaultAccountType === "eval"
+                      ? "bg-amber-500/20 border-amber-500/60 shadow-md ring-1 ring-amber-500/50"
+                      : "bg-[#14171B] border-[#22262C] hover:border-amber-500/30 text-gray-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                      Combine / Eval
+                    </span>
+                    {defaultAccountType === "eval" && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                  </div>
+                  <span className="text-[9px] text-gray-400 mt-1">Challenge / Test Phase</span>
+                </button>
+
+                {/* Live */}
+                <button
+                  type="button"
+                  onClick={() => setDefaultAccountType("live")}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    defaultAccountType === "live"
+                      ? "bg-indigo-500/20 border-indigo-500/60 shadow-md ring-1 ring-indigo-500/50"
+                      : "bg-[#14171B] border-[#22262C] hover:border-indigo-500/30 text-gray-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400">
+                      Live Broker
+                    </span>
+                    {defaultAccountType === "live" && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                  </div>
+                  <span className="text-[9px] text-gray-400 mt-1">Real Cash / Brokerage</span>
+                </button>
+
+                {/* Practice */}
+                <button
+                  type="button"
+                  onClick={() => setDefaultAccountType("practice")}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    defaultAccountType === "practice"
+                      ? "bg-sky-500/25 border-sky-500/70 shadow-md ring-1 ring-sky-500/50"
+                      : "bg-[#14171B] border-[#22262C] hover:border-sky-500/30 text-gray-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-sky-400">
+                      Practice (Sim)
+                    </span>
+                    {defaultAccountType === "practice" && <Check className="w-3.5 h-3.5 text-sky-400" />}
+                  </div>
+                  <span className="text-[9px] text-gray-400 mt-1">Sim Rehearsal Drills</span>
+                </button>
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                Default Strategy / Setup Tag
-              </label>
-              <input
-                type="text"
-                value={defaultStrategy}
-                onChange={(e) => setDefaultStrategy(e.target.value)}
-                placeholder="e.g. Breakout, Scalp, ORB, ICT"
-                className="w-full bg-[#14171B] border border-[#22262C] rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  Strategy / Playbook Tag
+                </label>
+                <input
+                  type="text"
+                  value={defaultStrategy}
+                  onChange={(e) => setDefaultStrategy(e.target.value)}
+                  placeholder="e.g. Breakout, Scalp, ORB, ICT"
+                  className="w-full bg-[#14171B] border border-[#22262C] rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-[#14171B] rounded-lg border border-[#22262C]">
+                <div>
+                  <span className="text-xs font-bold text-gray-200 block">Skip Duplicates</span>
+                  <span className="text-[10px] text-gray-400">Ignore already logged trades</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={skipDuplicates}
+                  onChange={(e) => setSkipDuplicates(e.target.checked)}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 bg-[#0A0C0E] border-gray-700 cursor-pointer"
+                />
+              </div>
             </div>
           </div>
 
@@ -671,7 +747,7 @@ export default function ImportTradesModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 border-t border-[#22262C] bg-[#0A0C0E] flex items-center justify-between gap-3">
+        <div className="p-4 border-t border-[#22262C] bg-[#0A0C0E] flex flex-col sm:flex-row items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}
@@ -680,34 +756,53 @@ export default function ImportTradesModal({
             Cancel
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
             {parsedTrades.length > 0 && (
-              <button
-                type="button"
-                onClick={handleExecuteImport}
-                disabled={isProcessing || tradesToImport.length === 0}
-                className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-950/40 transition disabled:opacity-50 cursor-pointer"
-              >
-                {isProcessing ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Importing {tradesToImport.length} Trades...</span>
-                  </>
-                ) : tradesToImport.length === 0 ? (
-                  <>
-                    <AlertCircle className="w-4 h-4 text-amber-300" />
-                    <span>All Records Already in Ledger</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>
-                      Import {tradesToImport.length} New Trade{tradesToImport.length > 1 ? "s" : ""}
-                      {skipDuplicates && duplicateCount > 0 ? ` (${duplicateCount} Skipped)` : ""}
-                    </span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-1 text-[11px] text-gray-400">
+                  <span>Destination:</span>
+                  <span
+                    className={`font-black uppercase px-2 py-0.5 rounded text-[10px] border ${
+                      defaultAccountType === "funded"
+                        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
+                        : defaultAccountType === "eval"
+                        ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                        : defaultAccountType === "live"
+                        ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/40"
+                        : "bg-sky-500/15 text-sky-300 border-sky-500/40"
+                    }`}
+                  >
+                    {defaultAccountType}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExecuteImport}
+                  disabled={isProcessing || tradesToImport.length === 0}
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-950/40 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {isProcessing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Importing {tradesToImport.length} Trades...</span>
+                    </>
+                  ) : tradesToImport.length === 0 ? (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-amber-300" />
+                      <span>All Records Already in Ledger</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>
+                        Import {tradesToImport.length} Trades ({defaultAccountType.toUpperCase()})
+                        {skipDuplicates && duplicateCount > 0 ? ` [${duplicateCount} Skipped]` : ""}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         </div>

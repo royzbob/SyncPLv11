@@ -29,6 +29,9 @@ import {
   ChevronUp,
   FlaskConical,
   GraduationCap,
+  CheckSquare,
+  Square,
+  MinusSquare,
 } from "lucide-react";
 import { PnlLog, UserProfile, AccountType } from "../types";
 import { formatCurrency, getLocalDateString } from "../utils/helpers";
@@ -41,6 +44,7 @@ interface LogsViewProps {
   userId: string;
   username: string;
   onDeleteLog: (id: string, asset: string, amount: number) => Promise<void>;
+  onBulkDeleteLogs?: (ids: string[]) => Promise<void>;
   onOpenLogModal: () => void;
   onImportTrades?: (trades: ParsedImportTrade[]) => Promise<void>;
   roomCode: string;
@@ -93,6 +97,7 @@ export default function LogsView({
   userId,
   username = "Trader",
   onDeleteLog,
+  onBulkDeleteLogs,
   onOpenLogModal,
   onImportTrades,
   roomCode = "DESK",
@@ -108,6 +113,8 @@ export default function LogsView({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [copiedState, setCopiedState] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const safeLogs = Array.isArray(pnlLogs) ? pnlLogs : [];
   const safeTraders = Array.isArray(traders) ? traders : [];
@@ -157,6 +164,82 @@ export default function LogsView({
       return true;
     });
   }, [safeLogs, scope, userId, accountFilter, strategyFilter]);
+
+  // Deletable logs in current view based on user permission (owner or creator/mod)
+  const deletableFilteredLogs = useMemo(() => {
+    return filteredLogs.filter(
+      (log) => !log.userId || log.userId === userId || log.username === username || isCreatorOrMod
+    );
+  }, [filteredLogs, userId, username, isCreatorOrMod]);
+
+  const isAllSelected =
+    deletableFilteredLogs.length > 0 &&
+    deletableFilteredLogs.every((l) => selectedLogIds.has(l.id));
+
+  const isSomeSelected =
+    deletableFilteredLogs.some((l) => selectedLogIds.has(l.id)) && !isAllSelected;
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedLogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedLogIds(new Set());
+    } else {
+      setSelectedLogIds(new Set(deletableFilteredLogs.map((l) => l.id)));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedLogIds(new Set());
+  };
+
+  const selectedLogs = useMemo(() => {
+    return safeLogs.filter((l) => selectedLogIds.has(l.id));
+  }, [safeLogs, selectedLogIds]);
+
+  const selectedTotalPnl = useMemo(() => {
+    return selectedLogs.reduce((acc, l) => acc + (Number(l.amount) || 0), 0);
+  }, [selectedLogs]);
+
+  const handleExecuteBulkDelete = async () => {
+    if (selectedLogIds.size === 0) return;
+    const idsArray = Array.from(selectedLogIds);
+
+    if (onBulkDeleteLogs) {
+      setIsBulkDeleting(true);
+      try {
+        await onBulkDeleteLogs(idsArray);
+        setSelectedLogIds(new Set());
+      } catch (err) {
+        console.error("Bulk delete error:", err);
+      } finally {
+        setIsBulkDeleting(false);
+      }
+    } else {
+      // Fallback: delete sequentially using single onDeleteLog
+      setIsBulkDeleting(true);
+      try {
+        for (const log of selectedLogs) {
+          await onDeleteLog(log.id, log.asset, log.amount);
+        }
+        setSelectedLogIds(new Set());
+      } catch (err) {
+        console.error("Bulk delete sequential error:", err);
+      } finally {
+        setIsBulkDeleting(false);
+      }
+    }
+  };
 
   // Computed summary stats for the active view
   const journalStats = useMemo(() => {
@@ -614,6 +697,65 @@ export default function LogsView({
         </div>
       </div>
 
+      {/* 🌟 Bulk Action Toolbar (When 1 or more logs are selected) */}
+      {selectedLogIds.size > 0 && (
+        <div className="bg-gradient-to-r from-indigo-950/70 via-[#1A1D24] to-[#121417] p-3.5 rounded-xl border border-indigo-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600/20 border border-indigo-500/40 rounded-lg">
+              <CheckSquare className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-black text-white">
+                {selectedLogIds.size} trade{selectedLogIds.size > 1 ? "s" : ""} selected
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400 font-bold">Selected Net P&L:</span>
+              <span
+                className={`font-black ${
+                  selectedTotalPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {formatCurrency(selectedTotalPnl)}
+              </span>
+            </div>
+
+            {deletableFilteredLogs.length > selectedLogIds.size && (
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className="text-xs text-indigo-300 hover:text-white underline font-bold cursor-pointer"
+              >
+                Select all {deletableFilteredLogs.length} matching trades
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-white transition cursor-pointer"
+            >
+              Cancel Selection
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExecuteBulkDelete}
+              disabled={isBulkDeleting}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-black rounded-lg shadow-lg shadow-rose-950/50 transition cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>
+                {isBulkDeleting
+                  ? `Deleting ${selectedLogIds.size}...`
+                  : `Bulk Delete (${selectedLogIds.size})`}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Ledger Table */}
       <div className="glass-panel rounded overflow-hidden border border-[#2A2D31]">
         {filteredLogs.length > 0 ? (
@@ -621,7 +763,25 @@ export default function LogsView({
             <table className="min-w-full divide-y divide-[#2A2D31]">
               <thead className="bg-[#121417]">
                 <tr className="text-left text-[10px] font-bold text-[#8E9297] uppercase tracking-wider">
-                  <th scope="col" className="px-6 py-4">
+                  <th scope="col" className="pl-4 pr-2 py-4 w-8">
+                    {deletableFilteredLogs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleSelectAll}
+                        className="flex items-center text-gray-400 hover:text-white cursor-pointer"
+                        title={isAllSelected ? "Deselect All" : "Select All Deletable"}
+                      >
+                        {isAllSelected ? (
+                          <CheckSquare className="w-4 h-4 text-indigo-400" />
+                        ) : isSomeSelected ? (
+                          <MinusSquare className="w-4 h-4 text-indigo-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-gray-500" />
+                        )}
+                      </button>
+                    )}
+                  </th>
+                  <th scope="col" className="px-4 py-4">
                     Date
                   </th>
                   <th scope="col" className="px-6 py-4">
@@ -649,6 +809,8 @@ export default function LogsView({
                   const isProfit = log.amount >= 0;
                   const amtStr = formatCurrency(log.amount);
                   const isOwner = !log.userId || log.userId === userId || log.username === username;
+                  const canDelete = isOwner || isCreatorOrMod;
+                  const isSelected = selectedLogIds.has(log.id);
                   const acct = (log.accountType || "funded") as AccountType;
                   const acctCfg = accountTypeConfig[acct] || accountTypeConfig.funded;
                   const isPractice = acct === "practice";
@@ -657,12 +819,31 @@ export default function LogsView({
                     <tr
                       key={`${log.id}_${idx}`}
                       className={`transition duration-150 ${
-                        isPractice
+                        isSelected
+                          ? "bg-indigo-950/30 hover:bg-indigo-950/40 border-l-2 border-indigo-500"
+                          : isPractice
                           ? "bg-sky-950/10 hover:bg-sky-950/20"
                           : "hover:bg-[#1E2023]/40"
                       }`}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-xs text-[#8E9297] font-medium">
+                      <td className="pl-4 pr-2 py-4 whitespace-nowrap">
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSelect(log.id)}
+                            className="flex items-center text-gray-400 hover:text-white cursor-pointer"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4 text-indigo-400" />
+                            ) : (
+                              <Square className="w-4 h-4 text-gray-600 hover:text-gray-400" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="w-4 h-4 block" />
+                        )}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-xs text-[#8E9297] font-medium">
                         {log.date}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

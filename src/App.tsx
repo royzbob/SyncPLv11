@@ -3046,6 +3046,30 @@ export default function App() {
     );
   };
 
+  const handleBulkDeleteTradeLogs = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    triggerConfirm(
+      "Bulk Delete Trade Logs",
+      `Are you sure you want to permanently delete ${ids.length} selected trade journal ${ids.length === 1 ? "entry" : "entries"}? This action cannot be undone.`,
+      async () => {
+        try {
+          const deletePromises = ids.map((id) => {
+            const docRef = doc(db, "pnl_logs", id);
+            return deleteDoc(docRef);
+          });
+          await Promise.all(deletePromises);
+          triggerToast("Bulk Delete Successful", `Successfully deleted ${ids.length} trade ${ids.length === 1 ? "entry" : "entries"}.`, "success");
+        } catch (err: any) {
+          console.error("Error during bulk delete:", err);
+          // Fallback: update local state if quota or error occurs
+          setPnlLogs((prev) => prev.filter((l) => !ids.includes(l.id)));
+          triggerToast("Bulk Delete Applied", `Removed ${ids.length} entries from active ledger view.`, "info");
+          handleFirestoreErrorState(err, "Bulk Delete Logs");
+        }
+      }
+    );
+  };
+
   // Checklist Rule Actions
   const handleAddRule = async (text: string) => {
     if (!activeRoom) return;
@@ -4905,6 +4929,7 @@ export default function App() {
                           userId={currentUser.uid}
                           username={profile?.username || "Trader"}
                           onDeleteLog={handleDeleteTradeLog}
+                          onBulkDeleteLogs={handleBulkDeleteTradeLogs}
                           onOpenLogModal={() => setIsLogModalOpen(true)}
                           onImportTrades={handleImportTrades}
                           roomCode={activeRoom.id}

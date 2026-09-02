@@ -177,6 +177,8 @@ export default function DashboardView({
   const [proTab, setProTab] = useState<ProDashboardSubTab>("overview");
   const [timeRange, setTimeRange] = useState<"7d" | "30d" | "all">("all");
   const [selectedHeatmapDate, setSelectedHeatmapDate] = useState<string | null>(null);
+  const [calendarDate, setCalendarDate] = useState<Date>(() => new Date());
+  const [calendarViewMode, setCalendarViewMode] = useState<"month" | "rolling30">("month");
 
   const [experienceLevel, setExperienceLevel] = useState<DashboardExperienceLevel>(() => {
     try {
@@ -527,6 +529,210 @@ export default function DashboardView({
       winRate: data.count > 0 ? Math.round((data.wins / data.count) * 100) : 0,
     }));
   }, [activeLogs]);
+
+  // All available months with logged trades for quick jump
+  const availableLoggedMonths = useMemo(() => {
+    const monthMap = new Map<string, { year: number; month: number; label: string; count: number }>();
+    activeLogs.forEach((l) => {
+      if (l.date && l.date.length >= 7) {
+        const y = parseInt(l.date.substring(0, 4), 10);
+        const m = parseInt(l.date.substring(5, 7), 10) - 1;
+        if (!isNaN(y) && !isNaN(m)) {
+          const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+          const d = new Date(y, m, 1);
+          const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+          const existing = monthMap.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            monthMap.set(key, { year: y, month: m, label, count: 1 });
+          }
+        }
+      }
+    });
+
+    // Always include current month
+    const now = new Date();
+    const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    if (!monthMap.has(curKey)) {
+      monthMap.set(curKey, {
+        year: now.getFullYear(),
+        month: now.getMonth(),
+        label: now.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+        count: 0,
+      });
+    }
+
+    return Array.from(monthMap.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, data]) => ({ key, ...data }));
+  }, [activeLogs]);
+
+  // Full Month Calendar Data (for selected calendarDate)
+  const monthCalendarData = useMemo(() => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const monthLabel = calendarDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const shortMonthLabel = calendarDate.toLocaleDateString("en-US", { month: "short" });
+
+    const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sun, 1 = Mon ...
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const prevMonthDays = new Date(year, month, 0).getDate();
+
+    const todayStr = getLocalDateString(new Date());
+
+    let monthNetPnl = 0;
+    let monthWins = 0;
+    let monthLosses = 0;
+    let monthTotalTrades = 0;
+    let winningDaysCount = 0;
+    let losingDaysCount = 0;
+    let bestDayPnl = -Infinity;
+    let bestDayDate = "";
+    let worstDayPnl = Infinity;
+    let worstDayDate = "";
+
+    const cells: Array<{
+      dateStr: string;
+      dayNum: number;
+      isCurrentMonth: boolean;
+      isToday: boolean;
+      pnl: number;
+      tradeCount: number;
+      hasTrades: boolean;
+      isWinDay: boolean;
+      isLossDay: boolean;
+    }> = [];
+
+    // Leading padding days from previous month
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dNum = prevMonthDays - i;
+      const prevD = new Date(year, month - 1, dNum);
+      const dStr = getLocalDateString(prevD);
+      const logsOnDay = activeLogs.filter((l) => l.date === dStr);
+      let dayPnl = 0;
+      logsOnDay.forEach((l) => (dayPnl += l.amount));
+
+      cells.push({
+        dateStr: dStr,
+        dayNum: dNum,
+        isCurrentMonth: false,
+        isToday: dStr === todayStr,
+        pnl: dayPnl,
+        tradeCount: logsOnDay.length,
+        hasTrades: logsOnDay.length > 0,
+        isWinDay: dayPnl > 0,
+        isLossDay: dayPnl < 0,
+      });
+    }
+
+    // Days in current selected month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day);
+      const dStr = getLocalDateString(d);
+      const logsOnDay = activeLogs.filter((l) => l.date === dStr);
+      let dayPnl = 0;
+      logsOnDay.forEach((l) => {
+        dayPnl += l.amount;
+        monthTotalTrades++;
+        if (l.amount > 0) monthWins++;
+        else if (l.amount < 0) monthLosses++;
+      });
+
+      monthNetPnl += dayPnl;
+
+      if (logsOnDay.length > 0) {
+        if (dayPnl > 0) {
+          winningDaysCount++;
+        } else if (dayPnl < 0) {
+          losingDaysCount++;
+        }
+        if (dayPnl > bestDayPnl) {
+          bestDayPnl = dayPnl;
+          bestDayDate = dStr;
+        }
+        if (dayPnl < worstDayPnl) {
+          worstDayPnl = dayPnl;
+          worstDayDate = dStr;
+        }
+      }
+
+      cells.push({
+        dateStr: dStr,
+        dayNum: day,
+        isCurrentMonth: true,
+        isToday: dStr === todayStr,
+        pnl: dayPnl,
+        tradeCount: logsOnDay.length,
+        hasTrades: logsOnDay.length > 0,
+        isWinDay: dayPnl > 0,
+        isLossDay: dayPnl < 0,
+      });
+    }
+
+    // Trailing padding days to complete calendar row (multiple of 7)
+    const totalCellsSoFar = cells.length;
+    const remainingToSeven = (7 - (totalCellsSoFar % 7)) % 7;
+    for (let nextDay = 1; nextDay <= remainingToSeven; nextDay++) {
+      const nextD = new Date(year, month + 1, nextDay);
+      const nextDStr = getLocalDateString(nextD);
+      const logsOnDay = activeLogs.filter((l) => l.date === nextDStr);
+      let dayPnl = 0;
+      logsOnDay.forEach((l) => (dayPnl += l.amount));
+
+      cells.push({
+        dateStr: nextDStr,
+        dayNum: nextDay,
+        isCurrentMonth: false,
+        isToday: nextDStr === todayStr,
+        pnl: dayPnl,
+        tradeCount: logsOnDay.length,
+        hasTrades: logsOnDay.length > 0,
+        isWinDay: dayPnl > 0,
+        isLossDay: dayPnl < 0,
+      });
+    }
+
+    const monthWinRate = monthTotalTrades > 0 ? Math.round((monthWins / monthTotalTrades) * 100) : 0;
+
+    return {
+      year,
+      month,
+      monthLabel,
+      shortMonthLabel,
+      cells,
+      monthNetPnl,
+      monthTotalTrades,
+      monthWinRate,
+      winningDaysCount,
+      losingDaysCount,
+      bestDayPnl: bestDayPnl === -Infinity ? 0 : bestDayPnl,
+      bestDayDate,
+      worstDayPnl: worstDayPnl === Infinity ? 0 : worstDayPnl,
+      worstDayDate,
+    };
+  }, [calendarDate, activeLogs]);
+
+  const handlePrevMonth = () => {
+    setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const handleCurrentMonth = () => {
+    setCalendarDate(new Date());
+  };
+
+  const handleSelectMonth = (yearMonthKey: string) => {
+    const [yStr, mStr] = yearMonthKey.split("-");
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10) - 1;
+    if (!isNaN(y) && !isNaN(m)) {
+      setCalendarDate(new Date(y, m, 1));
+    }
+  };
 
   // 30-Day Heatmap Matrix
   const heatmapDays = useMemo(() => {
@@ -1315,53 +1521,323 @@ export default function DashboardView({
             </div>
           )}
 
-          {/* SUB-TAB 2: HEATMAP & 30-DAY CALENDAR */}
+          {/* SUB-TAB 2: HEATMAP & MONTHLY CALENDAR */}
           {proTab === "calendar" && (
             <div className="space-y-5">
               <div className="bg-[#14171B] p-5 rounded-2xl border border-[#262A30] shadow-md space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-indigo-400" />
-                    <h3 className="font-black text-white text-base">30-Day P&L Heatmap Matrix</h3>
-                  </div>
-                  <span className="text-xs text-gray-400">Click any day to view trade executions & traders</span>
-                </div>
-
-                {/* Heatmap Grid */}
-                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 gap-2">
-                  {heatmapDays.map((day, idx) => {
-                    const isSelected = selectedHeatmapDate === day.dateStr;
-                    let cellBg = "bg-[#090A0C] border-[#22262C] text-gray-600";
-                    if (day.hasTrades) {
-                      if (day.pnl > 0) {
-                        cellBg = "bg-emerald-950/50 border-emerald-500/40 text-emerald-300 font-bold";
-                      } else if (day.pnl < 0) {
-                        cellBg = "bg-rose-950/50 border-rose-500/40 text-rose-300 font-bold";
-                      } else {
-                        cellBg = "bg-gray-800/50 border-gray-600 text-gray-300";
-                      }
-                    }
-
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => setSelectedHeatmapDate(day.dateStr)}
-                        className={`p-2.5 rounded-xl border flex flex-col items-center justify-between min-h-[68px] transition cursor-pointer hover:scale-105 ${cellBg} ${
-                          isSelected ? "ring-2 ring-indigo-500 shadow-lg scale-105" : ""
-                        }`}
-                        title={`${day.dateStr}: ${formatCurrency(day.pnl)} (${day.tradeCount} trades)`}
-                      >
-                        <span className="text-[10px] text-gray-400">
-                          {day.monthStr} {day.dayNum}
-                        </span>
-                        <span className="text-xs font-black">
-                          {day.hasTrades ? (day.pnl !== 0 ? formatCurrency(day.pnl) : "$0") : "-"}
-                        </span>
-                        <span className="text-[9px] opacity-75 font-mono">{day.tradeCount} tr</span>
+                {/* Calendar Header with Month Navigation & View Toggle */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#22262C]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-white text-base">
+                          {calendarViewMode === "month"
+                            ? monthCalendarData.monthLabel
+                            : "30-Day Rolling Heatmap"}
+                        </h3>
+                        {calendarViewMode === "month" && (
+                          <span
+                            className={`text-xs font-black px-2 py-0.5 rounded-full border ${
+                              monthCalendarData.monthNetPnl >= 0
+                                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                : "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                            }`}
+                          >
+                            {formatCurrency(monthCalendarData.monthNetPnl)}
+                          </span>
+                        )}
                       </div>
-                    );
-                  })}
+                      <p className="text-xs text-gray-400">
+                        {calendarViewMode === "month"
+                          ? "Navigate previous months to review historical performance and daily executions"
+                          : "30-day continuous rolling execution matrix"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center bg-[#090A0C] p-1 rounded-xl border border-[#22262C]">
+                      <button
+                        type="button"
+                        onClick={() => setCalendarViewMode("month")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                          calendarViewMode === "month"
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Monthly View</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCalendarViewMode("rolling30")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                          calendarViewMode === "rolling30"
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        <span>30-Day Rolling</span>
+                      </button>
+                    </div>
+
+                    {/* Month Navigators (when in monthly view) */}
+                    {calendarViewMode === "month" && (
+                      <div className="flex items-center gap-1 bg-[#090A0C] p-1 rounded-xl border border-[#22262C]">
+                        <button
+                          type="button"
+                          onClick={handlePrevMonth}
+                          className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition cursor-pointer"
+                          title="Previous Month"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        <select
+                          value={`${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, "0")}`}
+                          onChange={(e) => handleSelectMonth(e.target.value)}
+                          className="bg-transparent text-xs font-bold text-white px-2 py-1 focus:outline-none cursor-pointer"
+                        >
+                          {availableLoggedMonths.map((m) => (
+                            <option key={m.key} value={m.key} className="bg-[#14171B] text-white">
+                              {m.label} {m.count > 0 ? `(${m.count} trades)` : ""}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={handleNextMonth}
+                          className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition cursor-pointer"
+                          title="Next Month"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleCurrentMonth}
+                          className="px-2 py-1 text-[10px] font-black uppercase tracking-wider bg-white/10 hover:bg-white/20 text-gray-300 rounded-md transition cursor-pointer ml-1"
+                        >
+                          Today
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Monthly Performance Summary Bar (when in monthly view) */}
+                {calendarViewMode === "month" && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                    <div className="bg-[#090A0C] p-2.5 rounded-xl border border-[#22262C]">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                        Month Net P&L
+                      </span>
+                      <span
+                        className={`text-sm font-black ${
+                          monthCalendarData.monthNetPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                        }`}
+                      >
+                        {formatCurrency(monthCalendarData.monthNetPnl)}
+                      </span>
+                    </div>
+
+                    <div className="bg-[#090A0C] p-2.5 rounded-xl border border-[#22262C]">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                        Trades in Month
+                      </span>
+                      <span className="text-sm font-black text-white">
+                        {monthCalendarData.monthTotalTrades}
+                      </span>
+                    </div>
+
+                    <div className="bg-[#090A0C] p-2.5 rounded-xl border border-[#22262C]">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                        Win Rate
+                      </span>
+                      <span
+                        className={`text-sm font-black ${
+                          monthCalendarData.monthWinRate >= 50 ? "text-emerald-400" : "text-rose-400"
+                        }`}
+                      >
+                        {monthCalendarData.monthWinRate}%
+                      </span>
+                    </div>
+
+                    <div className="bg-[#090A0C] p-2.5 rounded-xl border border-[#22262C]">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                        Green / Red Days
+                      </span>
+                      <div className="flex items-center gap-1.5 text-xs font-black">
+                        <span className="text-emerald-400">{monthCalendarData.winningDaysCount}W</span>
+                        <span className="text-gray-500">/</span>
+                        <span className="text-rose-400">{monthCalendarData.losingDaysCount}L</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#090A0C] p-2.5 rounded-xl border border-[#22262C]">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                        Best Day
+                      </span>
+                      <span className="text-xs font-black text-emerald-400 truncate block">
+                        {monthCalendarData.bestDayPnl > 0
+                          ? formatCurrency(monthCalendarData.bestDayPnl)
+                          : "-"}
+                      </span>
+                    </div>
+
+                    <div className="bg-[#090A0C] p-2.5 rounded-xl border border-[#22262C]">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                        Worst Day
+                      </span>
+                      <span className="text-xs font-black text-rose-400 truncate block">
+                        {monthCalendarData.worstDayPnl < 0
+                          ? formatCurrency(monthCalendarData.worstDayPnl)
+                          : "-"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* MONTHLY CALENDAR VIEW */}
+                {calendarViewMode === "month" ? (
+                  <div className="space-y-2">
+                    {/* Day of week headers */}
+                    <div className="grid grid-cols-7 gap-1.5 text-center">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayName, idx) => (
+                        <div
+                          key={idx}
+                          className="py-1 text-[11px] font-bold uppercase tracking-wider text-gray-400 bg-[#090A0C] rounded-lg border border-[#22262C]"
+                        >
+                          {dayName}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 7-column Calendar Grid */}
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {monthCalendarData.cells.map((cell, idx) => {
+                        const isSelected = selectedHeatmapDate === cell.dateStr;
+                        let cellBg = "bg-[#090A0C] border-[#22262C] text-gray-500";
+
+                        if (cell.isCurrentMonth) {
+                          if (cell.hasTrades) {
+                            if (cell.pnl > 0) {
+                              cellBg = "bg-emerald-950/40 border-emerald-500/40 text-emerald-300 font-bold hover:bg-emerald-900/50";
+                            } else if (cell.pnl < 0) {
+                              cellBg = "bg-rose-950/40 border-rose-500/40 text-rose-300 font-bold hover:bg-rose-900/50";
+                            } else {
+                              cellBg = "bg-gray-800/40 border-gray-600 text-gray-300";
+                            }
+                          } else {
+                            cellBg = "bg-[#0C0E12] border-[#22262C] text-gray-400 hover:bg-[#12151B]";
+                          }
+                        } else {
+                          // Prev/Next month padding days
+                          cellBg = "bg-[#07080A]/40 border-[#1B1E24] text-gray-700 opacity-40";
+                        }
+
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              if (cell.hasTrades || cell.isCurrentMonth) {
+                                setSelectedHeatmapDate(cell.dateStr);
+                              }
+                            }}
+                            className={`p-2 rounded-xl border flex flex-col justify-between min-h-[78px] transition cursor-pointer ${cellBg} ${
+                              isSelected ? "ring-2 ring-indigo-500 shadow-xl scale-[1.02] z-10" : ""
+                            } ${cell.isToday ? "border-indigo-500/70 shadow-indigo-900/20" : ""}`}
+                            title={`${cell.dateStr}: ${formatCurrency(cell.pnl)} (${cell.tradeCount} trades)`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`text-[11px] font-bold ${
+                                  cell.isToday
+                                    ? "bg-indigo-600 text-white px-1.5 py-0.2 rounded-md font-black"
+                                    : cell.isCurrentMonth
+                                    ? "text-gray-300"
+                                    : "text-gray-600"
+                                }`}
+                              >
+                                {cell.dayNum}
+                              </span>
+                              {cell.hasTrades && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-white/10 text-gray-300 font-mono">
+                                  {cell.tradeCount}t
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="my-auto py-1 text-center">
+                              {cell.hasTrades ? (
+                                <span
+                                  className={`text-xs font-black block tracking-tight ${
+                                    cell.pnl > 0
+                                      ? "text-emerald-400"
+                                      : cell.pnl < 0
+                                      ? "text-rose-400"
+                                      : "text-gray-300"
+                                  }`}
+                                >
+                                  {cell.pnl !== 0 ? formatCurrency(cell.pnl) : "$0"}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-gray-700">-</span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[9px] text-gray-500">
+                              {cell.isToday && <span className="text-indigo-400 font-bold">TODAY</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  /* ROLLING 30-DAY HEATMAP */
+                  <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 gap-2">
+                    {heatmapDays.map((day, idx) => {
+                      const isSelected = selectedHeatmapDate === day.dateStr;
+                      let cellBg = "bg-[#090A0C] border-[#22262C] text-gray-600";
+                      if (day.hasTrades) {
+                        if (day.pnl > 0) {
+                          cellBg = "bg-emerald-950/50 border-emerald-500/40 text-emerald-300 font-bold";
+                        } else if (day.pnl < 0) {
+                          cellBg = "bg-rose-950/50 border-rose-500/40 text-rose-300 font-bold";
+                        } else {
+                          cellBg = "bg-gray-800/50 border-gray-600 text-gray-300";
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => setSelectedHeatmapDate(day.dateStr)}
+                          className={`p-2.5 rounded-xl border flex flex-col items-center justify-between min-h-[68px] transition cursor-pointer hover:scale-105 ${cellBg} ${
+                            isSelected ? "ring-2 ring-indigo-500 shadow-lg scale-105" : ""
+                          }`}
+                          title={`${day.dateStr}: ${formatCurrency(day.pnl)} (${day.tradeCount} trades)`}
+                        >
+                          <span className="text-[10px] text-gray-400">
+                            {day.monthStr} {day.dayNum}
+                          </span>
+                          <span className="text-xs font-black">
+                            {day.hasTrades ? (day.pnl !== 0 ? formatCurrency(day.pnl) : "$0") : "-"}
+                          </span>
+                          <span className="text-[9px] opacity-75 font-mono">{day.tradeCount} tr</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Selected Day Trade Details */}
