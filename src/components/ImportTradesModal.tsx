@@ -283,8 +283,19 @@ export default function ImportTradesModal({
     setErrorMsg("");
   };
 
-  // Analyze duplicates against existing user logs
+  // Analyze duplicates against existing user logs (only when skipDuplicates is enabled)
   const evaluatedTrades = useMemo(() => {
+    // When duplicate detection is disabled by the user, mark all trades as new
+    if (!skipDuplicates) {
+      return parsedTrades.map((trade) => ({
+        ...trade,
+        accountType: trade.accountType || defaultAccountType,
+        strategy: trade.strategy || defaultStrategy,
+        isDuplicate: false,
+        duplicateReason: undefined,
+      }));
+    }
+
     const userLogs = existingLogs.filter(
       (log) => !currentUserId || log.userId === currentUserId
     );
@@ -322,7 +333,7 @@ export default function ImportTradesModal({
         duplicateReason: isExistingDuplicate ? "Already in Ledger" : isBatchDuplicate ? "Duplicate in CSV" : undefined,
       };
     });
-  }, [parsedTrades, existingLogs, currentUserId, defaultAccountType, defaultStrategy]);
+  }, [parsedTrades, existingLogs, currentUserId, defaultAccountType, defaultStrategy, skipDuplicates]);
 
   // Filtered trades to actually import
   const tradesToImport = useMemo(() => {
